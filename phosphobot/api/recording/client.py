@@ -5,11 +5,15 @@ from ..core.client_wrapper import SyncClientWrapper
 from ..core.request_options import RequestOptions
 from ..types.status_response import StatusResponse
 from ..core.pydantic_utilities import parse_obj_as
-from json.decoder import JSONDecodeError
-from ..core.api_error import ApiError
-from ..types.recording_stop_response import RecordingStopResponse
 from ..errors.unprocessable_entity_error import UnprocessableEntityError
 from ..types.http_validation_error import HttpValidationError
+from json.decoder import JSONDecodeError
+from ..core.api_error import ApiError
+from .types.recording_start_request_episode_format import (
+    RecordingStartRequestEpisodeFormat,
+)
+from .types.recording_start_request_video_codec import RecordingStartRequestVideoCodec
+from ..types.recording_stop_response import RecordingStopResponse
 from ..core.client_wrapper import AsyncClientWrapper
 
 # this is used as the default value for optional parameters
@@ -20,99 +24,11 @@ class RecordingClient:
     def __init__(self, *, client_wrapper: SyncClientWrapper):
         self._client_wrapper = client_wrapper
 
-    def start_recording_episode(
-        self, *, request_options: typing.Optional[RequestOptions] = None
-    ) -> StatusResponse:
-        """
-        Asynchronously start recording an episode in the background.
-        Same output format as OpenVLA.
-
-        Parameters
-        ----------
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        StatusResponse
-            Successful Response
-
-        Examples
-        --------
-        from phosphobot import PhosphobotApi
-
-        client = PhosphobotApi(
-            base_url="https://yourhost.com/path/to/api",
-        )
-        client.recording.start_recording_episode()
-        """
-        _response = self._client_wrapper.httpx_client.request(
-            "recording/start",
-            method="POST",
-            request_options=request_options,
-        )
-        try:
-            if 200 <= _response.status_code < 300:
-                return typing.cast(
-                    StatusResponse,
-                    parse_obj_as(
-                        type_=StatusResponse,  # type: ignore
-                        object_=_response.json(),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, body=_response.text)
-        raise ApiError(status_code=_response.status_code, body=_response_json)
-
-    def stop_recording_episode(
-        self, *, request_options: typing.Optional[RequestOptions] = None
-    ) -> RecordingStopResponse:
-        """
-        Stop the recording of the episode. The data is saved to disk.
-
-        Parameters
-        ----------
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        RecordingStopResponse
-            Successful Response
-
-        Examples
-        --------
-        from phosphobot import PhosphobotApi
-
-        client = PhosphobotApi(
-            base_url="https://yourhost.com/path/to/api",
-        )
-        client.recording.stop_recording_episode()
-        """
-        _response = self._client_wrapper.httpx_client.request(
-            "recording/stop",
-            method="POST",
-            request_options=request_options,
-        )
-        try:
-            if 200 <= _response.status_code < 300:
-                return typing.cast(
-                    RecordingStopResponse,
-                    parse_obj_as(
-                        type_=RecordingStopResponse,  # type: ignore
-                        object_=_response.json(),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, body=_response.text)
-        raise ApiError(status_code=_response.status_code, body=_response_json)
-
     def play_recording(
         self,
         *,
         episode_path: str,
+        robot_id: typing.Optional[int] = None,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> StatusResponse:
         """
@@ -123,6 +39,8 @@ class RecordingClient:
         episode_path : str
             Path to the .json file to play.
 
+        robot_id : typing.Optional[int]
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -133,7 +51,7 @@ class RecordingClient:
 
         Examples
         --------
-        from phosphobot import PhosphobotApi
+        from phospho import PhosphobotApi
 
         client = PhosphobotApi(
             base_url="https://yourhost.com/path/to/api",
@@ -145,6 +63,9 @@ class RecordingClient:
         _response = self._client_wrapper.httpx_client.request(
             "recording/play",
             method="POST",
+            params={
+                "robot_id": robot_id,
+            },
             json={
                 "episode_path": episode_path,
             },
@@ -178,20 +99,34 @@ class RecordingClient:
             raise ApiError(status_code=_response.status_code, body=_response.text)
         raise ApiError(status_code=_response.status_code, body=_response_json)
 
-
-class AsyncRecordingClient:
-    def __init__(self, *, client_wrapper: AsyncClientWrapper):
-        self._client_wrapper = client_wrapper
-
-    async def start_recording_episode(
-        self, *, request_options: typing.Optional[RequestOptions] = None
+    def start_recording_episode(
+        self,
+        *,
+        robot_id: typing.Optional[int] = None,
+        dataset_name: typing.Optional[str] = OMIT,
+        episode_format: typing.Optional[RecordingStartRequestEpisodeFormat] = OMIT,
+        video_codec: typing.Optional[RecordingStartRequestVideoCodec] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
     ) -> StatusResponse:
         """
         Asynchronously start recording an episode in the background.
-        Same output format as OpenVLA.
+        Output format is chosen when stopping the recording.
 
         Parameters
         ----------
+        robot_id : typing.Optional[int]
+
+        dataset_name : typing.Optional[str]
+            Name of the dataset to save the episode in.
+
+        episode_format : typing.Optional[RecordingStartRequestEpisodeFormat]
+            Format to save the episode.
+            `json` is compatible with OpenVLA and stores videos as a series of npy.
+            `lerobot_v2` is compatible with [lerobot training.](https://docs.phospho.ai/learn/ai-models)
+
+        video_codec : typing.Optional[RecordingStartRequestVideoCodec]
+            Codec to use for the video saving. Defaults to None.
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -202,25 +137,29 @@ class AsyncRecordingClient:
 
         Examples
         --------
-        import asyncio
+        from phospho import PhosphobotApi
 
-        from phosphobot import AsyncPhosphobotApi
-
-        client = AsyncPhosphobotApi(
+        client = PhosphobotApi(
             base_url="https://yourhost.com/path/to/api",
         )
-
-
-        async def main() -> None:
-            await client.recording.start_recording_episode()
-
-
-        asyncio.run(main())
+        client.recording.start_recording_episode()
         """
-        _response = await self._client_wrapper.httpx_client.request(
+        _response = self._client_wrapper.httpx_client.request(
             "recording/start",
             method="POST",
+            params={
+                "robot_id": robot_id,
+            },
+            json={
+                "dataset_name": dataset_name,
+                "episode_format": episode_format,
+                "video_codec": video_codec,
+            },
+            headers={
+                "content-type": "application/json",
+            },
             request_options=request_options,
+            omit=OMIT,
         )
         try:
             if 200 <= _response.status_code < 300:
@@ -231,19 +170,35 @@ class AsyncRecordingClient:
                         object_=_response.json(),
                     ),
                 )
+            if _response.status_code == 422:
+                raise UnprocessableEntityError(
+                    typing.cast(
+                        HttpValidationError,
+                        parse_obj_as(
+                            type_=HttpValidationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    )
+                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, body=_response.text)
         raise ApiError(status_code=_response.status_code, body=_response_json)
 
-    async def stop_recording_episode(
-        self, *, request_options: typing.Optional[RequestOptions] = None
+    def stop_recording_episode(
+        self,
+        *,
+        save: typing.Optional[bool] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
     ) -> RecordingStopResponse:
         """
-        Stop the recording of the episode. The data is saved to disk.
+        Stop the recording of the episode. The data is saved to disk to the user home directory, in the `phosphobot` folder.
 
         Parameters
         ----------
+        save : typing.Optional[bool]
+            Whether to save the episode to disk. Defaults to True.
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -254,25 +209,24 @@ class AsyncRecordingClient:
 
         Examples
         --------
-        import asyncio
+        from phospho import PhosphobotApi
 
-        from phosphobot import AsyncPhosphobotApi
-
-        client = AsyncPhosphobotApi(
+        client = PhosphobotApi(
             base_url="https://yourhost.com/path/to/api",
         )
-
-
-        async def main() -> None:
-            await client.recording.stop_recording_episode()
-
-
-        asyncio.run(main())
+        client.recording.stop_recording_episode()
         """
-        _response = await self._client_wrapper.httpx_client.request(
+        _response = self._client_wrapper.httpx_client.request(
             "recording/stop",
             method="POST",
+            json={
+                "save": save,
+            },
+            headers={
+                "content-type": "application/json",
+            },
             request_options=request_options,
+            omit=OMIT,
         )
         try:
             if 200 <= _response.status_code < 300:
@@ -283,15 +237,31 @@ class AsyncRecordingClient:
                         object_=_response.json(),
                     ),
                 )
+            if _response.status_code == 422:
+                raise UnprocessableEntityError(
+                    typing.cast(
+                        HttpValidationError,
+                        parse_obj_as(
+                            type_=HttpValidationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    )
+                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, body=_response.text)
         raise ApiError(status_code=_response.status_code, body=_response_json)
 
+
+class AsyncRecordingClient:
+    def __init__(self, *, client_wrapper: AsyncClientWrapper):
+        self._client_wrapper = client_wrapper
+
     async def play_recording(
         self,
         *,
         episode_path: str,
+        robot_id: typing.Optional[int] = None,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> StatusResponse:
         """
@@ -301,6 +271,8 @@ class AsyncRecordingClient:
         ----------
         episode_path : str
             Path to the .json file to play.
+
+        robot_id : typing.Optional[int]
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -314,7 +286,7 @@ class AsyncRecordingClient:
         --------
         import asyncio
 
-        from phosphobot import AsyncPhosphobotApi
+        from phospho import AsyncPhosphobotApi
 
         client = AsyncPhosphobotApi(
             base_url="https://yourhost.com/path/to/api",
@@ -332,6 +304,9 @@ class AsyncRecordingClient:
         _response = await self._client_wrapper.httpx_client.request(
             "recording/play",
             method="POST",
+            params={
+                "robot_id": robot_id,
+            },
             json={
                 "episode_path": episode_path,
             },
@@ -347,6 +322,175 @@ class AsyncRecordingClient:
                     StatusResponse,
                     parse_obj_as(
                         type_=StatusResponse,  # type: ignore
+                        object_=_response.json(),
+                    ),
+                )
+            if _response.status_code == 422:
+                raise UnprocessableEntityError(
+                    typing.cast(
+                        HttpValidationError,
+                        parse_obj_as(
+                            type_=HttpValidationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    )
+                )
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def start_recording_episode(
+        self,
+        *,
+        robot_id: typing.Optional[int] = None,
+        dataset_name: typing.Optional[str] = OMIT,
+        episode_format: typing.Optional[RecordingStartRequestEpisodeFormat] = OMIT,
+        video_codec: typing.Optional[RecordingStartRequestVideoCodec] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> StatusResponse:
+        """
+        Asynchronously start recording an episode in the background.
+        Output format is chosen when stopping the recording.
+
+        Parameters
+        ----------
+        robot_id : typing.Optional[int]
+
+        dataset_name : typing.Optional[str]
+            Name of the dataset to save the episode in.
+
+        episode_format : typing.Optional[RecordingStartRequestEpisodeFormat]
+            Format to save the episode.
+            `json` is compatible with OpenVLA and stores videos as a series of npy.
+            `lerobot_v2` is compatible with [lerobot training.](https://docs.phospho.ai/learn/ai-models)
+
+        video_codec : typing.Optional[RecordingStartRequestVideoCodec]
+            Codec to use for the video saving. Defaults to None.
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        StatusResponse
+            Successful Response
+
+        Examples
+        --------
+        import asyncio
+
+        from phospho import AsyncPhosphobotApi
+
+        client = AsyncPhosphobotApi(
+            base_url="https://yourhost.com/path/to/api",
+        )
+
+
+        async def main() -> None:
+            await client.recording.start_recording_episode()
+
+
+        asyncio.run(main())
+        """
+        _response = await self._client_wrapper.httpx_client.request(
+            "recording/start",
+            method="POST",
+            params={
+                "robot_id": robot_id,
+            },
+            json={
+                "dataset_name": dataset_name,
+                "episode_format": episode_format,
+                "video_codec": video_codec,
+            },
+            headers={
+                "content-type": "application/json",
+            },
+            request_options=request_options,
+            omit=OMIT,
+        )
+        try:
+            if 200 <= _response.status_code < 300:
+                return typing.cast(
+                    StatusResponse,
+                    parse_obj_as(
+                        type_=StatusResponse,  # type: ignore
+                        object_=_response.json(),
+                    ),
+                )
+            if _response.status_code == 422:
+                raise UnprocessableEntityError(
+                    typing.cast(
+                        HttpValidationError,
+                        parse_obj_as(
+                            type_=HttpValidationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    )
+                )
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def stop_recording_episode(
+        self,
+        *,
+        save: typing.Optional[bool] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> RecordingStopResponse:
+        """
+        Stop the recording of the episode. The data is saved to disk to the user home directory, in the `phosphobot` folder.
+
+        Parameters
+        ----------
+        save : typing.Optional[bool]
+            Whether to save the episode to disk. Defaults to True.
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        RecordingStopResponse
+            Successful Response
+
+        Examples
+        --------
+        import asyncio
+
+        from phospho import AsyncPhosphobotApi
+
+        client = AsyncPhosphobotApi(
+            base_url="https://yourhost.com/path/to/api",
+        )
+
+
+        async def main() -> None:
+            await client.recording.stop_recording_episode()
+
+
+        asyncio.run(main())
+        """
+        _response = await self._client_wrapper.httpx_client.request(
+            "recording/stop",
+            method="POST",
+            json={
+                "save": save,
+            },
+            headers={
+                "content-type": "application/json",
+            },
+            request_options=request_options,
+            omit=OMIT,
+        )
+        try:
+            if 200 <= _response.status_code < 300:
+                return typing.cast(
+                    RecordingStopResponse,
+                    parse_obj_as(
+                        type_=RecordingStopResponse,  # type: ignore
                         object_=_response.json(),
                     ),
                 )

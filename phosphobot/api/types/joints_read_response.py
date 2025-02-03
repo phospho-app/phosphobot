@@ -11,14 +11,14 @@ class JointsReadResponse(UniversalBaseModel):
     Response to read the joints of the robot.
     """
 
-    angles_rad: typing.List[float] = pydantic.Field()
-    """
-    A list of length 7, with the position of each joint in radian.
-    """
-
     angles_motor_units: typing.List[int] = pydantic.Field()
     """
     A list of length 7, with the position of each joint in motor units.
+    """
+
+    angles_rad: typing.List[float] = pydantic.Field()
+    """
+    A list of length 7, with the position of each joint in radian.
     """
 
     if IS_PYDANTIC_V2:

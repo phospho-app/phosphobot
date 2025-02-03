@@ -11,14 +11,19 @@ class AllCamerasStatus(UniversalBaseModel):
     Description of the status of all cameras. Use this to know which camera to stream.
     """
 
-    video_cameras_ids: typing.Optional[typing.List[int]] = pydantic.Field(default=None)
+    is_stereo_camera_available: typing.Optional[bool] = pydantic.Field(default=None)
     """
-    List of available video cameras ids
+    True if a stereo camera is available
     """
 
     realsense_available: typing.Optional[bool] = pydantic.Field(default=None)
     """
     True if a RealSense camera is available
+    """
+
+    video_cameras_ids: typing.Optional[typing.List[int]] = pydantic.Field(default=None)
+    """
+    List of available video cameras ids
     """
 
     if IS_PYDANTIC_V2:
