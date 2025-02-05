@@ -28,27 +28,42 @@ This repository contains demo code and community projects developed using the ph
 pip install --upgrade phosphobot
 ```
 
-5. **Train a Model**: Use [Le Robot](https://github.com/huggingface/lerobot) to train a policy on the dataset you just recorded.
+5. **LeRobot Integration**: Use [Le Robot](https://github.com/huggingface/lerobot) to train a policy on the dataset you just recorded.
+
+Be sure you install lerobot submodule.
+Access `lerobot`directory
 
 ```bash
-git clone https://github.com/huggingface/lerobot.git
 cd lerobot
+```
+
+6. **Install LeRobot Dependencies**
+
+```bash
+conda create -y -n lerobot python=3.10
+conda activate lerobot
 pip install -e .
 ```
 
-Add the `configs/policy/act_so100_phosphobot.yaml`file from this repository to the `lerobot/configs/policy` directory in the `lerobot` repository.
+7. **(Optional) Weight and Biases**
 
-Launch the training script with the following command from the `lerobot` repository (change the device to `cuda` if you have an NVIDIA GPU or `cpu` if you don't have a GPU):
+To use weigth and biases for training metrics, run
 
 ```bash
-python lerobot/scripts/train.py \
-  dataset_repo_id=YOUR_HF_DATASET_ID \
-  policy=act_so100_phosphobot \
-  env=so100_real \
-  hydra.run.dir=outputs/train/act_so100_quickstart \
-  hydra.job.name=act_so100_quickstart \
-  device=mps \
-  wandb.enable=false
+wandb login
+```
+
+8. **Launch The Training**
+   Launch the training script with the following command from the `lerobot` repository (change the device to `cuda` if you have an NVIDIA GPU or `cpu` if you don't have a GPU):
+
+```bash
+sudo python lerobot/scripts/train.py \
+  --dataset.repo_id=<HF_USERNAME>/<DATASET_NAME> \
+  --policy.type=<act or diffusion or tdmpc or vqbet> \
+  --output_dir=outputs/train/phoshobot_test \
+  --job_name=phosphobot_test \
+  --device=mps \
+  --wandb.enable=true
 ```
 
 ## Next steps
