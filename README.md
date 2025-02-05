@@ -55,6 +55,7 @@ wandb login
 
 8. **Launch The Training**
    Launch the training script with the following command from the `lerobot` repository (change the device to `cuda` if you have an NVIDIA GPU or `cpu` if you don't have a GPU):
+   Be sure to have your `lerobot` virtual environment activated.
 
 ```bash
 sudo python lerobot/scripts/train.py \
