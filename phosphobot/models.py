@@ -1062,10 +1062,10 @@ class StatsModel(BaseModel):
         # TODO: Check if sum is on the first axis
         column_sums = {
             col: {
-                "sum": episode_df[col].sum(),
-                "max": episode_df[col].max(),
-                "min": episode_df[col].min(),
-                "square_sum": (episode_df[col] ** 2).sum(),
+                "sum": episode_df[col].sum(axis=0),
+                "max": episode_df[col].max(axis=0),
+                "min": episode_df[col].min(axis=0),
+                "square_sum": (episode_df[col] ** 2).sum(axis=0),
             }
             for col in episode_df.columns
         }
