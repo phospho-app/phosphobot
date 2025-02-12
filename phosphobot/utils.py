@@ -195,7 +195,7 @@ def get_home_app_path() -> Path:
     return home_path
 
 
-def process_video(video_path: str) -> List[np.ndarray]:
+def compute_sum_squaresum_framecount_from_video(video_path: str) -> List[np.ndarray]:
     """
     Process a video file and calculate the sum of RGB values and sum of squares of RGB values for each frame.
     Returns a list of np.ndarray corresponding respectively to the sum of RGB values, sum of squares of RGB values and frame count
@@ -231,5 +231,6 @@ def process_video(video_path: str) -> List[np.ndarray]:
         frame_count += 1
 
     # Release the video capture object
+    # TODO: If problem of dimension maybe transposing arrays is needed.
     cap.release()
     return [total_sum_rgb, total_sum_squares, np.array([frame_count])]

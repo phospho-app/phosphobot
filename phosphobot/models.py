@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from phosphobot.utils import (
     NumpyEncoder,
+    compute_sum_squaresum_framecount_from_video,
     create_video_file,
     get_home_app_path,
     decode_numpy,
@@ -1049,20 +1050,6 @@ class StatsModel(BaseModel):
         """
         Update the stats before removing an episode from the dataset.
         """
-        # observation_state: Stats = Field(default_factory=Stats)  # At init, will do Stats()
-        # action: Stats = Field(default_factory=Stats)
-        # timestamp: Stats = Field(default_factory=Stats)
-        # frame_index: Stats = Field(default_factory=Stats)
-        # episode_index: Stats = Field(default_factory=Stats)
-        # index: Stats = Field(default_factory=Stats)
-
-        # # TODO: implement multiple language instructions
-        # task_index: Stats = Field(default_factory=Stats)
-
-        # # key is like: observation.images.main
-        # # value is Stats of the object: average pixel value, std, min, max ; and shape (height, width, channel)
-        # observation_images: Dict[str, Stats] = Field(default_factory=dict)
-
         # Check the parquet file exists
         if not os.path.exists(parquet_path):
             raise ValueError(f"Parquet file {parquet_path} does not exist")
@@ -1070,9 +1057,6 @@ class StatsModel(BaseModel):
         # Load the parquet file
         episode_df = pd.read_parquet(parquet_path)
         nb_steps_deleted_episode = len(episode_df)
-
-        # Update the count in stats_model
-        self.action.count -= nb_steps_deleted_episode
 
         # For each column in the parquet file, compute sum, square sum, min and max. Write it in a dictionnary
         # TODO: Check if sum is on the first axis
@@ -1099,8 +1083,42 @@ class StatsModel(BaseModel):
                 field_value.max = np.maximum(
                     field_value.max, column_sums[field_key]["max"]
                 )
+                field_value.count -= nb_steps_deleted_episode
+
+                field_value.mean = field_value.sum / field_value.count
+                field_value.std = np.sqrt(
+                    (field_value.square_sum / field_value.count) - field_value.mean**2
+                )
 
         # For image we need to load the mp4 video
+
+        # Extract the episode index from the parquet file name
+        episode_index = int(parquet_path.split("_")[-1].split(".")[0])
+
+        # List cameras_folder:
+        folder_videos_path = (
+            "/".join(parquet_path.split("/")[:-4]) + "/videos/chunk-000"
+        )
+
+        cameras_folder = os.listdir(folder_videos_path)
+        for camera_folder in cameras_folder:
+            # Create the path of the video episode_{episode_index:06d}.mp4
+            video_path = os.path.join(
+                folder_videos_path, camera_folder, f"episode_{episode_index:06d}.mp4"
+            )
+            sum_array, square_sum_array, frame_count_array = (
+                compute_sum_squaresum_framecount_from_video(video_path)
+            )
+
+            # Update the stats_model
+            self.observation_images[camera_folder].sum -= sum_array
+            self.observation_images[camera_folder].square_sum -= square_sum_array
+            self.observation_images[camera_folder].count -= frame_count_array[0]
+            field_value.count -= nb_steps_deleted_episode
+            field_value.mean = field_value.sum / field_value.count
+            field_value.std = np.sqrt(
+                (field_value.square_sum / field_value.count) - field_value.mean**2
+            )
 
 
 class FeatureDetails(BaseModel):
