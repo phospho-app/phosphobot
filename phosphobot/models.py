@@ -1045,6 +1045,63 @@ class StatsModel(BaseModel):
 
         self.to_json(meta_folder_path)
 
+    def update_before_episode_removal(self, parquet_path: str) -> None:
+        """
+        Update the stats before removing an episode from the dataset.
+        """
+        # observation_state: Stats = Field(default_factory=Stats)  # At init, will do Stats()
+        # action: Stats = Field(default_factory=Stats)
+        # timestamp: Stats = Field(default_factory=Stats)
+        # frame_index: Stats = Field(default_factory=Stats)
+        # episode_index: Stats = Field(default_factory=Stats)
+        # index: Stats = Field(default_factory=Stats)
+
+        # # TODO: implement multiple language instructions
+        # task_index: Stats = Field(default_factory=Stats)
+
+        # # key is like: observation.images.main
+        # # value is Stats of the object: average pixel value, std, min, max ; and shape (height, width, channel)
+        # observation_images: Dict[str, Stats] = Field(default_factory=dict)
+
+        # Check the parquet file exists
+        if not os.path.exists(parquet_path):
+            raise ValueError(f"Parquet file {parquet_path} does not exist")
+
+        # Load the parquet file
+        episode_df = pd.read_parquet(parquet_path)
+        nb_steps_deleted_episode = len(episode_df)
+
+        # Update the count in stats_model
+        self.action.count -= nb_steps_deleted_episode
+
+        # For each column in the parquet file, compute sum, square sum, min and max. Write it in a dictionnary
+        # TODO: Check if sum is on the first axis
+        column_sums = {
+            col: {
+                "sum": episode_df[col].sum(),
+                "max": episode_df[col].max(),
+                "min": episode_df[col].min(),
+                "square_sum": (episode_df[col] ** 2).sum(),
+            }
+            for col in episode_df.columns
+        }
+
+        # Substract the sum, square sum, min and max of the deleted episode to the stats_model
+        for field_key, field_value in iter(
+            self
+        ):  # TODO: Implement multiple language instructions
+            if field_key != "task_index" and field_key != "observation_images":
+                field_value.sum -= column_sums[field_key]["sum"]
+                field_value.square_sum -= column_sums[field_key]["square_sum"]
+                field_value.min = np.minimum(
+                    field_value.min, column_sums[field_key]["min"]
+                )
+                field_value.max = np.maximum(
+                    field_value.max, column_sums[field_key]["max"]
+                )
+
+        # For image we need to load the mp4 video
+
 
 class FeatureDetails(BaseModel):
     dtype: Literal["video", "int64", "float32", "str", "bool"]
