@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from phosphobot.utils import (
     NumpyEncoder,
+    compute_sum_squaresum_framecount_from_video,
     create_video_file,
     get_home_app_path,
     decode_numpy,
@@ -546,8 +547,6 @@ class Episode(BaseModel):
                 "The first step of the episode must have a timestamp to calculate the other timestamps during reedition of timestamps."
             )
 
-        # first_episode_timestamp = self.steps[0].observation.timestamp
-
         logger.info(f"Number of steps during conversion: {len(self.steps)}")
 
         # episode_data["timestamp"] = [step.observation.timestamp for step in self.steps]
@@ -631,12 +630,6 @@ class Episode(BaseModel):
             fps = 1 / np.mean(np.diff(timestamps))
 
         return fps
-
-    def get_videos_keys(self) -> List[str] | None:
-        """
-        Return the keys of the video frames in the observation
-        """
-        raise NotImplementedError
 
     def get_episode_chunk(self) -> int:
         """
@@ -885,7 +878,6 @@ class Stats(BaseModel):
         The stats are in dim 3 for RGB.
         We normalize with the number of pixels.
         """
-
         assert image_value.ndim == 3, "Image value must be 3D"
 
         if image_value is None:
@@ -894,6 +886,8 @@ class Stats(BaseModel):
         image_norm_32 = image_value.astype(dtype=np.float32) / 255.0
 
         # Update the max and min
+        # TODO: Is this code ok with the new shape of image_value?
+        # TODO: Check if shape are ok for ex: min or max with shape (3, 1, 3)
         if self.max is None:
             self.max = np.max(image_norm_32, axis=(0, 1))
         else:
@@ -908,13 +902,15 @@ class Stats(BaseModel):
         # Update the rolling sum and square sum
         nb_pixels = image_norm_32.shape[0] * image_norm_32.shape[1]
         # Convert to int32 to avoid overflow when computing the square sum
+        image_uint32 = image_value.astype(dtype=np.int32)
+
         if self.sum is None or self.square_sum is None:
             self.sum = np.sum(image_norm_32, axis=(0, 1))
             self.square_sum = np.sum(image_norm_32**2, axis=(0, 1))
             self.count = nb_pixels
         else:
-            self.sum += np.sum(image_norm_32, axis=(0, 1))
-            self.square_sum += np.sum(image_norm_32**2, axis=(0, 1))
+            self.sum = self.sum + np.sum(image_value, axis=(0, 1))
+            self.square_sum = self.square_sum + np.sum(image_uint32**2, axis=(0, 1))
             self.count += nb_pixels
 
     def compute_from_rolling_images(self):
@@ -928,8 +924,10 @@ class Stats(BaseModel):
         # This makes it easier to normalize the imags
         self.mean = self.mean.reshape(3, 1, 1)
         self.std = self.std.reshape(3, 1, 1)
-        self.min = self.min.reshape(3, 1, 1)
-        self.max = self.max.reshape(3, 1, 1)
+        if self.min.shape != (3, 1, 3):
+            self.min = self.min.reshape(3, 1, 1)
+        if self.max.shape != (3, 1, 3):
+            self.max = self.max.reshape(3, 1, 1)
 
 
 class StatsModel(BaseModel):
@@ -957,10 +955,6 @@ class StatsModel(BaseModel):
 
     @classmethod
     def from_json(cls, meta_folder_path: str) -> "StatsModel":
-        """
-        Read the stats.json file in the meta folder path.
-        If the file does not exist, return an empty StatsModel.
-        """
         if (
             not os.path.exists(f"{meta_folder_path}/stats.json")
             or os.stat(f"{meta_folder_path}/stats.json").st_size == 0
@@ -969,7 +963,17 @@ class StatsModel(BaseModel):
 
         with open(f"{meta_folder_path}/stats.json", "r") as f:
             stats_dict = json.load(f)
-        return cls(**stats_dict)
+            # Rename observation.state to observation_state
+            stats_dict["observation_state"] = stats_dict.pop("observation.state")
+
+            # Create a temporary dictionary for observation_images
+            observation_images = {}
+            for key in list(stats_dict.keys()):
+                if "images" in key:
+                    observation_images[key] = Stats(**stats_dict.pop(key))
+
+        # Pass observation_images into the model constructor
+        return cls(**stats_dict, observation_images=observation_images)
 
     def to_json(self, meta_folder_path: str) -> None:
         """
@@ -1000,13 +1004,15 @@ class StatsModel(BaseModel):
         """
         Updates the stats with the given step.
         """
-
         self.action.update(step.action)
+
         # We do not update self.action, as it's updated in .update_previous()
         self.observation_state.update(step.observation.joints_position)
+
         self.timestamp.update(np.array([step.observation.timestamp]))
 
         self.frame_index.update(np.array([self.frame_index.count + 1]))
+
         self.episode_index.update(np.array([episode_index]))
 
         self.index.update(np.array([self.index.count + 1]))
@@ -1073,6 +1079,134 @@ class StatsModel(BaseModel):
                         value.compute_from_rolling_images()
 
         self.to_json(meta_folder_path)
+
+    def update_before_episode_removal(self, parquet_path: str) -> None:
+        """
+        Update the stats before removing an episode from the dataset.
+        """
+        # Check the parquet file exists
+        if not os.path.exists(parquet_path):
+            raise ValueError(f"Parquet file {parquet_path} does not exist")
+
+        # Load the parquet file
+        episode_df = pd.read_parquet(parquet_path)
+        nb_steps_deleted_episode = len(episode_df)
+
+        # For each column in the parquet file, compute sum along first axis, min/max along last axis
+        logger.info("Updating stats before removing episode")
+        logger.info(f"Episode df action: {episode_df['action']}")
+
+        column_sums = {
+            col: {
+                "sum": np.sum(np.array(episode_df[col].tolist()), axis=0),
+                "max": np.max(np.array(episode_df[col].tolist()), axis=0),
+                "min": np.min(np.array(episode_df[col].tolist()), axis=0),
+                "square_sum": np.sum(np.array(episode_df[col].tolist()) ** 2, axis=0),
+            }
+            for col in episode_df.columns
+        }
+
+        logger.info(f"Column sums: {column_sums}")
+        # Update stats for each field in the StatsModel
+        for field_name, field in StatsModel.model_fields.items():
+            # task_index is not updated since we do not support multiple tasks
+            # observation_images has a special treatment
+            if field_name in ["task_index", "observation_images"]:
+                continue
+            logger.info(f"Updating field {field_name}")
+            # Get the field value from the instance
+            field_value = getattr(self, field_name)
+            # Convert observation_state to observation.state
+            field_name = (
+                "observation.state" if field_name == "observation_state" else field_name
+            )
+            # Update statistics
+            if field_name in column_sums:
+                # Maximum of debug info
+                logger.info(f"Column sums for {field_name}: {column_sums[field_name]}")
+                logger.info(f"Field value: {field_value}")
+                logger.info(f"Field value mean: {field_value.mean}")
+
+                # Subtract sums
+                field_value.sum -= column_sums[field_name]["sum"]
+                field_value.square_sum -= column_sums[field_name]["square_sum"]
+
+                logger.info(f"Field value sum: {field_value.sum}")
+
+                # Update min/max
+                if (
+                    field_value.min is not None
+                    and column_sums[field_name]["min"] is not None
+                ):
+                    field_value.min = np.minimum(
+                        field_value.min, column_sums[field_name]["min"]
+                    )
+                if (
+                    field_value.max is not None
+                    and column_sums[field_name]["max"] is not None
+                ):
+                    field_value.max = np.maximum(
+                        field_value.max, column_sums[field_name]["max"]
+                    )
+
+                # Update count
+                field_value.count -= nb_steps_deleted_episode
+
+                # Recalculate mean and standard deviation
+                if field_value.count > 0:
+                    field_value.mean = field_value.sum / field_value.count
+                    field_value.std = np.sqrt(
+                        (field_value.square_sum / field_value.count)
+                        - np.square(field_value.mean)
+                    )
+
+        # For image we need to load the mp4 video
+        logger.info("Updating stats for images")
+        # Extract the episode index from the parquet file name
+        episode_index = int(parquet_path.split("_")[-1].split(".")[0])
+
+        # List cameras_folder:
+        folder_videos_path = (
+            "/".join(parquet_path.split("/")[:-3]) + "/videos/chunk-000"
+        )
+
+        cameras_folder = os.listdir(folder_videos_path)
+        for camera_folder in cameras_folder:
+            # Create the path of the video episode_{episode_index:06d}.mp4
+            video_path = os.path.join(
+                folder_videos_path, camera_folder, f"episode_{episode_index:06d}.mp4"
+            )
+            sum_array, square_sum_array, frame_count_array = (
+                compute_sum_squaresum_framecount_from_video(video_path)
+            )
+
+            sum_array = sum_array.astype(np.float32)
+            square_sum_array = square_sum_array.astype(np.float32)
+
+            logger.info(f"sum_array: {sum_array}")
+            logger.info(f"square_sum_array: {square_sum_array}")
+            logger.info(f"frame_count_array: {frame_count_array}")
+
+            # Update the stats_model
+            self.observation_images[camera_folder].sum = (
+                self.observation_images[camera_folder].sum - sum_array
+            )
+            self.observation_images[camera_folder].square_sum = (
+                self.observation_images[camera_folder].square_sum - square_sum_array
+            )
+            self.observation_images[camera_folder].count = (
+                self.observation_images[camera_folder].count - frame_count_array[0]
+            )
+            field_value.count -= nb_steps_deleted_episode
+            field_value.mean = field_value.sum / field_value.count
+            logger.info(f"mean: {field_value.mean}")
+            logger.info(f"count: {field_value.count}")
+            logger.info(f"square_sum: {field_value.square_sum}")
+
+            field_value.std = np.sqrt(
+                abs((field_value.square_sum / field_value.count) - field_value.mean**2)
+            )
+            logger.info(f"std: {field_value.std}")
 
 
 class FeatureDetails(BaseModel):
@@ -1307,36 +1441,24 @@ class InfoModel(BaseModel):
         with open(f"{meta_folder_path}/info.json", "w") as f:
             f.write(json.dumps(self.to_dict(), indent=4))
 
+    def update(self, episode: Episode) -> None:
+        """
+        Update the info given a new recorded Episode.
+        """
+        self.total_episodes += 1
+        self.total_frames += len(episode.steps)
+        self.total_videos += len(self.features.observation_images.keys())
+        self.splits = {"train": f"0:{self.total_episodes}"}
+        # TODO: Handle multiple language instructions
+        # TODO: Implement support for multiple chunks
+
     def save(
         self,
         meta_folder_path: str,
-        total_frames: int,
-        fps: int,
-        tasks_model: "TasksModel",
-        episodes_model: "EpisodesModel",
-        codec: VideoCodecs,
     ) -> None:
         """
         Save the info to the meta folder path.
         """
-        # Compute
-        self.total_frames += total_frames
-        self.total_episodes = len(episodes_model.episodes)
-        self.total_tasks = len(tasks_model.tasks)
-        # Read the nb cameras from the features. It's the number of keys with images.
-        nb_cameras = len(self.features.observation_images.keys())
-        self.total_videos += nb_cameras
-        # TODO: Implement support for multiple chunks
-        self.total_chunks = 1
-        self.chunks_size = 1000
-        self.fps = fps
-        # Splits are 100% of the dataset
-        self.splits = {"train": f"0:{self.total_episodes}"}
-
-        # For videos, we update the codec with the one provided
-        for key, value in self.features.observation_images.items():
-            value.info.video_codec = codec
-
         self.to_json(meta_folder_path)
 
     def update_before_episode_removal(self, parquet_path: str) -> None:
@@ -1389,7 +1511,7 @@ class TasksModel(BaseModel):
                 tasks.append(TasksFeatures(**json.loads(line)))
 
         tasks_model = cls(tasks=tasks)
-        # Do it after model init, otherwise pydantic ignores the value of _original_nb_total_episodes
+        # Do it after model init, otherwise pydantic ignores the value of _original_nb_total_tasks
         tasks_model._initial_nb_total_tasks = len(tasks)
         return tasks_model
 
@@ -1495,7 +1617,6 @@ class EpisodesModel(BaseModel):
         else:
             # Increase the nb frames counter
             self.episodes[episode_index].length += 1
-
             # Add the language instruction if it's a new one
             if (
                 str(step.observation.language_instruction)
