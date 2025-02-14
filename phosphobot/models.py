@@ -1399,10 +1399,7 @@ class EpisodesModel(BaseModel):
         episode_index is the index of the episode of the current step.
         """
         # If episode_index is not in the episodes, add it
-        logger.info("Updating episodes")
-        logger.info(f"Episodes: {self.episodes}")
         if episode_index not in [episode.episode_index for episode in self.episodes]:
-            logger.info(f"Adding episode: {episode_index}")
             self.episodes.append(
                 EpisodesFeatures(
                     episode_index=episode_index,
@@ -1410,12 +1407,9 @@ class EpisodesModel(BaseModel):
                     length=1,
                 )
             )
-            logger.info(f"Episodes: {self.episodes}")
         else:
             # Increase the nb frames counter
-            logger.info(f"Updating episode: {episode_index}")
             self.episodes[episode_index].length += 1
-            logger.info(f"Episodes: {self.episodes}")
             # Add the language instruction if it's a new one
             if (
                 str(step.observation.language_instruction)
@@ -1424,7 +1418,6 @@ class EpisodesModel(BaseModel):
                 self.episodes[episode_index].tasks.append(
                     str(step.observation.language_instruction)
                 )
-        logger.info("Episodes update complete")
 
     def to_jsonl(self, meta_folder_path: str) -> None:
         """
