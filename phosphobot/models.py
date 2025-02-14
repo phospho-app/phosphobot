@@ -885,13 +885,9 @@ class Stats(BaseModel):
             self.square_sum = np.sum(image_uint32**2, axis=(0, 1))
             self.count = nb_pixels
         else:
-            logger.info(f"Self Sum: {self.sum}")
             self.sum = self.sum + np.sum(image_value, axis=(0, 1))
-            logger.info(f"Self Sum: {self.sum}")
             self.square_sum = self.square_sum + np.sum(image_uint32**2, axis=(0, 1))
             self.count = self.count + nb_pixels
-
-        logger.info("Image stats update complete")
 
     def compute_from_rolling_images(self):
         """
@@ -984,36 +980,27 @@ class StatsModel(BaseModel):
         """
         Updates the stats with the given step.
         """
-        logger.info("Updating action stats")
         self.action.update(step.action)
 
-        logger.info("Updating observation state stats")
         # We do not update self.action, as it's updated in .update_previous()
         self.observation_state.update(step.observation.joints_position)
 
-        logger.info("Updating timestamp stats")
         self.timestamp.update(np.array([step.observation.timestamp]))
 
-        logger.info("Updating frame index stats")
         self.frame_index.update(np.array([self.frame_index.count + 1]))
 
-        logger.info("Updating episode index stats")
         self.episode_index.update(np.array([episode_index]))
 
-        logger.info("Updating index stats")
         self.index.update(np.array([self.index.count + 1]))
 
-        logger.info("Updating task index stats")
         # TODO: Implement multiple language instructions
         # This should be the index of the instruction as it's in tasks.jsonl (TasksModel)
         self.task_index.update(np.array([0]))
 
-        logger.info("Processing main image")
         main_image = step.observation.main_image
         (height, width, channel) = main_image.shape
         aspect_ratio: float = width / height
         if aspect_ratio >= 8 / 3:
-            logger.info("Detected stereo image, splitting into left and right")
             # Stereo image detected: split in half
             left_image = main_image[:, : width // 2, :]
             right_image = main_image[:, width // 2 :, :]
@@ -1021,47 +1008,33 @@ class StatsModel(BaseModel):
                 "observation.images.left" not in self.observation_images.keys()
                 or "observation.images.right" not in self.observation_images.keys()
             ):
-                logger.info("Initializing stereo image stats")
                 # Initialize
                 self.observation_images["observation.images.left"] = Stats()
                 self.observation_images["observation.images.right"] = Stats()
-            logger.info("Updating left image stats")
             self.observation_images["observation.images.left"].update_image(left_image)
-            logger.info("Updating right image stats")
             self.observation_images["observation.images.right"].update_image(
                 right_image
             )
 
         else:
-            logger.info("Processing mono image")
             if "observation.images.main" not in self.observation_images.keys():
-                logger.info("Initializing mono image stats")
                 # Initialize
                 self.observation_images["observation.images.main"] = Stats()
-            logger.info("Updating mono image stats")
             self.observation_images["observation.images.main"].update_image(main_image)
 
-        logger.info(
-            f"Processing {len(step.observation.secondary_images)} secondary images"
-        )
         for image_index, image in enumerate(step.observation.secondary_images):
-            logger.info(f"Processing secondary image {image_index}")
             if (
                 f"observation.images.secondary_{image_index}"
                 not in self.observation_images.keys()
             ):
-                logger.info(f"Initializing secondary image {image_index} stats")
                 # Initialize
                 self.observation_images[
                     f"observation.images.secondary_{image_index}"
                 ] = Stats()
 
-            logger.info(f"Updating secondary image {image_index} stats")
             self.observation_images[
                 f"observation.images.secondary_{image_index}"
             ].update_image(step.observation.secondary_images[image_index])
-
-        logger.info("Stats update complete")
 
     def save(self, meta_folder_path: str) -> None:
         """
@@ -1093,10 +1066,6 @@ class StatsModel(BaseModel):
         episode_df = pd.read_parquet(parquet_path)
         nb_steps_deleted_episode = len(episode_df)
 
-        # For each column in the parquet file, compute sum along first axis, min/max along last axis
-        logger.info("Updating stats before removing episode")
-        logger.info(f"Episode df action: {episode_df['action']}")
-
         column_sums = {
             col: {
                 "sum": np.sum(np.array(episode_df[col].tolist()), axis=0),
@@ -1107,14 +1076,12 @@ class StatsModel(BaseModel):
             for col in episode_df.columns
         }
 
-        logger.info(f"Column sums: {column_sums}")
         # Update stats for each field in the StatsModel
         for field_name, field in StatsModel.model_fields.items():
             # task_index is not updated since we do not support multiple tasks
             # observation_images has a special treatment
             if field_name in ["task_index", "observation_images"]:
                 continue
-            logger.info(f"Updating field {field_name}")
             # Get the field value from the instance
             field_value = getattr(self, field_name)
             # Convert observation_state to observation.state
@@ -1123,16 +1090,9 @@ class StatsModel(BaseModel):
             )
             # Update statistics
             if field_name in column_sums:
-                # Maximum of debug info
-                logger.info(f"Column sums for {field_name}: {column_sums[field_name]}")
-                logger.info(f"Field value: {field_value}")
-                logger.info(f"Field value mean: {field_value.mean}")
-
                 # Subtract sums
                 field_value.sum -= column_sums[field_name]["sum"]
                 field_value.square_sum -= column_sums[field_name]["square_sum"]
-
-                logger.info(f"Field value sum: {field_value.sum}")
 
                 # Update min/max
                 if (
@@ -1162,7 +1122,6 @@ class StatsModel(BaseModel):
                     )
 
         # For image we need to load the mp4 video
-        logger.info("Updating stats for images")
         # Extract the episode index from the parquet file name
         episode_index = int(parquet_path.split("_")[-1].split(".")[0])
 
@@ -1184,10 +1143,6 @@ class StatsModel(BaseModel):
             sum_array = sum_array.astype(np.float32)
             square_sum_array = square_sum_array.astype(np.float32)
 
-            logger.info(f"sum_array: {sum_array}")
-            logger.info(f"square_sum_array: {square_sum_array}")
-            logger.info(f"frame_count_array: {frame_count_array}")
-
             # Update the stats_model
             self.observation_images[camera_folder].sum = (
                 self.observation_images[camera_folder].sum - sum_array
@@ -1200,14 +1155,10 @@ class StatsModel(BaseModel):
             )
             field_value.count -= nb_steps_deleted_episode
             field_value.mean = field_value.sum / field_value.count
-            logger.info(f"mean: {field_value.mean}")
-            logger.info(f"count: {field_value.count}")
-            logger.info(f"square_sum: {field_value.square_sum}")
 
             field_value.std = np.sqrt(
                 abs((field_value.square_sum / field_value.count) - field_value.mean**2)
             )
-            logger.info(f"std: {field_value.std}")
 
 
 class FeatureDetails(BaseModel):
@@ -1534,9 +1485,6 @@ class TasksModel(BaseModel):
         if str(step.observation.language_instruction) not in [
             task.task for task in self.tasks
         ]:
-            logger.info(
-                f"Adding task: {step.observation.language_instruction} to {[task.task for task in self.tasks]}"
-            )
             self.tasks.append(
                 TasksFeatures(
                     task_index=len(self.tasks),
@@ -1607,10 +1555,7 @@ class EpisodesModel(BaseModel):
         episode_index is the index of the episode of the current step.
         """
         # If episode_index is not in the episodes, add it
-        logger.info("Updating episodes")
-        logger.info(f"Episodes: {self.episodes}")
         if episode_index not in [episode.episode_index for episode in self.episodes]:
-            logger.info(f"Adding episode: {episode_index}")
             self.episodes.append(
                 EpisodesFeatures(
                     episode_index=episode_index,
@@ -1618,12 +1563,9 @@ class EpisodesModel(BaseModel):
                     length=1,
                 )
             )
-            logger.info(f"Episodes: {self.episodes}")
         else:
             # Increase the nb frames counter
-            logger.info(f"Updating episode: {episode_index}")
             self.episodes[episode_index].length += 1
-            logger.info(f"Episodes: {self.episodes}")
             # Add the language instruction if it's a new one
             if (
                 str(step.observation.language_instruction)
@@ -1632,7 +1574,6 @@ class EpisodesModel(BaseModel):
                 self.episodes[episode_index].tasks.append(
                     str(step.observation.language_instruction)
                 )
-        logger.info("Episodes update complete")
 
     def to_jsonl(self, meta_folder_path: str) -> None:
         """
