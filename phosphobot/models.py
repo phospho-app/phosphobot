@@ -861,52 +861,38 @@ class Stats(BaseModel):
         The stats are in dim 3 for RGB.
         We normalize with the number of pixels.
         """
-        logger.info("Starting image stats update")
         assert image_value.ndim == 3, "Image value must be 3D"
 
         if image_value is None:
             logger.info("Image value is None, skipping update")
             return None
 
-        logger.info("Updating max values")
         # Update the max and min
         if self.max is None:
-            logger.info("Initializing max values")
             self.max = np.max(image_value, axis=(0, 1))
         else:
             # maximum is the max in each channel
-            logger.info("Computing new max values")
             self.max = np.maximum(self.max, np.max(image_value, axis=(0, 1)))
 
-        logger.info("Updating min values")
         if self.min is None:
-            logger.info("Initializing min values")
             self.min = np.min(image_value, axis=(0, 1))
         else:
-            logger.info("Computing new min values")
             self.min = np.minimum(self.min, np.min(image_value, axis=(0, 1)))
 
-        logger.info("Computing pixel count")
         # Update the rolling sum and square sum
         nb_pixels = image_value.shape[0] * image_value.shape[1]
 
-        logger.info("Converting image to int32 for square sum computation")
         # Convert to int32 to avoid overflow when computing the square sum
         image_uint32 = image_value.astype(dtype=np.int32)
 
-        logger.info("Updating sum and square sum")
         if self.sum is None or self.square_sum is None:
-            logger.info("Initializing sum and square sum")
             self.sum = np.sum(image_value, axis=(0, 1))
             self.square_sum = np.sum(image_uint32**2, axis=(0, 1))
             self.count = nb_pixels
         else:
-            logger.info("Adding to existing sum and square sum")
             self.sum += np.sum(image_value, axis=(0, 1))
             self.square_sum += np.sum(image_uint32**2, axis=(0, 1))
             self.count += nb_pixels
-
-        logger.info("Image stats update complete")
 
     def compute_from_rolling_images(self):
         """
@@ -997,36 +983,27 @@ class StatsModel(BaseModel):
         """
         Updates the stats with the given step.
         """
-        logger.info("Updating action stats")
         self.action.update(step.action)
 
-        logger.info("Updating observation state stats")
         # We do not update self.action, as it's updated in .update_previous()
         self.observation_state.update(step.observation.joints_position)
 
-        logger.info("Updating timestamp stats")
         self.timestamp.update(np.array([step.observation.timestamp]))
 
-        logger.info("Updating frame index stats")
         self.frame_index.update(np.array([self.frame_index.count + 1]))
 
-        logger.info("Updating episode index stats")
         self.episode_index.update(np.array([episode_index]))
 
-        logger.info("Updating index stats")
         self.index.update(np.array([self.index.count + 1]))
 
-        logger.info("Updating task index stats")
         # TODO: Implement multiple language instructions
         # This should be the index of the instruction as it's in tasks.jsonl (TasksModel)
         self.task_index.update(np.array([0]))
 
-        logger.info("Processing main image")
         main_image = step.observation.main_image
         (height, width, channel) = main_image.shape
         aspect_ratio: float = width / height
         if aspect_ratio >= 8 / 3:
-            logger.info("Detected stereo image, splitting into left and right")
             # Stereo image detected: split in half
             left_image = main_image[:, : width // 2, :]
             right_image = main_image[:, width // 2 :, :]
@@ -1034,47 +1011,34 @@ class StatsModel(BaseModel):
                 "observation.images.left" not in self.observation_images.keys()
                 or "observation.images.right" not in self.observation_images.keys()
             ):
-                logger.info("Initializing stereo image stats")
                 # Initialize
                 self.observation_images["observation.images.left"] = Stats()
                 self.observation_images["observation.images.right"] = Stats()
-            logger.info("Updating left image stats")
             self.observation_images["observation.images.left"].update_image(left_image)
-            logger.info("Updating right image stats")
             self.observation_images["observation.images.right"].update_image(
                 right_image
             )
 
         else:
-            logger.info("Processing mono image")
             if "observation.images.main" not in self.observation_images.keys():
                 logger.info("Initializing mono image stats")
                 # Initialize
                 self.observation_images["observation.images.main"] = Stats()
-            logger.info("Updating mono image stats")
             self.observation_images["observation.images.main"].update_image(main_image)
 
-        logger.info(
-            f"Processing {len(step.observation.secondary_images)} secondary images"
-        )
         for image_index, image in enumerate(step.observation.secondary_images):
-            logger.info(f"Processing secondary image {image_index}")
             if (
                 f"observation.images.secondary_{image_index}"
                 not in self.observation_images.keys()
             ):
-                logger.info(f"Initializing secondary image {image_index} stats")
                 # Initialize
                 self.observation_images[
                     f"observation.images.secondary_{image_index}"
                 ] = Stats()
 
-            logger.info(f"Updating secondary image {image_index} stats")
             self.observation_images[
                 f"observation.images.secondary_{image_index}"
             ].update_image(step.observation.secondary_images[image_index])
-
-        logger.info("Stats update complete")
 
     def save(self, meta_folder_path: str) -> None:
         """
