@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from phosphobot.utils import (
     NumpyEncoder,
-    compute_sum_squaresum_framecount_from_video,
     create_video_file,
     get_home_app_path,
     decode_numpy,
