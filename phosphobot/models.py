@@ -310,13 +310,15 @@ class Episode(BaseModel):
                 f"Saving Episode {episode_index} data in LeRobot format to: {filename}"
             )
             lerobot_episode_parquet: LeRobotEpisodeParquet = (
-                self.convert_episode_data_to_LeRobot(fps=fps)
+                self.convert_episode_data_to_LeRobot(
+                    fps=fps, episodes_path=data_path, episode_index=episode_index
+                )
             )
             # Ensure the directory for the file exists
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df = pd.DataFrame(lerobot_episode_parquet.model_dump())
 
-            # Rename observation_state too observation.state
+            # Rename observation_state to observation.state
             df.rename(columns={"observation_state": "observation.state"}, inplace=True)
             df.to_parquet(filename, index=False)
 
@@ -338,11 +340,13 @@ class Episode(BaseModel):
 
             assert len(main_camera_size) == 2, "Main camera size must be 2D"
 
+            logger.debug(f"Main camera target size: {main_camera_size}")
+
             # Create the main video file and path
             video_path = create_video_path(folder_name, "main")
             saved_path = create_video_file(
-                target_size=main_camera_size,
                 frames=np.array(self.get_frames_main_camera()),
+                target_size=main_camera_size,
                 output_path=video_path,
                 fps=fps,
                 codec=codec,
@@ -515,7 +519,12 @@ class Episode(BaseModel):
         """
         self.metadata["index"] = value
 
-    def convert_episode_data_to_LeRobot(self, fps: int, episode_index: int = 0):
+    def convert_episode_data_to_LeRobot(
+        self,
+        fps: int,
+        episodes_path: str,  # We need the episodes path to load the value of the last frame index
+        episode_index: int = 0,
+    ):
         """
         Convert a dataset to the LeRobot format
         """
@@ -542,6 +551,20 @@ class Episode(BaseModel):
         # episode_data["timestamp"] = [step.observation.timestamp for step in self.steps]
         episode_data["timestamp"] = (np.arange(len(self.steps)) / fps).tolist()
 
+        # Fetch the last frame index of the previous episode to continue the indexation of "index" if episode is not the first one
+        if episode_index > 0:
+            previous_episode_path = os.path.join(
+                episodes_path,
+                f"episode_{episode_index - 1:06d}.parquet",
+            )
+            # We load only the last frame index of the previous episode
+            previous_episode = pd.read_parquet(
+                previous_episode_path, columns=["frame_index"], filters=None
+            ).tail(1)
+            last_frame_index = 1 + previous_episode["frame_index"].iloc[0]
+        else:
+            last_frame_index = 0
+
         for frame_index, step in enumerate(self.steps):
             # Fill in the data for each step
             episode_data["episode_index"].append(episode_index)
@@ -549,7 +572,7 @@ class Episode(BaseModel):
             episode_data["observation.state"].append(
                 step.observation.joints_position.astype(np.float32)
             )
-            episode_data["index"].append(frame_index)
+            episode_data["index"].append(frame_index + last_frame_index)
             # TODO: Implement multiple tasks in dataset
             episode_data["task_index"].append(0)
             assert step.action is not None, (
@@ -859,34 +882,34 @@ class Stats(BaseModel):
         if image_value is None:
             return None
 
+        image_norm_32 = image_value.astype(dtype=np.float32) / 255.0
+
         # Update the max and min
         # TODO: Is this code ok with the new shape of image_value?
         # TODO: Check if shape are ok for ex: min or max with shape (3, 1, 3)
         if self.max is None:
-            self.max = np.max(image_value, axis=(0, 1))
+            self.max = np.max(image_norm_32, axis=(0, 1))
         else:
             # maximum is the max in each channel
-            self.max = np.maximum(self.max, np.max(image_value, axis=(0, 1)))
+            self.max = np.maximum(self.max, np.max(image_norm_32, axis=(0, 1)))
 
         if self.min is None:
-            self.min = np.min(image_value, axis=(0, 1))
+            self.min = np.min(image_norm_32, axis=(0, 1))
         else:
-            self.min = np.minimum(self.min, np.min(image_value, axis=(0, 1)))
+            self.min = np.minimum(self.min, np.min(image_norm_32, axis=(0, 1)))
 
         # Update the rolling sum and square sum
-        nb_pixels = image_value.shape[0] * image_value.shape[1]
-
+        nb_pixels = image_norm_32.shape[0] * image_norm_32.shape[1]
         # Convert to int32 to avoid overflow when computing the square sum
         image_uint32 = image_value.astype(dtype=np.int32)
-
         if self.sum is None or self.square_sum is None:
-            self.sum = np.sum(image_value, axis=(0, 1))
-            self.square_sum = np.sum(image_uint32**2, axis=(0, 1))
+            self.sum = np.sum(image_norm_32, axis=(0, 1))
+            self.square_sum = np.sum(image_norm_32**2, axis=(0, 1))
             self.count = nb_pixels
         else:
-            self.sum = self.sum + np.sum(image_value, axis=(0, 1))
-            self.square_sum = self.square_sum + np.sum(image_uint32**2, axis=(0, 1))
-            self.count = self.count + nb_pixels
+            self.sum = self.sum + np.sum(image_norm_32, axis=(0, 1))
+            self.square_sum = self.square_sum + np.sum(image_norm_32**2, axis=(0, 1))
+            self.count += nb_pixels
 
     def compute_from_rolling_images(self):
         """
@@ -999,14 +1022,16 @@ class StatsModel(BaseModel):
             left_image = main_image[:, : width // 2, :]
             right_image = main_image[:, width // 2 :, :]
             if (
-                "observation.images.left" not in self.observation_images.keys()
-                or "observation.images.right" not in self.observation_images.keys()
+                "observation.images.main.left" not in self.observation_images.keys()
+                or "observation.images.main.right" not in self.observation_images.keys()
             ):
                 # Initialize
-                self.observation_images["observation.images.left"] = Stats()
-                self.observation_images["observation.images.right"] = Stats()
-            self.observation_images["observation.images.left"].update_image(left_image)
-            self.observation_images["observation.images.right"].update_image(
+                self.observation_images["observation.images.main.left"] = Stats()
+                self.observation_images["observation.images.main.right"] = Stats()
+            self.observation_images["observation.images.main.left"].update_image(
+                left_image
+            )
+            self.observation_images["observation.images.main.right"].update_image(
                 right_image
             )
 
