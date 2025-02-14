@@ -984,36 +984,22 @@ class StatsModel(BaseModel):
         """
         Updates the stats with the given step.
         """
-        logger.info("Updating action stats")
         self.action.update(step.action)
-
-        logger.info("Updating observation state stats")
         # We do not update self.action, as it's updated in .update_previous()
         self.observation_state.update(step.observation.joints_position)
-
-        logger.info("Updating timestamp stats")
         self.timestamp.update(np.array([step.observation.timestamp]))
-
-        logger.info("Updating frame index stats")
         self.frame_index.update(np.array([self.frame_index.count + 1]))
-
-        logger.info("Updating episode index stats")
         self.episode_index.update(np.array([episode_index]))
-
-        logger.info("Updating index stats")
         self.index.update(np.array([self.index.count + 1]))
 
-        logger.info("Updating task index stats")
         # TODO: Implement multiple language instructions
         # This should be the index of the instruction as it's in tasks.jsonl (TasksModel)
         self.task_index.update(np.array([0]))
 
-        logger.info("Processing main image")
         main_image = step.observation.main_image
         (height, width, channel) = main_image.shape
         aspect_ratio: float = width / height
         if aspect_ratio >= 8 / 3:
-            logger.info("Detected stereo image, splitting into left and right")
             # Stereo image detected: split in half
             left_image = main_image[:, : width // 2, :]
             right_image = main_image[:, width // 2 :, :]
@@ -1021,47 +1007,36 @@ class StatsModel(BaseModel):
                 "observation.images.left" not in self.observation_images.keys()
                 or "observation.images.right" not in self.observation_images.keys()
             ):
-                logger.info("Initializing stereo image stats")
                 # Initialize
                 self.observation_images["observation.images.left"] = Stats()
                 self.observation_images["observation.images.right"] = Stats()
-            logger.info("Updating left image stats")
             self.observation_images["observation.images.left"].update_image(left_image)
-            logger.info("Updating right image stats")
             self.observation_images["observation.images.right"].update_image(
                 right_image
             )
 
         else:
-            logger.info("Processing mono image")
             if "observation.images.main" not in self.observation_images.keys():
-                logger.info("Initializing mono image stats")
                 # Initialize
                 self.observation_images["observation.images.main"] = Stats()
-            logger.info("Updating mono image stats")
             self.observation_images["observation.images.main"].update_image(main_image)
 
         logger.info(
             f"Processing {len(step.observation.secondary_images)} secondary images"
         )
         for image_index, image in enumerate(step.observation.secondary_images):
-            logger.info(f"Processing secondary image {image_index}")
             if (
                 f"observation.images.secondary_{image_index}"
                 not in self.observation_images.keys()
             ):
-                logger.info(f"Initializing secondary image {image_index} stats")
                 # Initialize
                 self.observation_images[
                     f"observation.images.secondary_{image_index}"
                 ] = Stats()
 
-            logger.info(f"Updating secondary image {image_index} stats")
             self.observation_images[
                 f"observation.images.secondary_{image_index}"
             ].update_image(step.observation.secondary_images[image_index])
-
-        logger.info("Stats update complete")
 
     def save(self, meta_folder_path: str) -> None:
         """
@@ -1080,134 +1055,6 @@ class StatsModel(BaseModel):
                         value.compute_from_rolling_images()
 
         self.to_json(meta_folder_path)
-
-    def update_before_episode_removal(self, parquet_path: str) -> None:
-        """
-        Update the stats before removing an episode from the dataset.
-        """
-        # Check the parquet file exists
-        if not os.path.exists(parquet_path):
-            raise ValueError(f"Parquet file {parquet_path} does not exist")
-
-        # Load the parquet file
-        episode_df = pd.read_parquet(parquet_path)
-        nb_steps_deleted_episode = len(episode_df)
-
-        # For each column in the parquet file, compute sum along first axis, min/max along last axis
-        logger.info("Updating stats before removing episode")
-        logger.info(f"Episode df action: {episode_df['action']}")
-
-        column_sums = {
-            col: {
-                "sum": np.sum(np.array(episode_df[col].tolist()), axis=0),
-                "max": np.max(np.array(episode_df[col].tolist()), axis=0),
-                "min": np.min(np.array(episode_df[col].tolist()), axis=0),
-                "square_sum": np.sum(np.array(episode_df[col].tolist()) ** 2, axis=0),
-            }
-            for col in episode_df.columns
-        }
-
-        logger.info(f"Column sums: {column_sums}")
-        # Update stats for each field in the StatsModel
-        for field_name, field in StatsModel.model_fields.items():
-            # task_index is not updated since we do not support multiple tasks
-            # observation_images has a special treatment
-            if field_name in ["task_index", "observation_images"]:
-                continue
-            logger.info(f"Updating field {field_name}")
-            # Get the field value from the instance
-            field_value = getattr(self, field_name)
-            # Convert observation_state to observation.state
-            field_name = (
-                "observation.state" if field_name == "observation_state" else field_name
-            )
-            # Update statistics
-            if field_name in column_sums:
-                # Maximum of debug info
-                logger.info(f"Column sums for {field_name}: {column_sums[field_name]}")
-                logger.info(f"Field value: {field_value}")
-                logger.info(f"Field value mean: {field_value.mean}")
-
-                # Subtract sums
-                field_value.sum -= column_sums[field_name]["sum"]
-                field_value.square_sum -= column_sums[field_name]["square_sum"]
-
-                logger.info(f"Field value sum: {field_value.sum}")
-
-                # Update min/max
-                if (
-                    field_value.min is not None
-                    and column_sums[field_name]["min"] is not None
-                ):
-                    field_value.min = np.minimum(
-                        field_value.min, column_sums[field_name]["min"]
-                    )
-                if (
-                    field_value.max is not None
-                    and column_sums[field_name]["max"] is not None
-                ):
-                    field_value.max = np.maximum(
-                        field_value.max, column_sums[field_name]["max"]
-                    )
-
-                # Update count
-                field_value.count -= nb_steps_deleted_episode
-
-                # Recalculate mean and standard deviation
-                if field_value.count > 0:
-                    field_value.mean = field_value.sum / field_value.count
-                    field_value.std = np.sqrt(
-                        (field_value.square_sum / field_value.count)
-                        - np.square(field_value.mean)
-                    )
-
-        # For image we need to load the mp4 video
-        logger.info("Updating stats for images")
-        # Extract the episode index from the parquet file name
-        episode_index = int(parquet_path.split("_")[-1].split(".")[0])
-
-        # List cameras_folder:
-        folder_videos_path = (
-            "/".join(parquet_path.split("/")[:-3]) + "/videos/chunk-000"
-        )
-
-        cameras_folder = os.listdir(folder_videos_path)
-        for camera_folder in cameras_folder:
-            # Create the path of the video episode_{episode_index:06d}.mp4
-            video_path = os.path.join(
-                folder_videos_path, camera_folder, f"episode_{episode_index:06d}.mp4"
-            )
-            sum_array, square_sum_array, frame_count_array = (
-                compute_sum_squaresum_framecount_from_video(video_path)
-            )
-
-            sum_array = sum_array.astype(np.float32)
-            square_sum_array = square_sum_array.astype(np.float32)
-
-            logger.info(f"sum_array: {sum_array}")
-            logger.info(f"square_sum_array: {square_sum_array}")
-            logger.info(f"frame_count_array: {frame_count_array}")
-
-            # Update the stats_model
-            self.observation_images[camera_folder].sum = (
-                self.observation_images[camera_folder].sum - sum_array
-            )
-            self.observation_images[camera_folder].square_sum = (
-                self.observation_images[camera_folder].square_sum - square_sum_array
-            )
-            self.observation_images[camera_folder].count = (
-                self.observation_images[camera_folder].count - frame_count_array[0]
-            )
-            field_value.count -= nb_steps_deleted_episode
-            field_value.mean = field_value.sum / field_value.count
-            logger.info(f"mean: {field_value.mean}")
-            logger.info(f"count: {field_value.count}")
-            logger.info(f"square_sum: {field_value.square_sum}")
-
-            field_value.std = np.sqrt(
-                abs((field_value.square_sum / field_value.count) - field_value.mean**2)
-            )
-            logger.info(f"std: {field_value.std}")
 
 
 class FeatureDetails(BaseModel):
@@ -1462,24 +1309,6 @@ class InfoModel(BaseModel):
         """
         self.to_json(meta_folder_path)
 
-    def update_before_episode_removal(self, parquet_path: str) -> None:
-        """
-        Update the info before removing an episode from the dataset.
-        """
-        # Ensure the parquet file exist
-        if not os.path.exists(parquet_path):
-            raise ValueError(f"Parquet file {parquet_path} does not exist.")
-
-        # Load parquet file with pandas
-        df_episode = pd.read_parquet(parquet_path)
-
-        self.total_episodes -= 1
-        self.total_frames -= len(df_episode)
-        self.total_videos -= len(self.features.observation_images.keys())
-        self.splits = {"train": f"0:{self.total_episodes}"}
-        # TODO(adle): Implement support for multi tasks in dataset
-        # self.total_tasks -= ...
-
 
 class TasksFeatures(BaseModel):
     """
@@ -1543,38 +1372,6 @@ class TasksModel(BaseModel):
                     task=str(step.observation.language_instruction),
                 )
             )
-
-    def update_before_episode_removal(self, parquet_path: str) -> None:
-        """
-        Update the tasks before removing an episode from the dataset.
-        We count the number of occurences of task_index in the dataset.
-        If the episode is the only one with this task_index, we remove it from the tasks.jsonl file.
-        """
-        # Ensure the parquet file exist
-        if not os.path.exists(parquet_path):
-            raise ValueError(f"Parquet file {parquet_path} does not exist.")
-
-        # Load parquet file with pandas
-        df_episode = pd.read_parquet(parquet_path)
-
-        # Create the path of the data folder
-        parquet_path_parts = parquet_path.split("/")
-        data_folder_path = "/".join(parquet_path_parts[:-2])
-
-        # For each file in the data folder get the task indexes (unique)
-        task_indexes: List[int] = []
-        for file in os.listdir(data_folder_path):
-            if file.endswith(".parquet"):
-                df = pd.read_parquet(f"{data_folder_path}/{file}")
-                task_indexes.extend(df["task_index"].unique())
-
-        for task_index in df_episode["task_index"].unique():
-            task_index = int(task_index)
-            # delete the line in tasks.jsonl if and only if the task index in this episode is the only one in the dataset
-            if task_indexes.count(task_index) == 1:
-                self.tasks = [
-                    task for task in self.tasks if task.task_index != task_index
-                ]
 
     def save(self, meta_folder_path: str) -> None:
         """
@@ -1666,22 +1463,3 @@ class EpisodesModel(BaseModel):
         Save the episodes to the meta folder path.
         """
         self.to_jsonl(meta_folder_path)
-
-    def update_before_episode_removal(self, parquet_path: str):
-        """
-        Update the episodes model before removing an episode from the dataset.
-        We just remove the line corresponding to the episode_index of the parquet file.
-        """
-        # Ensure the parquet file exist
-        if not os.path.exists(parquet_path):
-            raise ValueError(f"Parquet file {parquet_path} does not exist.")
-
-        index_deleted_episode = int(
-            parquet_path.split("/")[-1].split(".")[0].split("_")[-1]
-        )
-
-        self.episodes = [
-            episode
-            for episode in self.episodes
-            if episode.episode_index != index_deleted_episode
-        ]
