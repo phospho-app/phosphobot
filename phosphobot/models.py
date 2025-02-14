@@ -884,13 +884,9 @@ class Stats(BaseModel):
             self.square_sum = np.sum(image_uint32**2, axis=(0, 1))
             self.count = nb_pixels
         else:
-            logger.info(f"Self Sum: {self.sum}")
             self.sum = self.sum + np.sum(image_value, axis=(0, 1))
-            logger.info(f"Self Sum: {self.sum}")
             self.square_sum = self.square_sum + np.sum(image_uint32**2, axis=(0, 1))
             self.count = self.count + nb_pixels
-
-        logger.info("Image stats update complete")
 
     def compute_from_rolling_images(self):
         """
