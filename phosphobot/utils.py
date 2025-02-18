@@ -2,11 +2,12 @@ import base64
 import json
 import os
 from pathlib import Path
-from typing import Annotated, Any, Tuple, Union
+from typing import Annotated, Any, List, Tuple, Union
 
 import cv2
 import numpy as np
 from loguru import logger
+import pandas as pd
 from pydantic import BeforeValidator, PlainSerializer
 from rich import print
 
@@ -194,3 +195,90 @@ def get_home_app_path() -> Path:
     (home_path / "calibration").mkdir(parents=True, exist_ok=True)
     (home_path / "recordings").mkdir(parents=True, exist_ok=True)
     return home_path
+
+
+def compute_sum_squaresum_framecount_from_video(
+    video_path: str,
+) -> List[np.ndarray | int]:
+    """
+    Process a video file and calculate the sum of RGB values and sum of squares of RGB values for each frame.
+    Returns a list of np.ndarray corresponding respectively to the sum of RGB values, sum of squares of RGB values and nb_pixel.
+    We divide by 255.0 RGB values to normalize the values to the range [0, 1].
+    """
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Error: Could not open video at path: {video_path}")
+
+    nb_pixel = 0
+    total_sum_rgb = np.zeros(3, dtype=np.float32)  # To store sum of RGB values
+    total_sum_squares = np.zeros(
+        3, dtype=np.float32
+    )  # To store sum of squares of RGB values
+    while True:
+        # Read a frame from the video
+        ret, frame = cap.read()
+        # If the frame was not read successfully, break the loop
+        if not ret:
+            break
+
+        # Convert the frame from BGR to RGB (OpenCV uses BGR by default)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) / 255.0
+        # Calculate the sum of RGB values for the frame
+        sum_rgb = np.sum(frame_rgb, axis=(0, 1))
+        # Calculate the sum of squares of RGB values for the frame
+        sum_squares = np.sum(frame_rgb**2, axis=(0, 1))
+        # Accumulate the sums
+        # Cannot cast ufunc 'add' output from dtype('float64') to dtype('uint64') with casting rule 'same_kind'
+        total_sum_rgb = total_sum_rgb + sum_rgb
+        total_sum_squares = total_sum_squares + sum_squares
+
+        # nb Pixel
+        nb_pixel += frame_rgb.shape[0] * frame_rgb.shape[1]
+
+    # Release the video capture object
+    # TODO: If problem of dimension maybe transposing arrays is needed.
+    cap.release()
+    return [total_sum_rgb, total_sum_squares, nb_pixel]
+
+
+def get_field_min_max(df: pd.DataFrame, field_name: str) -> tuple:
+    """
+    Compute the minimum value for the given field in the DataFrame.
+
+    If the field values are numeric, returns a scalar minimum.
+    If the field values are lists/arrays, returns an element-wise minimum array.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the data.
+        field_name (str): The name of the field/column to compute the min for.
+
+    Returns:
+        The minimum value(s) for the specified field.
+
+    Raises:
+        ValueError: If the field does not exist or if list/array values have inconsistent shapes.
+    """
+    if field_name not in df.columns:
+        raise ValueError(f"Field '{field_name}' not found in DataFrame")
+
+    # Get a sample value (skip any nulls)
+    sample_value = df[field_name].dropna().iloc[0]
+
+    # If the field values are lists or arrays, compute element-wise min, max
+    if isinstance(sample_value, (list, np.ndarray)):
+        try:
+            # Convert series of lists/arrays into a 2D NumPy array.
+            # Each row is one entry from the DataFrame.
+            stacked = np.stack(df[field_name].tolist(), axis=0)
+        except Exception as e:
+            raise ValueError(
+                "Ensure all entries in the field are lists/arrays of the same length."
+            ) from e
+
+        # Compute element-wise minimum along the rows.
+        return (np.min(stacked, axis=0), np.max(stacked, axis=0))
+    else:
+        # Otherwise, assume the field is numeric and return the scalar min.
+        return (df[field_name].min(), df[field_name].max())
