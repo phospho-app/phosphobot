@@ -159,7 +159,9 @@ def process_image(
                 processed_images = []
                 for i, image in enumerate(images):
                     if image.shape[:2] != target_size:
-                        image = cv2.resize(image, target_size)
+                        image = cv2.resize(
+                            image, target_size, interpolation=cv2.INTER_AREA
+                        )
                     tensor_image = (
                         torch.from_numpy(image)
                         .permute(2, 0, 1)
