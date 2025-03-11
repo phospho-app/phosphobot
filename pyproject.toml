@@ -3,7 +3,6 @@ name = "phosphobot"
 version = "0.0.10"
 description = "The AI-ready robotics dev kit, with built-in remote control and action models support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
-license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -31,15 +30,15 @@ dev = ["pyinstrument>=5.0.0"]
 [tool.uv]
 default-groups = ["dev"]
 
+[tool.uv.sources]
+lerobot = { git = "https://github.com/phospho-app/lerobot.git", branch = "main" }
+
+[build-system]
+requires = ["setuptools>=42", "wheel", "toml"]
+build-backend = "setuptools.build_meta"
+
 [tool.setuptools]
 packages = ["phosphobot"]
 
-[tool.uv.sources]
-lerobot = { git = "https://github.com/phospho-app/lerobot.git", rev = "main" }
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build]
-include = ["phosphobot/urdf/", "phosphobot"]
+[tool.setuptools.package-data]
+phosphobot = ["*"] # Include all files in the resources directory
