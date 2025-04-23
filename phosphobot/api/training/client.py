@@ -217,6 +217,7 @@ class TrainingClient:
         batch_size: typing.Optional[int] = OMIT,
         epochs: typing.Optional[int] = OMIT,
         learning_rate: typing.Optional[float] = OMIT,
+        train_test_split: typing.Optional[float] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> StatusResponse:
         """
@@ -238,6 +239,9 @@ class TrainingClient:
 
         learning_rate : typing.Optional[float]
             Learning rate for training, default is 0.0002
+        
+        train_test_split: typing.Optional[float]
+            Percentage of data for training. 1 means you train on 100% of your data.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -265,6 +269,7 @@ class TrainingClient:
             batch_size=batch_size,
             epochs=epochs,
             learning_rate=learning_rate,
+            train_test_split=train_test_split
             request_options=request_options,
         )
         return response.data
@@ -505,6 +510,7 @@ class AsyncTrainingClient:
         batch_size: typing.Optional[int] = OMIT,
         epochs: typing.Optional[int] = OMIT,
         learning_rate: typing.Optional[float] = OMIT,
+        train_test_split: typing.Optional[float] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> StatusResponse:
         """
@@ -526,6 +532,9 @@ class AsyncTrainingClient:
 
         learning_rate : typing.Optional[float]
             Learning rate for training, default is 0.0002
+        
+         train_test_split: typing.Optional[float]
+            Percentage of data for training. 1 means you train on 100% of your data.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -561,6 +570,7 @@ class AsyncTrainingClient:
             batch_size=batch_size,
             epochs=epochs,
             learning_rate=learning_rate,
+            train_test_split=train_test_split,
             request_options=request_options,
         )
         return response.data
