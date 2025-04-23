@@ -14,7 +14,7 @@ from argparse import Namespace
 
 # The following imports require the gr00t repository to be installed
 from gr00t.eval.robot import RobotInferenceServer  # type: ignore
-from gr00t.experiment.data_config import DATA_CONFIG_MAP  # type: ignore
+from gr00t.experiment.data_config import ConfigGenerator  # type: ignore
 from gr00t.model.policy import Gr00tPolicy  # type: ignore
 
 model_path = "path/to/your/model"  # Change this to your model path
@@ -24,15 +24,9 @@ model_path = "path/to/your/model"  # Change this to your model path
 # Look for the name of the embodiment tag
 embodiment_tag = "new_embodiment"  # Change this to your embodiment tag, in most cases it will just be "new_embodiment"
 
-# Uncomment to select the right data config
-data_config = None
-# data_config = "so100" # For a single arm with 1 camera
-# data_config = "so100_wc" # For a single arm with 2 cameras
-# data_config = "so100_w2c" # For a single arm with 3 cameras
-# data_config = "double_so100_1cam" # For a bimanual setup with 1 camera
-# data_config = "double_so100" # For a bimanual setup with 2 cameras
-# data_config = "double_so100_wc" # For a bimanual setup with 3 cameras
-# data_config = "double_so100_w2c" # For a bimanual setup with 4 cameras
+# Please fill with the number of arms and cameras used to train the model
+data_config = ConfigGenerator(num_arms=, num_cams=)
+
 
 
 if not os.path.exists(model_path):
@@ -51,7 +45,6 @@ args = Namespace(
     denoising_steps=4,
 )
 
-data_config = DATA_CONFIG_MAP[args.data_config]
 modality_config = data_config.modality_config()
 modality_transform = data_config.transform()
 

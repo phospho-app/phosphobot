@@ -57,10 +57,9 @@ while True:
     # You may need to adapt the obs JSON to match these names
     # The following JSON should work for one arm and 2 video cameras
     obs = {
-        "video.cam_context": images[0],
-        "video.cam_wrist": images[1],
-        "state.single_arm": state[0:5].reshape(1, 5),
-        "state.gripper": np.array([state[5]]).reshape(1, 1),
+        "video.image_cam_0": images[0],
+        "video.image_cam_1": images[1],
+        "state.arm": state[0:6].reshape(1, 6),
         "annotation.human.action.task_description": [TASK_DESCRIPTION],
     }
     # Uncomment this if you want to use this script for a bimanual setup
@@ -68,13 +67,11 @@ while True:
     # You may also need to change the name and order of the images based on their incoming order and names in the experiment_cfg/metadata.json file in your model
     #
     # obs = {
-    #     "video.cam_context": images[0],
-    #     "video.cam_wrist_left": images[1],
-    #     "video.cam_wrist_right": images[2],
-    #     "state.left_arm": state[0:5].reshape(1, 5),
-    #     "state.left_gripper": np.array([state[5]]).reshape(1, 1),
-    #     "state.right_arm": state[6:11].reshape(1, 5),
-    #     "state.right_gripper": np.array([state[11]]).reshape(1, 1),
+    #     "video.image_cam_0": images[0],
+    #     "video.image_cam_1": images[1],
+    #     "video.image_cam_2": images[2],
+    #     "state.arm_0": state[0:6].reshape(1, 6),
+    #     "state.arm_1": state[6:12].reshape(1, 6),
     #     "annotation.human.action.task_description": [TASK_DESCRIPTION],
     # }
 

@@ -312,40 +312,69 @@ class ExternalRobotInferenceClient(BaseInferenceClient):
 
 
 class Gr00tN1(ActionModel):
-    def __init__(self, server_url: str = "localhost", server_port: int = 5555):
+    def __init__(
+        self,
+        action_keys: list[str],
+        server_url: str = "localhost",
+        server_port: int = 5555,
+    ):
         super().__init__(server_url, server_port)
         self.client = ExternalRobotInferenceClient(server_url, server_port)
+        self.action_keys = action_keys
 
     def sample_actions(self, inputs: dict) -> np.ndarray:
         # Get the dict from the server
         response = self.client.get_action(inputs)
-        # TODO: Improve this logic to work for all configs
-        if "action.single_arm" in response and "action.gripper" in response:
-            arm = response["action.single_arm"]
-            gripper = response["action.gripper"]
-            # Fully close the gripper if it is less than 0.35
-            # if gripper.shape is (16,) (no last dimension), resize it to (16, 1)
-            gripper = gripper.reshape(-1, 1)
-            gripper[gripper < 0.35] = 0.0
-            action = np.concatenate((arm, gripper), axis=1)
-        elif (
-            "action.left_arm" in response
-            and "action.right_arm" in response
-            and "action.left_gripper" in response
-            and "action.right_gripper" in response
-        ):
-            left_arm = response["action.left_arm"]
-            left_gripper = response["action.left_gripper"]
-            right_arm = response["action.right_arm"]
-            right_gripper = response["action.right_gripper"]
-            # Resize the grippers
-            left_gripper = left_gripper.reshape(-1, 1)
-            right_gripper = right_gripper.reshape(-1, 1)
-            # Fully close the gripper if it is less than 0.35
-            left_gripper[left_gripper < 0.35] = 0.0
-            right_gripper[right_gripper < 0.35] = 0.0
-            action = np.concatenate(
-                (left_arm, left_gripper, right_arm, right_gripper), axis=1
-            )
+        action_parts = []
+        for key in self.action_keys:
+            new_action = response[key]
 
-        return action
+            if isinstance(new_action, np.ndarray):
+                if new_action.ndim == 1 and len(new_action) == 16:
+                    # Handle 1D array of shape (16,) by reshaping to (16, 1)
+                    new_action = new_action.reshape(16, 1)
+                elif new_action.ndim == 2 and new_action.shape[0] == 16:
+                    # Already a 2D array with batch size 16, no reshaping needed
+                    pass
+                else:
+                    raise ValueError(
+                        f"Unexpected array shape for key {key}: {new_action.shape}"
+                    )
+
+                # Array case: shape is (16, action_size)
+                batch_size, action_size = new_action.shape
+                if batch_size != 16:
+                    raise ValueError(
+                        f"Expected batch size 16, got {batch_size} for key {key}"
+                    )
+
+                # If action_size is 1 or 6, assume the last column is the gripper
+                if action_size in [1, 6]:
+                    new_action[:, -1] = np.where(
+                        new_action[:, -1] < 0.35, 0.0, new_action[:, -1]
+                    )
+
+                action_parts.append(new_action)
+
+            elif isinstance(new_action, list) and len(new_action) in [1, 6]:
+                # List case: length 1 or 6, assume last element is the gripper
+                if new_action[-1] < 0.35:
+                    new_action[-1] = 0.0
+                # Convert to NumPy array with shape (1, len(new_action))
+                new_action = np.array(new_action).reshape(1, -1)
+                # Repeat to match batch size of 16
+                new_action = np.repeat(new_action, 16, axis=0)
+                action_parts.append(new_action)
+            else:
+                raise ValueError(
+                    f"Unexpected new_action format for key {key}: {type(new_action)}, "
+                    f"shape/len: {getattr(new_action, 'shape', len(new_action))}"
+                )
+
+        # Concatenate along axis=1 to combine features, preserving batch size of 16
+        if not action_parts:
+            raise ValueError("No valid actions found to concatenate")
+
+        concatenated_actions = np.concatenate(action_parts, axis=1)
+
+        return concatenated_actions
