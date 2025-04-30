@@ -3,18 +3,23 @@
 import typing
 import httpx
 from .core.client_wrapper import SyncClientWrapper
+from .raw_client import RawPhosphoApi
 from .control.client import ControlClient
-from .recording.client import RecordingClient
+from .auth.client import AuthClient
 from .camera.client import CameraClient
+from .recording.client import RecordingClient
+from .training.client import TrainingClient
+from .update.client import UpdateClient
 from .core.request_options import RequestOptions
 from .types.server_status import ServerStatus
-from .core.pydantic_utilities import parse_obj_as
-from json.decoder import JSONDecodeError
-from .core.api_error import ApiError
 from .core.client_wrapper import AsyncClientWrapper
+from .raw_client import AsyncRawPhosphoApi
 from .control.client import AsyncControlClient
-from .recording.client import AsyncRecordingClient
+from .auth.client import AsyncAuthClient
 from .camera.client import AsyncCameraClient
+from .recording.client import AsyncRecordingClient
+from .training.client import AsyncTrainingClient
+from .update.client import AsyncUpdateClient
 
 
 class PhosphoApi:
@@ -53,7 +58,11 @@ class PhosphoApi:
         httpx_client: typing.Optional[httpx.Client] = None,
     ):
         _defaulted_timeout = (
-            timeout if timeout is not None else 60 if httpx_client is None else None
+            timeout
+            if timeout is not None
+            else 60
+            if httpx_client is None
+            else httpx_client.timeout.read
         )
         self._client_wrapper = SyncClientWrapper(
             base_url=base_url,
@@ -66,9 +75,24 @@ class PhosphoApi:
             else httpx.Client(timeout=_defaulted_timeout),
             timeout=_defaulted_timeout,
         )
+        self._raw_client = RawPhosphoApi(client_wrapper=self._client_wrapper)
         self.control = ControlClient(client_wrapper=self._client_wrapper)
-        self.recording = RecordingClient(client_wrapper=self._client_wrapper)
+        self.auth = AuthClient(client_wrapper=self._client_wrapper)
         self.camera = CameraClient(client_wrapper=self._client_wrapper)
+        self.recording = RecordingClient(client_wrapper=self._client_wrapper)
+        self.training = TrainingClient(client_wrapper=self._client_wrapper)
+        self.update = UpdateClient(client_wrapper=self._client_wrapper)
+
+    @property
+    def with_raw_response(self) -> RawPhosphoApi:
+        """
+        Retrieves a raw implementation of this client that returns raw responses.
+
+        Returns
+        -------
+        RawPhosphoApi
+        """
+        return self._raw_client
 
     def status_status_get(
         self, *, request_options: typing.Optional[RequestOptions] = None
@@ -95,24 +119,10 @@ class PhosphoApi:
         )
         client.status_status_get()
         """
-        _response = self._client_wrapper.httpx_client.request(
-            "status",
-            method="GET",
+        response = self._raw_client.status_status_get(
             request_options=request_options,
         )
-        try:
-            if 200 <= _response.status_code < 300:
-                return typing.cast(
-                    ServerStatus,
-                    parse_obj_as(
-                        type_=ServerStatus,  # type: ignore
-                        object_=_response.json(),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, body=_response.text)
-        raise ApiError(status_code=_response.status_code, body=_response_json)
+        return response.data
 
 
 class AsyncPhosphoApi:
@@ -151,7 +161,11 @@ class AsyncPhosphoApi:
         httpx_client: typing.Optional[httpx.AsyncClient] = None,
     ):
         _defaulted_timeout = (
-            timeout if timeout is not None else 60 if httpx_client is None else None
+            timeout
+            if timeout is not None
+            else 60
+            if httpx_client is None
+            else httpx_client.timeout.read
         )
         self._client_wrapper = AsyncClientWrapper(
             base_url=base_url,
@@ -164,9 +178,24 @@ class AsyncPhosphoApi:
             else httpx.AsyncClient(timeout=_defaulted_timeout),
             timeout=_defaulted_timeout,
         )
+        self._raw_client = AsyncRawPhosphoApi(client_wrapper=self._client_wrapper)
         self.control = AsyncControlClient(client_wrapper=self._client_wrapper)
-        self.recording = AsyncRecordingClient(client_wrapper=self._client_wrapper)
+        self.auth = AsyncAuthClient(client_wrapper=self._client_wrapper)
         self.camera = AsyncCameraClient(client_wrapper=self._client_wrapper)
+        self.recording = AsyncRecordingClient(client_wrapper=self._client_wrapper)
+        self.training = AsyncTrainingClient(client_wrapper=self._client_wrapper)
+        self.update = AsyncUpdateClient(client_wrapper=self._client_wrapper)
+
+    @property
+    def with_raw_response(self) -> AsyncRawPhosphoApi:
+        """
+        Retrieves a raw implementation of this client that returns raw responses.
+
+        Returns
+        -------
+        AsyncRawPhosphoApi
+        """
+        return self._raw_client
 
     async def status_status_get(
         self, *, request_options: typing.Optional[RequestOptions] = None
@@ -201,21 +230,7 @@ class AsyncPhosphoApi:
 
         asyncio.run(main())
         """
-        _response = await self._client_wrapper.httpx_client.request(
-            "status",
-            method="GET",
+        response = await self._raw_client.status_status_get(
             request_options=request_options,
         )
-        try:
-            if 200 <= _response.status_code < 300:
-                return typing.cast(
-                    ServerStatus,
-                    parse_obj_as(
-                        type_=ServerStatus,  # type: ignore
-                        object_=_response.json(),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, body=_response.text)
-        raise ApiError(status_code=_response.status_code, body=_response_json)
+        return response.data

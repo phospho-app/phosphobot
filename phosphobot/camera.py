@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 from pathlib import Path
 import subprocess
@@ -5,11 +6,11 @@ import threading
 import time
 import platform
 from abc import ABC, abstractmethod
-from typing import Generator, List, Literal, Optional, Dict, cast
+from typing import AsyncGenerator, List, Literal, Optional, Dict, cast
 
 import cv2
+from fastapi import Request
 import numpy as np
-import pyrealsense2 as rs  # type: ignore
 from loguru import logger
 
 from phosphobot.configs import config
@@ -18,6 +19,17 @@ from phosphobot.types import CameraTypes
 
 
 MAX_OPENCV_INDEX = 10
+
+
+def cv2VideoCapture(index: int) -> cv2.VideoCapture:
+    """
+    Utility function to create a cv2.VideoCapture object.
+    """
+    # On Windows, add the cv2.CAP_DSHOW flag to avoid errors
+    if platform.system() == "Windows":
+        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    else:
+        return cv2.VideoCapture(index)
 
 
 def get_camera_names() -> List[str]:
@@ -63,8 +75,8 @@ def get_camera_names() -> List[str]:
                 if ":" not in line and line.strip() != "":
                     camera_names.append(line.strip())
         except FileNotFoundError:
-            # v4l2-ctl might not be installed
-            logger.error(
+            # v4l2-ctl is likely not installed
+            logger.warning(
                 "v4l2-ctl is not installed. Please install it to list cameras."
             )
 
@@ -218,6 +230,8 @@ def detect_video_indexes(
         possible_camera_ids = [
             int(port.removeprefix("/dev/video")) for port in possible_ports
         ]
+        # Sort by increasing
+        possible_camera_ids = sorted(possible_camera_ids)
         logger.info(
             f"(Linux) Found possible ports through scanning '/dev/video*': {possible_camera_ids}"
         )
@@ -301,15 +315,19 @@ class BaseCamera(ABC):
 
         return jpeg.tobytes()
 
-    def generate_rgb_frames(
+    async def generate_rgb_frames(
         self,
         target_size: tuple[int, int] | None,
         quality: int | None,
         is_video_frame: bool = True,
-    ) -> Generator:
+        request: Request | None = None,
+    ) -> AsyncGenerator:
         """Generator for video frames"""
         try:
-            while self.is_active:
+            while self.is_active and (
+                request is None or not await request.is_disconnected()
+            ):
+                time_start = time.perf_counter()
                 frame = self.get_jpeg_rgb_frame(
                     is_video_frame=is_video_frame,
                     target_size=target_size,
@@ -324,7 +342,11 @@ class BaseCamera(ABC):
                         f"{self.camera_name} Skipped frame due to capture error"
                     )
                     # Prevent tight loop
-                    time.sleep(0.02)
+                    await asyncio.sleep(0.02)
+                # Wait according to the fps
+                time_spent = time.perf_counter() - time_start
+                time_to_wait = max(0, 1 / self.fps - time_spent)
+                await asyncio.sleep(time_to_wait)
         except GeneratorExit:
             logger.info(f"{self.camera_name} Generator exited")
         except KeyboardInterrupt:
@@ -334,8 +356,8 @@ class BaseCamera(ABC):
             logger.error(f"{self.camera_name} Error generating frames: {str(e)}")
             self.stop()
 
-    def generate_depth_frames(self):
-        return self.generate_rgb_frames(is_video_frame=False)
+    async def generate_depth_frames(self):
+        return await self.generate_rgb_frames(is_video_frame=False)
 
 
 class VideoCamera(threading.Thread, BaseCamera):
@@ -352,7 +374,7 @@ class VideoCamera(threading.Thread, BaseCamera):
         camera_id: Optional[int] = 0,
         width: int = 640,
         height: int = 360,
-        fps: int = 30,
+        fps: int = 22,
         camera_type: Optional[CameraTypes] = None,
     ):
         threading.Thread.__init__(self)
@@ -406,7 +428,7 @@ class VideoCamera(threading.Thread, BaseCamera):
 
             success, _ = self.video.read()
             if not success:
-                logger.error(f"""{self.camera_name}: Failed to grab first frame
+                logger.warning(f"""{self.camera_name}: Failed to grab first frame
 Camera id: {self.camera_id}
 Camera type: {self.camera_type}""")
                 return False
@@ -414,7 +436,7 @@ Camera type: {self.camera_type}""")
             return True
 
         except Exception as e:
-            logger.error(f"{self.camera_name}: Error initializing {str(e)}")
+            logger.warning(f"{self.camera_name}: Error initializing {str(e)}")
 
         return False
 
@@ -430,7 +452,7 @@ Camera type: {self.camera_type}""")
                     continue
 
                 if not self.video or not self.video.isOpened():
-                    logger.error(f"{self.camera_name}: is not initialized")
+                    logger.warning(f"{self.camera_name}: is not initialized")
                     self.last_frame = None
                     continue
 
@@ -442,7 +464,7 @@ Camera type: {self.camera_type}""")
                         break
 
                 if not success:
-                    logger.error(f"{self.camera_name}: Failed to grab frame")
+                    logger.warning(f"{self.camera_name}: Failed to grab frame")
                     self.last_frame = None
                 else:
                     self.last_frame = frame
@@ -457,7 +479,7 @@ Camera type: {self.camera_type}""")
         type: np.uint8
         """
         if not self.is_active:
-            logger.error(f"{self.camera_name}: is not active")
+            logger.warning(f"{self.camera_name}: is not active")
         if self.last_frame is None:
             logger.warning(f"{self.camera_name}: No frame available")
 
@@ -565,103 +587,186 @@ class StereoCamera(VideoCamera):
         return right_frame
 
 
-class RealSenseCamera(BaseCamera):
-    """
-    A Realsense camera is an Intel camera that can capture depth and RGB frames.
+try:
+    import pyrealsense2 as rs  # type: ignore
 
-    It's based on infrared technology and can be used to capture 3D images.
-    """
+    class RealSenseCamera(BaseCamera):
+        """
+        A Realsense camera is an Intel camera that can capture depth and RGB frames.
 
-    camera_type: CameraTypes = "realsense"
-    last_rgb_frame: np.ndarray
-    last_depth_frame: np.ndarray
-    pipeline: rs.pipeline
-    is_connected: bool = False
-    device_info: str
+        It's based on infrared technology and can be used to capture 3D images.
+        """
 
-    def __init__(
-        self, disable: bool = False, width: int = 640, height: int = 480, fps: int = 30
-    ):
-        super().__init__(width, height, fps)
+        camera_type: CameraTypes = "realsense"
+        last_rgb_frame: np.ndarray
+        last_depth_frame: np.ndarray
+        pipeline: rs.pipeline
+        is_connected: bool = False
+        device_info: str
 
-        # Configure depth and color streams
-        self.pipeline = rs.pipeline()
-        config = rs.config()
+        def __init__(
+            self,
+            disable: bool = False,
+            width: int = 640,
+            height: int = 480,
+            fps: int = 30,
+        ):
+            super().__init__(width, height, fps)
 
-        # Get the number of realsense devices
-        ctx = rs.context()
-        realsense_devices = ctx.query_devices()
+            # Configure depth and color streams
+            self.pipeline = rs.pipeline()
+            config = rs.config()
 
-        if realsense_devices.size() == 0:
+            # Get the number of realsense devices
+            ctx = rs.context()
+            realsense_devices = ctx.query_devices()
+
+            if realsense_devices.size() == 0:
+                return
+
+            self.is_connected = True
+            if disable:
+                logger.debug(f"{self.camera_name} disabled")
+                return
+
+            # TODO: When multiple realsense cameras are connected, we need to select the correct one
+            time.sleep(0.2)
+            self.device_info = realsense_devices.front().get_info(rs.camera_info.name)
+            config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+            config.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
+            # Start streaming
+            self.pipeline.start(config)
+            time.sleep(0.2)
+            self.is_active = True
+
+        @property
+        def camera_name(self) -> str:
+            return f"RealsenseCamera {self.camera_type}"
+
+        def get_rgb_frame(
+            self, resize: tuple[int, int] | None = None
+        ) -> Optional[cv2.typing.MatLike]:
+            # To get the video frame, get the couple (video, depth) frame from the wait_for_frames method
+            if not self.is_active:
+                logger.warning(f"{self.camera_name} is not active")
+                return None
+            # Wait for a coherent pair of frames: depth and color
+            last_bgr_frame = self.pipeline.wait_for_frames(
+                timeout_ms=200
+            ).get_color_frame()
+            if last_bgr_frame is None:
+                logger.warning(f"{self.camera_name} failed to grab frame")
+                return None
+            np_bgr_frame = np.asanyarray(last_bgr_frame.get_data())
+            # Convert frame from BGR to RGB
+            frame = cv2.cvtColor(np_bgr_frame, cv2.COLOR_BGR2RGB)
+            if resize is not None:
+                frame = cv2.resize(frame, resize, interpolation=cv2.INTER_AREA)
+            return frame
+
+        def get_depth_frame(
+            self, resize: tuple[int, int] | None = None
+        ) -> Optional[cv2.typing.MatLike]:
+            # To get the depth frame, also get the couple (video, depth) frame from the wait_for_frames method
+            # The method get_depth and get_rgb_frame can be called simultaneously without lagging (tested)
+            # One should load them together for recording to be sure that the depth and video frame are coherent
+
+            if not self.is_active:
+                logger.warning(f"{self.camera_name} is not active")
+                return None
+            last_bgr_depth_frame = self.pipeline.wait_for_frames().get_depth_frame()
+            if last_bgr_depth_frame is None:
+                logger.warning(f"{self.camera_name} Failed to grab frame")
+                return None
+            np_bgr_depth_frame = np.asanyarray(last_bgr_depth_frame.get_data())
+            frame = cv2.cvtColor(np_bgr_depth_frame, cv2.COLOR_BGR2RGB)
+            if resize is not None:
+                frame = cv2.resize(frame, resize, interpolation=cv2.INTER_AREA)
+            return frame
+
+        def stop(self) -> None:
+            if self.is_active:
+                try:
+                    self.pipeline.stop()
+                except Exception as e:
+                    logger.warning(f"{self.camera_name} failed to stop: {str(e)}")
+                self.is_active = False
+
+    class RealSenseVirtualCamera(VideoCamera):
+        def __init__(
+            self,
+            realsense_camera: RealSenseCamera,
+            frame_type: Literal["rgb", "depth"],
+            camera_id: int,
+            disable: bool = False,
+        ):
+            threading.Thread.__init__(self)
+
+            self.width = realsense_camera.width
+            self.height = realsense_camera.height
+            self.fps = realsense_camera.fps
+            self.is_active = not disable and realsense_camera.is_active
+
+            self.realsense_camera = realsense_camera
+            self.frame_type = frame_type
+            self.camera_type = cast(CameraTypes, f"realsense_{frame_type}")
+            self.camera_id = camera_id
+
+            atexit.register(self.stop)
+
+        @property
+        def is_active(self) -> bool:
+            return self.realsense_camera.is_active
+
+        @is_active.setter
+        def is_active(self, value):
             return
 
-        self.is_connected = True
-        if disable:
-            logger.debug(f"{self.camera_name} disabled")
-            return
+        def get_rgb_frame(
+            self, resize: Optional[tuple[int, int]] = None
+        ) -> Optional[cv2.typing.MatLike]:
+            if not self.is_active:
+                return None
+            if self.frame_type == "rgb":
+                frame = self.realsense_camera.get_rgb_frame(resize=resize)
+            else:
+                depth_frame = self.realsense_camera.get_depth_frame(resize=resize)
+                if depth_frame is not None:
+                    # Normalize depth data for visualization
+                    normalized_depth = cv2.normalize(
+                        depth_frame, depth_frame, 0, 255, cv2.NORM_MINMAX
+                    )
+                    normalized_depth = normalized_depth.astype(np.uint8)
+                    # Apply colormap for better visualization
+                    frame = cv2.applyColorMap(normalized_depth, cv2.COLORMAP_JET)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                else:
+                    frame = None
+            return frame
 
-        # TODO: When multiple realsense cameras are connected, we need to select the correct one
-        time.sleep(0.2)
-        self.device_info = realsense_devices.front().get_info(rs.camera_info.name)
+        def stop(self) -> None:
+            self.realsense_camera.stop()
 
-        config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
-        config.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
+        @property
+        def camera_name(self) -> str:
+            return f"RealSenseVirtualCamera {self.camera_type} {self.camera_id}"
 
-        # Start streaming
-        self.pipeline.start(config)
-        self.is_active = True
+except ImportError:
+    logger.debug(
+        "phosphobot: pyrealsense2 not available, RealSenseCamera will not be available"
+    )
 
-    @property
-    def camera_name(self) -> str:
-        return f"RealsenseCamera {self.camera_type}"
+    class RealSenseCamera(BaseCamera):  # type: ignore
+        def __init__(self, *args, **kwargs):
+            raise ImportError("Install pyrealsense2 to add RealSense camera support.")
 
-    def get_rgb_frame(
-        self, resize: tuple[int, int] | None = None
-    ) -> Optional[cv2.typing.MatLike]:
-        # To get the video frame, get the couple (video, depth) frame from the wait_for_frames method
-        if not self.is_active:
-            logger.warning(f"{self.camera_name} is not active")
-            return None
-        # Wait for a coherent pair of frames: depth and color
-        last_bgr_frame = self.pipeline.wait_for_frames(timeout_ms=200).get_color_frame()
-        if last_bgr_frame is None:
-            logger.error(f"{self.camera_name} failed to grab frame")
-            return None
-        np_bgr_frame = np.asanyarray(last_bgr_frame.get_data())
-        # Convert frame from BGR to RGB
-        frame = cv2.cvtColor(np_bgr_frame, cv2.COLOR_BGR2RGB)
-        if resize is not None:
-            frame = cv2.resize(frame, resize, interpolation=cv2.INTER_AREA)
-        return frame
-
-    def get_depth_frame(
-        self, resize: tuple[int, int] | None = None
-    ) -> Optional[cv2.typing.MatLike]:
-        # To get the depth frame, also get the couple (video, depth) frame from the wait_for_frames method
-        # The method get_depth and get_rgb_frame can be called simultaneously without lagging (tested)
-        # One should load them together for recording to be sure that the depth and video frame are coherent
-
-        if not self.is_active:
-            logger.warning(f"{self.camera_name} is not active")
-            return None
-        last_bgr_depth_frame = self.pipeline.wait_for_frames().get_depth_frame()
-        if last_bgr_depth_frame is None:
-            logger.error(f"{self.camera_name} Failed to grab frame")
-            return None
-        np_bgr_depth_frame = np.asanyarray(last_bgr_depth_frame.get_data())
-        frame = cv2.cvtColor(np_bgr_depth_frame, cv2.COLOR_BGR2RGB)
-        if resize is not None:
-            frame = cv2.resize(frame, resize, interpolation=cv2.INTER_AREA)
-        return frame
-
-    def stop(self) -> None:
-        if self.is_active:
-            self.pipeline.stop()
-            self.is_active = False
+    class RealSenseVirtualCamera(VideoCamera):  # type: ignore
+        def __init__(self, *args, **kwargs):
+            raise ImportError("Install pyrealsense2 to add RealSense camera support.")
 
 
 class AllCameras:
-    disable: bool
+    disabled_cameras: list[int] | None
     video_cameras: List[VideoCamera]
     realsensecamera: Optional[RealSenseCamera] = None
 
@@ -670,18 +775,21 @@ class AllCameras:
     # If it's None, record everything. Otherwise, record only the corresponding cameras
     _cameras_ids_to_record: List[int]
 
-    def __init__(self, disable: bool = False):
+    def __init__(self, disabled_cameras: list[int] | None = None):
         """
         AllCameras class to manage all cameras connected to the computer.
         Args:
-            disable: If True, cameras will be initialized in disabled mode
+            disabled_cameras: These cameras indexes will not be used by the application, set to [-1] to disable all cameras
         """
-        self.disable = disable
+        if disabled_cameras is not None:
+            self.disabled_cameras = disabled_cameras
+        else:
+            self.disabled_cameras = []
+
         self.video_cameras = []
         self.camera_ids = []
 
         camera_names: List[str] = get_camera_names()
-
         self.initialize_realsense_camera()
 
         # Get the available video indexes from a range of 0 to MAX_OPENCV_INDEX
@@ -701,7 +809,8 @@ class AllCameras:
                 self.video_cameras.append(
                     VideoCamera(
                         video=cv2.VideoCapture(index),
-                        disable=self.disable,
+                        disable=self.disabled_cameras is not None
+                        and index in self.disabled_cameras,
                         camera_id=index,
                     )
                 )
@@ -710,7 +819,8 @@ class AllCameras:
             elif camera_type == "stereo":
                 stereo_camera = StereoCamera(
                     video=cv2.VideoCapture(index),
-                    disable=self.disable,
+                    disable=self.disabled_cameras is not None
+                    and index in self.disabled_cameras,
                     width=1280,
                     height=480,
                     fps=30,
@@ -737,6 +847,37 @@ class AllCameras:
             else:
                 logger.debug(f"Ignoring camera {index}: {camera_type}")
 
+        if self.realsensecamera and self.realsensecamera.is_connected:
+            # Generate unique camera IDs for virtual cameras
+            max_id = max(self.camera_ids) if self.camera_ids else 0
+            virtual_rgb_id = max_id + 1
+            virtual_depth_id = max_id + 2
+
+            # Check if virtual cameras are disabled
+            disabled = (
+                self.disabled_cameras if self.disabled_cameras is not None else []
+            )
+            virtual_rgb_disabled = virtual_rgb_id in disabled
+            virtual_depth_disabled = virtual_depth_id in disabled
+
+            # Create virtual cameras
+            virtual_rgb = RealSenseVirtualCamera(
+                self.realsensecamera,
+                "rgb",
+                virtual_rgb_id,
+                disable=virtual_rgb_disabled,
+            )
+            virtual_depth = RealSenseVirtualCamera(
+                self.realsensecamera,
+                "depth",
+                virtual_depth_id,
+                disable=virtual_depth_disabled,
+            )
+
+            # Add to video cameras and camera IDs
+            self.video_cameras.extend([virtual_rgb, virtual_depth])
+            self.camera_ids.extend([virtual_rgb_id, virtual_depth_id])
+
         self._cameras_ids_to_record = self.camera_ids
 
         # Add atexit hook to stop the cameras
@@ -747,18 +888,23 @@ class AllCameras:
         """
         Return True if at least one camera is active. False otherwise.
         """
-        return any(camera.is_active for camera in self.video_cameras) or (
-            self.realsensecamera is not None and self.realsensecamera.is_active
-        )
+        return any(camera.is_active for camera in self.video_cameras)
 
     def initialize_realsense_camera(self, max_retries: int = 3) -> None:
         """
         Initialize RealSense camera with automatic retries on failure.
         Returns the camera instance if successful, None otherwise.
         """
+        if not config.ENABLE_REALSENSE:
+            logger.debug("Realsense camera is disabled")
+            return
+
         for attempt in range(max_retries):
             try:
-                self.realsensecamera = RealSenseCamera(disable=self.disable)
+                self.realsensecamera = RealSenseCamera(
+                    disable=self.disabled_cameras is not None
+                    and -1 in self.disabled_cameras
+                )
                 if (
                     self.realsensecamera is not None
                     and self.realsensecamera.is_connected
@@ -767,7 +913,6 @@ class AllCameras:
                         f"RealSense camera initialized: {self.realsensecamera.device_info}"
                     )
                 else:
-                    logger.info("RealSense camera not detected")
                     self.realsensecamera = None
                 return
             except Exception as e:
@@ -785,13 +930,8 @@ class AllCameras:
         This is used to setup video in the app.
         """
 
+        # Don't show realsense (deprecated usage)
         realsense_available = False
-        if (
-            self.realsensecamera is not None
-            and self.realsensecamera.is_active
-            and self.realsensecamera.is_connected
-        ):
-            realsense_available = True
 
         return AllCamerasStatus(
             video_cameras_ids=self.camera_ids,
@@ -849,7 +989,6 @@ class AllCameras:
     def get_rgb_frame(
         self,
         camera_id: Optional[int] = None,
-        realsense: bool = False,
         resize: Optional[tuple[int, int]] = None,
     ) -> Optional[cv2.typing.MatLike]:
         """
@@ -859,23 +998,16 @@ class AllCameras:
 
         raise ValueError if both camera_id and realsense are specified
         """
-        if camera_id is not None and realsense is True:
-            raise ValueError("Both camera_id and realsense cannot be specified")
-
         rgb_camera: Optional[BaseCamera]
 
         if camera_id is not None:
             rgb_camera = self.get_camera_by_id(camera_id)
-        elif realsense is True:
-            rgb_camera = self.realsensecamera
         else:
             logger.warning("No camera specified, the first video camera will be used")
             rgb_camera = self.get_camera_by_id(0)
 
         if rgb_camera is None:
-            logger.warning(
-                f"No camera found for camera_id={camera_id}, realsense={realsense}"
-            )
+            logger.warning(f"No camera found for camera_id={camera_id}")
             return None
 
         frame = rgb_camera.get_rgb_frame(resize=resize)
@@ -913,11 +1045,14 @@ class AllCameras:
 
         Note: you need to have a realsense camera connected to get the depth frame.
         """
-        if self.realsensecamera is not None and self.realsensecamera.is_connected:
-            frame = self.realsensecamera.get_depth_frame(resize=resize)
-            return frame
-        else:
-            return None
+        # Look for the VirtualRealsenseCamera with
+        for camera in self.video_cameras:
+            if isinstance(camera, RealSenseVirtualCamera):
+                if camera.frame_type == "depth":
+                    return camera.get_rgb_frame(resize=resize)
+
+        # If no realsense camera is available, return None
+        return None
 
     @property
     def cameras_ids_to_record(self) -> List[int]:
@@ -950,13 +1085,6 @@ class AllCameras:
         """
 
         if self._main_camera is None:
-            if (
-                config.USE_REALSENSE_MAIN
-                and self.realsensecamera is not None
-                and self.realsensecamera.is_connected
-            ):
-                self._main_camera = self.get_realsense_camera()
-
             # The main camera is the one designated in the config or the first available index
             if (
                 config.MAIN_CAMERA_ID is not None
@@ -1008,11 +1136,6 @@ class AllCameras:
         """
         Get the camera ids for all the cameras selected except the main camera.
         """
-        main_camera = self.main_camera
-
-        if isinstance(main_camera, RealSenseCamera):
-            # If we use realsense camera as the main, all others are secondary
-            return [id for id in self.camera_ids if id in self.cameras_ids_to_record]
 
         return [
             camera_id
@@ -1024,37 +1147,19 @@ class AllCameras:
         """
         Get the camera objects for all the cameras except the main camera.
         """
-
-        if (
-            isinstance(self.main_camera, RealSenseCamera)
-            and self.main_camera.camera_type == "realsense"
-        ):
-            # If we use realsense camera as the main, all others are secondary
-            return cast(
-                List[BaseCamera],
-                [
-                    camera
-                    for camera in self.video_cameras
-                    if camera.camera_id in self.cameras_ids_to_record
-                ],
-            )
-        else:
-            # Otherwise, all cameras except the main are secondary.
-            cameras = cast(
-                List[BaseCamera],
-                [
-                    camera
-                    for camera in self.video_cameras
-                    if (
-                        camera != self.main_camera
-                        and camera.camera_id in self.cameras_ids_to_record
-                    )
-                ],
-            )
-            # Also add the realsense camera if it's available
-            if self.realsensecamera is not None and self.realsensecamera.is_connected:
-                cameras.append(self.realsensecamera)
-            return cameras
+        # All cameras except the main are secondary.
+        cameras = cast(
+            List[BaseCamera],
+            [
+                camera
+                for camera in self.video_cameras
+                if (
+                    camera != self.main_camera
+                    and camera.camera_id in self.cameras_ids_to_record
+                )
+            ],
+        )
+        return cameras
 
     def get_secondary_camera_frames(
         self,

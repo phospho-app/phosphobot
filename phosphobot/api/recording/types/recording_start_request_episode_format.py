@@ -2,6 +2,4 @@
 
 import typing
 
-RecordingStartRequestEpisodeFormat = typing.Union[
-    typing.Literal["json", "lerobot_v2"], typing.Any
-]
+RecordingStartRequestEpisodeFormat = typing.Union[typing.Literal["json", "lerobot_v2"], typing.Any]

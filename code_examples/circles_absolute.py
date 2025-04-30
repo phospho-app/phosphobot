@@ -31,11 +31,12 @@ for _ in range(NUMBER_OF_CIRCLES):
             "absolute",
             {
                 "x": 0,
-                "y": position_y,
+                "y": 0,
                 "z": position_z,
                 "rx": 0,
                 "ry": 0,
-                "rz": 0,
+                # rz is used to move the robot from left to right
+                "rz": position_y,
                 "open": 0,
             },
         )

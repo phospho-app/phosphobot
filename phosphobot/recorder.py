@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks
 from loguru import logger
 
 from phosphobot.camera import AllCameras
+from phosphobot.configs import config
 from phosphobot.models import (
     BaseRobot,
     Dataset,
@@ -20,8 +21,7 @@ from phosphobot.models import (
     TasksModel,
 )
 from phosphobot.types import VideoCodecs
-from phosphobot.utils import get_home_app_path
-from phosphobot.configs import config
+from phosphobot.utils import background_task_log_exceptions, get_home_app_path
 
 
 class Recorder:
@@ -131,7 +131,7 @@ class Recorder:
         """
 
         if target_size is None:
-            target_size = config.DEFAULT_VIDEO_SIZE
+            target_size = (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1])
 
         if self.is_recording:
             logger.warning("Stopping previous recording")
@@ -155,6 +155,8 @@ class Recorder:
         self.is_recording = True
         self.start_ts = time.perf_counter()
 
+        self.robots = robots
+
         # Count the number of files in meta_folder_path/data/chunk-000 to get episode_index
         os.makedirs(self.data_folder_path, exist_ok=True)
         episode_index = len(os.listdir(self.data_folder_path))
@@ -166,6 +168,8 @@ class Recorder:
                 "episode_index": episode_index,
                 "created_at": self.start_ts,
                 "robot_type": ", ".join(robot.name for robot in robots),
+                "format": self.episode_format,
+                "dataset_name": self.dataset_name,
             },
         )
 
@@ -207,7 +211,7 @@ class Recorder:
             self.global_index = self.info_model.total_frames
 
         background_tasks.add_task(
-            self.record,
+            background_task_log_exceptions(self.record),
             target_size=target_size,
             language_instruction=instruction or config.DEFAULT_TASK_INSTRUCTION,
         )
@@ -360,6 +364,8 @@ class Recorder:
         # Init variables to store the data of the episode
         step_count = 0
         while self.is_recording:
+            current_ts = time.perf_counter()
+
             main_frames = self.cameras.get_main_camera_frames(
                 target_video_size=target_size
             )
@@ -393,8 +399,6 @@ class Recorder:
                 state_other, joints_position_other = robot.get_observation()
                 state = np.append(state, state_other)
                 joints_position = np.append(joints_position, joints_position_other)
-
-            current_ts = time.perf_counter()
 
             observation = Observation(
                 main_image=main_frame,
@@ -442,6 +446,8 @@ class Recorder:
                 )
                 self.episodes_model.update(step=step, episode_index=self.episode.index)
                 self.tasks_model.update(step=step)
-            # Wait for 1 / freq seconds (default: 1/10s)
-            await asyncio.sleep(1 / self.freq)
+
+            elapsed = current_ts - time.perf_counter()
+            time_to_wait = max(1 / self.freq - elapsed, 0)
+            await asyncio.sleep(time_to_wait)
             step_count += 1

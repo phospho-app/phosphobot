@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Literal, Optional, Union, cast
+from typing import Dict, List, Literal, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd  # type: ignore
@@ -20,7 +20,7 @@ from huggingface_hub import (
     upload_folder,
 )
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from phosphobot.types import VideoCodecs
 from phosphobot.utils import (
@@ -30,10 +30,13 @@ from phosphobot.utils import (
     create_video_file,
     decode_numpy,
     get_field_min_max,
+    get_hf_token,
     get_hf_username_or_orgid,
     get_home_app_path,
     parse_hf_username_or_orgid,
 )
+
+DEFAULT_FILE_ENCODING = "utf-8"
 
 
 class BaseRobotPIDGains(BaseModel):
@@ -53,9 +56,21 @@ class BaseRobotConfig(BaseModel):
 
     name: str
     servos_voltage: float
-    servos_offsets: List[float]
+    servos_offsets: List[float] = Field(
+        default_factory=lambda: [
+            2048.0,
+            2048.0,
+            2048.0,
+            2048.0,
+            2048.0,
+            2048.0,
+        ]
+    )
+    # Default factory: default offsets for SO-100
     servos_calibration_position: List[float]
-    servos_offsets_signs: List[float]
+    servos_offsets_signs: List[float] = Field(
+        default_factory=lambda: [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    )
     pid_gains: List[BaseRobotPIDGains] = Field(default_factory=list)
 
     # Torque value to consider that an object is gripped
@@ -68,13 +83,26 @@ class BaseRobotConfig(BaseModel):
         Load a configuration from a JSON file
         """
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding=DEFAULT_FILE_ENCODING) as f:
                 data = json.load(f)
 
         except FileNotFoundError:
             return None
 
-        return cls(**data)
+        # Fix issues with the JSON file
+        servos_offsets = data.get("servos_offsets", [])
+        if len(servos_offsets) == 0:
+            data["servos_offsets"] = [2048.0] * 6
+
+        servos_offsets_signs = data.get("servos_offsets_signs", [])
+        if len(servos_offsets_signs) == 0:
+            data["servos_offsets_signs"] = [-1.0] + [1.0] * 5
+
+        try:
+            return cls(**data)
+        except Exception as e:
+            logger.error(f"Error loading configuration from {filepath}: {e}")
+            return None
 
     @classmethod
     def from_serial_id(
@@ -91,7 +119,7 @@ class BaseRobotConfig(BaseModel):
         """
         Save the configuration to a JSON file
         """
-        with open(filename, "w") as f:
+        with open(filename, "w", encoding=DEFAULT_FILE_ENCODING) as f:
             f.write(self.model_dump_json(indent=4))
 
     def save_local(self, serial_id: str) -> str:
@@ -117,6 +145,22 @@ class BaseRobot(ABC):
     ) -> None:
         """
         Set the motor positions of the robot
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def write_joint_positions(
+        self, angles: np.ndarray, unit: Literal["rad", "degrees"] = "rad"
+    ) -> None:
+        """
+        Write the joint positions of the robot
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def current_position(self, rad: bool = True) -> np.ndarray:
+        """
+        Get the current position of the robot
         """
         raise NotImplementedError
 
@@ -199,6 +243,7 @@ class Step(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+        extra = "ignore"
 
 
 class Episode(BaseModel):
@@ -214,17 +259,22 @@ class Episode(BaseModel):
     steps: List[Step] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
 
+    class Config:
+        extra = "ignore"
+
     @property
     def dataset_path(self) -> Path:
         """
         Return the file path of the episode
         """
-        path = (
-            get_home_app_path()
-            / "recordings"
-            / self.metadata.get("format")
-            / self.metadata.get("dataset_name")
-        )
+        format = self.metadata.get("format")
+        dataset_name = self.metadata.get("dataset_name")
+        if not format:
+            raise ValueError("Episode metadata format not set")
+        if not dataset_name:
+            raise ValueError("Episode metadata dataset_name not set")
+
+        path = get_home_app_path() / "recordings" / format / dataset_name
         os.makedirs(path, exist_ok=True)
         return path
 
@@ -233,7 +283,6 @@ class Episode(BaseModel):
         """
         Return the file path of the episode
         """
-        # Ensure there is a older folder_name/episode_format/dataset_name/data/chunk-000/
         path = self.dataset_path / "data" / "chunk-000"
         os.makedirs(path, exist_ok=True)
         return path
@@ -344,12 +393,12 @@ class Episode(BaseModel):
             lerobot_episode_parquet: LeRobotEpisodeModel = (
                 self.convert_episode_data_to_LeRobot(
                     fps=fps,
-                    episodes_path=self.episodes_path,
+                    episodes_path=str(self.episodes_path),
                     episode_index=episode_index,
                     last_frame_index=last_frame_index,
                 )
             )
-            lerobot_episode_parquet.to_parquet(self.parquet_path)
+            lerobot_episode_parquet.to_parquet(str(self.parquet_path))
 
             # Create the main video file and path
             # Get the video_path from the InfoModel
@@ -360,12 +409,20 @@ class Episode(BaseModel):
                 if i == 0:
                     # First video is the main camera
                     frames = np.array(self.get_episode_frames_main_camera())
+                elif i > len(secondary_camera_frames):
+                    # There are secondary cameras in the info model, but not in the episode
+                    # Skip video creation.
+                    logger.warning(
+                        f"Secondary camera {key} not found in the episode. Skipping video creation."
+                    )
+                    break
                 else:
                     # Following videos are the secondary cameras
                     frames = np.array(secondary_camera_frames[i - 1])
+                video_path = self.get_video_path(camera_key=key)
                 saved_path = create_video_file(
                     frames=frames,
-                    output_path=self.get_video_path(camera_key=key),
+                    output_path=str(video_path),
                     target_size=(feature.shape[1], feature.shape[0]),
                     fps=feature.info.video_fps,
                     codec=feature.info.video_codec,
@@ -375,9 +432,9 @@ class Episode(BaseModel):
                     isinstance(saved_path, tuple)
                     and all(os.path.exists(path) for path in saved_path)
                 ):
-                    logger.info(f"Video {key} {i} saved to {self.get_video_path}")
+                    logger.info(f"Video {key} {i} saved to {video_path}")
                 else:
-                    logger.error(f"Video {key} {i} not saved to {self.get_video_path}")
+                    logger.error(f"Video {key} {i} not saved to {video_path}")
 
         # Case where we save the episode in JSON format
         # Save the episode to a JSON file
@@ -400,7 +457,7 @@ class Episode(BaseModel):
             data_dict = self.model_dump()
 
             # Save to JSON using the custom encoder
-            with open(self.json_path, "w") as f:
+            with open(self.json_path, "w", encoding=DEFAULT_FILE_ENCODING) as f:
                 json.dump(data_dict, f, cls=NumpyEncoder)
 
     @classmethod
@@ -410,7 +467,7 @@ class Episode(BaseModel):
         if not os.path.exists(episode_data_path):
             raise FileNotFoundError(f"Episode file {episode_data_path} not found.")
 
-        with open(episode_data_path, "r") as f:
+        with open(episode_data_path, "r", encoding=DEFAULT_FILE_ENCODING) as f:
             data_dict = json.load(f, object_hook=decode_numpy)
             logger.debug(f"Data dict keys: {data_dict.keys()}")
 
@@ -437,9 +494,21 @@ class Episode(BaseModel):
         episode_df["observation"] = episode_df[cols].to_dict(orient="records")
 
         # Add metadata to the episode
-        index_of_lerobotv2 = episode_data_path.split("/").index("lerobot_v2")
+        # the path is like this : dataset_name/data/chunk-000/episode_xxxxxx.parquet
+        # get the path : dataset_name
+        normalized = os.path.normpath(episode_data_path)
+        parts = normalized.split(os.sep)
+        if len(parts) >= 4:
+            dataset_path = parts[-4]
+        else:
+            logger.warning(
+                f"Episode {episode_data_path} does not contain the dataset name in the path. Path should be: dataset_name/data/chunk-000/episode_xxxxxx.parquet"
+                + "Using parent folder name as dataset name."
+            )
+            dataset_path = os.path.basename(os.path.dirname(episode_data_path))
+
         metadata = {
-            "dataset_name": episode_data_path.split("/")[index_of_lerobotv2 + 1],
+            "dataset_name": dataset_path,
             "format": "lerobot_v2",
             "index": episode_df["episode_index"].iloc[0],
         }
@@ -474,6 +543,15 @@ class Episode(BaseModel):
         # When a step is aded, it is the last of the episode by default until we add another step
         step.is_terminal = True
         step.is_last = True
+
+        # Check if the observation are all NAN values (this is the case when there is a read error on motors)
+        # If so, replace them with the previous step values
+        if len(self.steps) > 0 and np.isnan(step.observation.joints_position).all():
+            # Replace the joints_position with the previous step
+            step.observation.joints_position = self.steps[
+                -1
+            ].observation.joints_position.copy()
+
         # If current step is the first step of the episode
         if not self.steps:
             step.is_first = True
@@ -493,32 +571,105 @@ class Episode(BaseModel):
         if len(self.steps) > 0:
             self.steps[-1].action = step.observation.joints_position.copy()
 
-    async def play(self, robot: BaseRobot):
+    async def play(
+        self,
+        robots: List[BaseRobot],
+        playback_speed: float = 1.0,
+        interpolation_factor: int = 4,
+        replicate: bool = False,
+    ):
         """
-        Play the episode on the robot.
+        Play the episode on the robot with on-the-fly interpolation.
         """
+
+        def move_robots(joints: np.ndarray) -> None:
+            """
+            Solve which robot should move depending on the number of joints and
+            the number of robots.
+            - If nb robots == nb joints, move each robot with its respective joints
+            - If nb joints > nb robots, move each robot with its respective joints until
+                the last robot. Extra joints are ignored.
+            - If nb joints < nb robots, move each robot with its respective joints until
+                the last joint. Extra robots are ignored
+            """
+
+            nonlocal robots
+
+            nb_joints = 1 + len(joints) % 6  # 6 joints per robot
+            for i, robot in enumerate(robots):  # extra joints are ignored
+                # If there are more robots than joints, ignore the extra robots
+                if i >= nb_joints:
+                    if replicate is False:
+                        break
+                    else:
+                        # Go back to the first robot
+                        i = i % nb_joints
+
+                # Get the joints for the current robot
+                robot_joints = joints[i * 6 : (i + 1) * 6]
+                # Move the robot with its respective joints
+                robot.set_motors_positions(robot_joints, enable_gripper=True)
+
         for index, step in enumerate(self.steps):
-            # Move the robot to the recorded position
-            time_start = time.time()
-            if index % 20 == 0:
-                logger.info(f"Playing step {index}")
-                logger.info(f"Joints position: {step.observation.joints_position}")
-            robot.set_motors_positions(step.observation.joints_position[:6])
-            robot.control_gripper(step.observation.joints_position[-1])
-
-            # Compute the delta timestamp
+            # Get current and next step
+            curr_step = step
             next_step = self.steps[index + 1] if index + 1 < len(self.steps) else None
-            if next_step is not None:
-                if (
-                    next_step.observation.timestamp is not None
-                    and step.observation.timestamp is not None
-                ):
-                    delta_timestamp = (
-                        next_step.observation.timestamp - step.observation.timestamp
-                    )
 
-                    while time.time() - time_start <= delta_timestamp:
-                        await asyncio.sleep(1e-6)
+            if (
+                next_step is not None
+                and curr_step.observation.timestamp is not None
+                and next_step.observation.timestamp is not None
+                and curr_step.observation.joints_position is not None
+                and next_step.observation.joints_position is not None
+            ):
+                # if the current step is all NAN, skip
+                if np.isnan(curr_step.observation.joints_position).all():
+                    logger.warning(
+                        f"Skipping step {index} because all joints positions are NaN"
+                    )
+                    continue
+                # Calculate base delta timestamp
+                delta_timestamp = (
+                    next_step.observation.timestamp - curr_step.observation.timestamp
+                )
+                # Higher playback speed = less time per segment
+                # Higher interpolation factor = less time per segment + more segments
+                time_per_segment = (
+                    delta_timestamp / interpolation_factor / playback_speed
+                )
+
+                # Fill empty values from the next step joints with the current step
+                next_step.observation.joints_position = np.where(
+                    np.isnan(next_step.observation.joints_position),
+                    curr_step.observation.joints_position,
+                    next_step.observation.joints_position,
+                )
+
+                # Perform interpolation steps
+                for i in range(interpolation_factor):
+                    start_time = time.perf_counter()
+
+                    # Calculate interpolation ratio (0 to 1 across all segments)
+                    t = i / interpolation_factor
+
+                    # Interpolate between the current and next step
+                    interp_value = t * (next_step.observation.joints_position) + (
+                        1 - t
+                    ) * (curr_step.observation.joints_position)
+
+                    if index % 20 == 0 and i == 0:
+                        logger.info(f"Playing step {index}")
+
+                    move_robots(interp_value)
+                    # Timing control
+                    elapsed = time.perf_counter() - start_time
+                    time_to_wait = max(time_per_segment - elapsed, 0)
+                    await asyncio.sleep(time_to_wait)
+
+            else:
+                # Handle last step or cases where timestamp is None
+                start_time = time.perf_counter()
+                move_robots(curr_step.observation.joints_position)
 
     def get_episode_index(self, episode_recording_folder_path: str, dataset_name: str):
         dataset_path = os.path.join(
@@ -534,7 +685,11 @@ class Episode(BaseModel):
             episode_index = 0
 
         else:
-            with open(os.path.join(meta_path, "info.json"), "r") as f:
+            with open(
+                os.path.join(meta_path, "info.json"),
+                "r",
+                encoding=DEFAULT_FILE_ENCODING,
+            ) as f:
                 info_json = json.load(f)
                 episode_index = info_json["total_episodes"]
         return episode_index
@@ -633,7 +788,7 @@ class Episode(BaseModel):
         Returns a list, where each np.array is a series of frames for a secondary camera.
         """
         # Handle the case where there are no secondary images
-        if not self.steps[0].observation.secondary_images:
+        if len(self.steps) == 0 or not self.steps[0].observation.secondary_images:
             return []
 
         # Convert the nested structure to a numpy array first
@@ -644,25 +799,31 @@ class Episode(BaseModel):
 
         return all_images
 
-    def delete(self, update_hub: bool = True) -> None:
+    def delete(self, update_hub: bool = True, repo_id: str | None = None) -> None:
         """
         Remove files related to the episode. Note: this doesn't update the meta files from the dataset.
         Call Data.delete_episode to update the meta files.
 
-        If update_hub is True, the files will be removed from the HuggingFace repository.
+        If update_hub is True, the files will be removed from the Hugging Face repository.
         There is no verification that the files are actually in the repository or that the repository exists.
         You need to do that beforehand.
         """
         if self.metadata.get("format") == "lerobot_v2":
             # Delete the parquet file
-            os.remove(self.parquet_path)
-            if update_hub:
+            try:
+                os.remove(self.parquet_path)
+            except FileNotFoundError:
+                logger.warning(
+                    f"Parquet file {self.parquet_path} not found. Skipping deletion."
+                )
+
+            if update_hub and repo_id is not None:
                 # In the huggingface dataset, we need to pass the relative path.
                 relative_episode_path = (
-                    "data" / "chunk-000" / f"episode_{self.index:06d}.parquet"
+                    f"data/chunk-000/episode_{self.index:06d}.parquet"
                 )
                 delete_file(
-                    repo_id=self.repo_id,
+                    repo_id=repo_id,
                     path_in_repo=relative_episode_path,
                     repo_type="dataset",
                 )
@@ -670,10 +831,15 @@ class Episode(BaseModel):
             # Remove the video files from the HF repository
             all_camera_folders = os.listdir(self.cameras_folder_path)
             for camera_key in all_camera_folders:
-                os.remove(self.get_video_path(camera_key))
-                if update_hub:
+                try:
+                    os.remove(self.get_video_path(camera_key))
+                except FileNotFoundError:
+                    logger.warning(
+                        f"Video file {self.get_video_path(camera_key)} not found. Skipping deletion."
+                    )
+                if update_hub and repo_id is not None:
                     delete_file(
-                        repo_id=self.repo_id,
+                        repo_id=repo_id,
                         path_in_repo=f"videos/chunk-000/{camera_key}/episode_{self.index:06d}.mp4",
                         repo_type="dataset",
                     )
@@ -738,6 +904,7 @@ class LeRobotEpisodeModel(BaseModel):
         # Rename the columns to match the expected names in the Parquet file
         df.rename(columns={"observation_state": "observation.state"}, inplace=True)
         df.to_parquet(filename, index=False)
+        logger.debug(f"Wrote {df.shape[0]} rows dataset to {filename}")
 
 
 class Dataset:
@@ -752,26 +919,25 @@ class Dataset:
     episode_format: Literal["json", "lerobot_v2"]
     data_file_extension: str
     # Full path to the dataset folder
-    folder_full_path: str
+    folder_full_path: Path
 
     def __init__(self, path: str) -> None:
         """
         Load an existing dataset.
         """
         # Check path format
-        path_parts = path.split("/")
+        path_obj = Path(path)
+        path_parts = path_obj.parts
         if len(path_parts) < 2 or path_parts[-2] not in ["json", "lerobot_v2"]:
-            raise ValueError(
-                "Wrong dataset path provided. Path must contain json or lerobot_v2 format."
-            )
+            raise ValueError("Wrong dataset path provided.")
 
-        self.path = path
+        self.path = str(path_obj)
         self.episodes = []
         self.dataset_name = path_parts[-1]
         self.episode_format = cast(Literal["json", "lerobot_v2"], path_parts[-2])
-        self.folder_full_path = path
+        self.folder_full_path = path_obj
         self.data_file_extension = "json" if path_parts[-2] == "json" else "parquet"
-        self.HF_API = HfApi()
+        self.HF_API = HfApi(token=get_hf_token())
 
         # Validate dataset name
         if not Dataset.check_dataset_name(self.dataset_name):
@@ -804,6 +970,25 @@ class Dataset:
 
         return name
 
+    @classmethod
+    def remove_ds_store_files(cls, folder_path: str):
+        try:
+            # Iterate through all items in the folder
+            for item in os.listdir(folder_path):
+                item_path = os.path.join(folder_path, item)
+
+                # If item is a .DS_Store file, remove it
+                if item == ".DS_Store":
+                    os.remove(item_path)
+                    continue
+
+                # If item is a directory, recurse into it
+                if os.path.isdir(item_path):
+                    cls.remove_ds_store_files(item_path)
+
+        except (PermissionError, OSError):
+            pass
+
     def get_episode_data_path(self, episode_id: int) -> str:
         """Get the full path to the data with episode id"""
         if self.episode_format == "json":
@@ -824,17 +1009,17 @@ class Dataset:
     @property
     def meta_folder_full_path(self) -> str:
         """Get the folder path of the dataset"""
-        return os.path.join(self.folder_full_path, "meta")
+        return str(self.folder_full_path / "meta")
 
     @property
     def data_folder_full_path(self) -> str:
         """Get the full path to the data folder"""
-        return os.path.join(self.folder_full_path, "data", "chunk-000")
+        return str(self.folder_full_path / "data" / "chunk-000")
 
     @property
     def videos_folder_full_path(self) -> str:
         """Get the full path to the videos folder"""
-        return os.path.join(self.folder_full_path, "videos", "chunk-000")
+        return str(self.folder_full_path / "videos" / "chunk-000")
 
     def get_df_episode(self, episode_id: int) -> pd.DataFrame:
         """Get the episode data as a pandas DataFrame"""
@@ -855,13 +1040,10 @@ class Dataset:
         Return the huggingface repository id
         """
         repo_id = f"{get_hf_username_or_orgid()}/{self.dataset_name}"
-        # Check that the repository exists
-        if not self.check_repo_exists(repo_id):
-            logger.warning(f"Repository {repo_id} does not exist on HuggingFace")
         return repo_id
 
     def check_repo_exists(self, repo_id: str | None) -> bool:
-        """Check if a repository exists on HuggingFace"""
+        """Check if a repository exists on Hugging Face"""
         repo_id = repo_id or self.repo_id
         return self.HF_API.repo_exists(repo_id=repo_id, repo_type="dataset")
 
@@ -874,11 +1056,11 @@ class Dataset:
         )
 
     def sync_local_to_hub(self):
-        """Reupload the dataset folder to HuggingFace"""
+        """Reupload the dataset folder to Hugging Face"""
         username_or_orgid = get_hf_username_or_orgid()
         if username_or_orgid is None:
             logger.warning(
-                "No HuggingFace token found. Please add a token in the Admin page.",
+                "No Hugging Face token found. Please add a token in the Admin page.",
             )
             return
 
@@ -886,31 +1068,40 @@ class Dataset:
             repo_id=self.repo_id, repo_type="dataset"
         )
 
-        # If the repository does not exist, push the dataset to HuggingFace
+        # If the repository does not exist, push the dataset to Hugging Face
         if not repository_exists:
             self.push_dataset_to_hub()
 
         # else, Delete the folders and reupload the dataset.
         else:
-            # Delete the dataset folders from HuggingFace
-            delete_folder(
-                repo_id=self.repo_id, path_in_repo="./data", repo_type="dataset"
-            )
-            delete_folder(
-                repo_id=self.repo_id, path_in_repo="./videos", repo_type="dataset"
-            )
-            delete_folder(
-                repo_id=self.repo_id, path_in_repo="./meta", repo_type="dataset"
-            )
-            # Reupload the dataset folder to HuggingFace
-            upload_folder(
+            # Delete the dataset folders from Hugging Face
+            try:
+                delete_folder(
+                    repo_id=self.repo_id, path_in_repo="./data", repo_type="dataset"
+                )
+            except Exception:
+                logger.debug("No data folder to delete")
+            try:
+                delete_folder(
+                    repo_id=self.repo_id, path_in_repo="./videos", repo_type="dataset"
+                )
+            except Exception:
+                logger.debug("No videos folder to delete")
+            try:
+                delete_folder(
+                    repo_id=self.repo_id, path_in_repo="./meta", repo_type="dataset"
+                )
+            except Exception:
+                logger.debug("No meta folder to delete")
+            # Reupload the dataset folder to Hugging Face
+            self.HF_API.upload_folder(
                 folder_path=self.folder_full_path,
                 repo_id=self.repo_id,
                 repo_type="dataset",
             )
 
     def delete(self) -> None:
-        """Delete the dataset from the local folder and HuggingFace"""
+        """Delete the dataset from the local folder and Hugging Face"""
         # Delete locally
         if not os.path.exists(self.folder_full_path):
             logger.error(f"Dataset not found in {self.folder_full_path}")
@@ -923,16 +1114,16 @@ class Dataset:
         else:
             logger.error(f"The Dataset is a file: {self.folder_full_path}")
 
-        # Remove the dataset from HuggingFace
+        # Remove the dataset from Hugging Face
         if self.check_repo_exists(self.repo_id):
             delete_repo(repo_id=self.repo_id, repo_type="dataset")
 
     def reindex_episodes(
         self,
         folder_path: str,
-        episode_to_remove_id: int,
         nb_steps_deleted_episode: int = 0,
-    ):
+        old_index_to_new_index: Optional[Dict[int, int]] = None,
+    ) -> Dict[int, int]:
         """
         Reindex the episode after removing one.
         This is used for videos or for parquet file
@@ -942,54 +1133,86 @@ class Dataset:
         folder_path: str
             The path to the folder where the episodes data or videos are stored. May be users/Downloads/dataset_name/data/chunk-000/
             or  users/Downloads/dataset_name/videos/chunk-000/observation.main_image.right
-        episode_to_remove_id: int
-            The id of the episode to remove
         nb_steps_deleted_episode: int
             The number of steps deleted in the episode
+        old_index_to_new_index: Optional[Dict[int, int]]
+            A dictionary mapping old indices to new indices. If None, the function will create a new mapping.
+
+        Returns:
+        --------
+        Dict[int, int]
+            A dictionary mapping old indices to new indices.
 
         Example:
         --------
         episodes in data are [episode_000000.parquet, episode_000001.parquet, episode_000003.parquet] after we removed episode_000002.parquet
         the result will be [episode_000000.parquet, episode_000001.parquet, episode_000002.parquet]
         """
-        for filename in os.listdir(folder_path):
+
+        # Create a mapping of old index to new index
+        if old_index_to_new_index is None:
+            old_index_to_new_index = {}
+            current_new_index_max = 0
+
+            for filename in sorted(os.listdir(folder_path)):
+                if filename.startswith("episode_"):
+                    # Check the episode files and extract the index
+                    # Also extract the file extension
+                    file_extension = filename.split(".")[-1]
+                    old_index = int(filename.split("_")[-1].split(".")[0])
+                    old_index_to_new_index[old_index] = current_new_index_max
+                    current_new_index_max += 1
+        current_new_index_max = max(old_index_to_new_index.values()) + 1
+
+        logger.debug(f"old_index_to_new_index: {old_index_to_new_index}")
+
+        # Reindex the files in the folder
+        for filename in sorted(os.listdir(folder_path)):
             if filename.startswith("episode_"):
-                # Check the episode files and extract the index
-                # Also extract the file extension
                 file_extension = filename.split(".")[-1]
-                episode_index = int(filename.split("_")[-1].split(".")[0])
-                if episode_index > episode_to_remove_id:
-                    new_filename = f"episode_{episode_index - 1:06d}.{file_extension}"
-                    os.rename(
-                        os.path.join(folder_path, filename),
-                        os.path.join(folder_path, new_filename),
-                    )
 
-                    # Update the episode index inside the parquet file
-                    if file_extension == "parquet":
-                        assert nb_steps_deleted_episode > 0, "Received 0 step deleted"
-                        # Read the parquet file
-                        df = pd.read_parquet(os.path.join(folder_path, new_filename))
-                        # I want to decrement episode index by 1 for indexes superior to the removed episode
-                        df["episode_index"] = df["episode_index"] - 1
-                        # I want to decrement the global index by the number of steps deleted in the episode
-                        df["index"] = df["index"] - nb_steps_deleted_episode
-                        # Save the updated parquet file
-                        df.to_parquet(os.path.join(folder_path, new_filename))
+                old_index = int(filename.split("_")[-1].split(".")[0])
+                if old_index in old_index_to_new_index.keys():
+                    new_index = old_index_to_new_index[old_index]
+                else:
+                    # If the file is not in the mapping, we need to create a new index
+                    new_index = current_new_index_max
+                    current_new_index_max += 1
 
-                    if file_extension == "json":
-                        # Update the episode index inside the json file with pandas
-                        df = pd.read_json(os.path.join(folder_path, new_filename))
-                        df["episode_index"] = df["episode_index"] - 1
-                        df.to_json(os.path.join(folder_path, new_filename))
+                new_filename = f"episode_{new_index:06d}.{file_extension}"
+                os.rename(
+                    os.path.join(folder_path, filename),
+                    os.path.join(folder_path, new_filename),
+                )
+
+                # Update the episode index inside the parquet file
+                if file_extension == "parquet":
+                    assert nb_steps_deleted_episode > 0, "Received 0 step deleted"
+                    # Read the parquet file
+                    df = pd.read_parquet(os.path.join(folder_path, new_filename))
+                    # I want to decrement episode index by 1 for indexes superior to the removed episode
+                    df["episode_index"] = df["episode_index"] - 1
+                    # I want to decrement the global index by the number of steps deleted in the episode
+                    df["index"] = df["index"] - nb_steps_deleted_episode
+                    # Save the updated parquet file
+                    df.to_parquet(os.path.join(folder_path, new_filename))
+
+                if file_extension == "json":
+                    # Update the episode index inside the json file with pandas
+                    df = pd.read_json(os.path.join(folder_path, new_filename))
+                    df["episode_index"] = df["episode_index"] - 1
+                    df.to_json(os.path.join(folder_path, new_filename))
+
+        return old_index_to_new_index
 
     def delete_episode(self, episode_id: int, update_hub: bool = True) -> None:
         """
         Delete the episode data from the dataset.
         If format is lerobot_v2, also delete the episode videos from the dataset
         and updates the meta data.
+        JSON format not supported
 
-        If update_hub is True, also delete the episode data from the HuggingFace repository
+        If update_hub is True, also delete the episode data from the Hugging Face repository
         """
 
         episode_to_delete = Episode.load(self.get_episode_data_path(episode_id))
@@ -997,9 +1220,13 @@ class Dataset:
 
         if self.check_repo_exists(self.repo_id) is False:
             logger.warning(
-                f"Repository {self.repo_id} does not exist on HuggingFace. Skipping deletion on HuggingFace"
+                f"Repository {self.repo_id} does not exist on Hugging Face. Skipping deletion on Hugging Face"
             )
             update_hub = False
+
+        logger.info(
+            f"Deleting episode {episode_id} from dataset {self.dataset_name} with episode format {self.episode_format}"
+        )
 
         if self.episode_format == "lerobot_v2":
             # Start loading current meta data
@@ -1019,48 +1246,35 @@ class Dataset:
             # Update stats for images before deleting the videos
             stats_model._update_for_episode_removal_images_stats(
                 folder_videos_path=self.videos_folder_full_path,
+                meta_folder_path=self.meta_folder_full_path,
                 episode_to_delete_index=episode_id,
             )
 
             # Update meta data before episode removal
+            try:
+                episode_parquet = episode_to_delete.parquet()
+            except FileNotFoundError as e:
+                logger.warning(f"Episode {episode_id} not found: {e}")
+                episode_parquet = pd.DataFrame()
             tasks_model.update_for_episode_removal(
-                df_episode_to_delete=episode_to_delete.parquet(),
-                data_folder_full_path=self.meta_folder_full_path,
+                df_episode_to_delete=episode_parquet,
+                data_folder_full_path=self.data_folder_full_path,
             )
             tasks_model.save(meta_folder_path=self.meta_folder_full_path)
             logger.info("Tasks model updated")
 
-            episodes_model.update_for_episode_removal(
-                episode_to_delete_index=episode_id
-            )
-            episodes_model.save(
-                meta_folder_path=self.meta_folder_full_path, save_mode="overwrite"
-            )
-            logger.info("Episodes model updated")
-
             info_model.update_for_episode_removal(
-                df_episode_to_delete=episode_to_delete.parquet(),
+                df_episode_to_delete=episode_parquet,
             )
             info_model.save(meta_folder_path=self.meta_folder_full_path)
             logger.info("Info model updated")
-
-            stats_model._update_for_episode_removal_mean_std_count(
-                df_episode_to_delete=episode_to_delete.parquet(),
-            )
-            stats_model._update_for_episode_removal_min_max(
-                data_folder_path=self.data_folder_full_path,
-                episode_to_delete_index=episode_id,
-            )
-            stats_model.save(meta_folder_path=self.meta_folder_full_path)
-            logger.info("Stats model updated")
 
             # Delete the actual episode files (parquet and mp4 video)
             episode_to_delete.delete(update_hub=update_hub)
 
             # Rename the remaining episodes to keep the numbering consistent
             # be sure to reindex AFTER deleting the episode data
-            self.reindex_episodes(
-                episode_to_remove_id=episode_to_delete.index,
+            old_index_to_new_index = self.reindex_episodes(
                 nb_steps_deleted_episode=len(episode_to_delete.steps),
                 folder_path=self.data_folder_full_path,
             )
@@ -1068,8 +1282,28 @@ class Dataset:
             for camera_folder_full_path in self.get_camera_folders_full_paths():
                 self.reindex_episodes(
                     folder_path=camera_folder_full_path,
-                    episode_to_remove_id=episode_id,
+                    old_index_to_new_index=old_index_to_new_index,
                 )
+
+            episodes_model.update_for_episode_removal(
+                episode_to_delete_index=episode_id,
+                old_index_to_new_index=old_index_to_new_index,
+            )
+            episodes_model.save(
+                meta_folder_path=self.meta_folder_full_path, save_mode="overwrite"
+            )
+            logger.info("Episodes model updated")
+
+            stats_model._update_for_episode_removal_mean_std_count(
+                df_episode_to_delete=episode_parquet,
+            )
+            stats_model._update_for_episode_removal_min_max(
+                data_folder_path=self.data_folder_full_path,
+                meta_folder_path=self.meta_folder_full_path,
+                episode_to_delete_index=episode_id,
+            )
+            stats_model.save(meta_folder_path=self.meta_folder_full_path)
+            logger.info("Stats model updated")
 
             if update_hub:
                 upload_folder(
@@ -1161,7 +1395,7 @@ class Dataset:
             )
         return unique_shapes.pop()
 
-    def get_fps(self) -> float:
+    def get_average_fps(self) -> float:
         """
         Return the average FPS of the dataset
         """
@@ -1179,7 +1413,7 @@ class Dataset:
 
         return np.mean(episode_fps)
 
-    def push_dataset_to_hub(self, branch_path: str | None = "2.0"):
+    def push_dataset_to_hub(self, branch_path: str | None = None):
         """
         Push the dataset to the Hugging Face Hub.
 
@@ -1210,20 +1444,22 @@ class Dataset:
             # Create README if it doesn't exist
             readme_path = os.path.join(self.folder_full_path, "README.md")
             if not os.path.exists(readme_path):
-                with open(readme_path, "w") as readme_file:
+                with open(
+                    readme_path, "w", encoding=DEFAULT_FILE_ENCODING
+                ) as readme_file:
                     readme_file.write(f"""
 ---
 tags:
 - phosphobot
 - so100
-- phospho-dk1
+- phospho-dk
 task_categories:
 - robotics                                                   
 ---
 
 # {self.dataset_name}
 
-**This dataset was generated using a [phospho dev kit](https://robots.phospho.ai).**
+**This dataset was generated using a [phospho starter pack](https://robots.phospho.ai).**
 
 This dataset contains a series of episodes recorded with a robot and multiple cameras. \
 It can be directly used to train a policy using imitation learning. \
@@ -1238,7 +1474,7 @@ It's compatible with LeRobot and RLDS.
             try:
                 self.HF_API.repo_info(repo_id=dataset_repo_name, repo_type="dataset")
                 logger.info(f"Repository {dataset_repo_name} already exists.")
-            except Exception as e:
+            except Exception:
                 logger.info(
                     f"Repository {dataset_repo_name} does not exist. Creating it..."
                 )
@@ -1255,11 +1491,10 @@ It's compatible with LeRobot and RLDS.
             logger.info(
                 f"Pushing the dataset to the main branch in repository {dataset_repo_name}"
             )
-            upload_folder(
+            self.HF_API.upload_folder(
                 folder_path=self.folder_full_path,
                 repo_id=dataset_repo_name,
                 repo_type="dataset",
-                token=True,
             )
 
             repo_refs = self.HF_API.list_repo_refs(
@@ -1288,11 +1523,10 @@ It's compatible with LeRobot and RLDS.
                     logger.info(
                         f"Pushing the dataset to the branch v2.0 in repository {dataset_repo_name}"
                     )
-                    upload_folder(
+                    self.HF_API.upload_folder(
                         folder_path=self.folder_full_path,
                         repo_id=dataset_repo_name,
                         repo_type="dataset",
-                        token=True,
                         revision="v2.0",
                     )
                 except Exception as e:
@@ -1317,11 +1551,10 @@ It's compatible with LeRobot and RLDS.
 
                     # Push to specified branch
                     logger.info(f"Pushing the dataset to branch {branch_path}")
-                    upload_folder(
+                    self.HF_API.upload_folder(
                         folder_path=self.folder_full_path,
                         repo_id=dataset_repo_name,
                         repo_type="dataset",
-                        token=True,
                         revision=branch_path,
                     )
                     logger.info(f"Dataset pushed to branch {branch_path}")
@@ -1362,6 +1595,10 @@ class Stats(BaseModel):
         if value is None:
             return None
 
+        # If square_sum is None, use the std to compute the square sum
+        if self.square_sum is None and self.std is not None and self.mean is not None:
+            self.square_sum = self.std**2 + self.mean**2
+
         # Update the max and min
         if self.max is None:
             self.max = value
@@ -1388,8 +1625,20 @@ class Stats(BaseModel):
         """
         Compute the mean and std from the rolling sum and square sum.
         """
+        if self.count == 0:
+            logger.error("Count is 0. Cannot compute mean and std.")
+            return
+
         self.mean = self.sum / self.count
-        self.std = np.sqrt(self.square_sum / self.count - self.mean**2)
+        if (self.square_sum / self.count - self.mean**2 < 0).any():
+            logger.warning(
+                f"Negative value in the square sum. Replacing the negative values of std with 0.\nsquare_sum={self.square_sum}\ncount={self.count}\nmean={self.mean**2}"
+            )
+            variance = self.square_sum / self.count - self.mean**2
+            variance[variance <= 0] = 0
+            self.std = np.sqrt(variance)
+        else:
+            self.std = np.sqrt(self.square_sum / self.count - self.mean**2)
 
     def update_image(self, image_value: np.ndarray) -> None:
         """
@@ -1402,6 +1651,10 @@ class Stats(BaseModel):
 
         if image_value is None:
             return None
+
+        # Compute the square sum if not available
+        if self.square_sum is None and self.std is not None and self.mean is not None:
+            self.square_sum = self.std**2 + self.mean**2
 
         image_norm_32 = image_value.astype(dtype=np.float32) / 255.0
 
@@ -1445,13 +1698,14 @@ class Stats(BaseModel):
         # We want .tolist() to yield [[[mean_r, mean_g, mean_b]]] and not [mean_r, mean_g, mean_b]
         # Reshape to have the same shape as the mean and std
         # This makes it easier to normalize the imags
-        self.mean = self.mean.reshape(3, 1, 1)
-        self.std = self.std.reshape(3, 1, 1)
-        # For the first episode the shape is (3,)
-        # For the next ones the shape is (3,1,3)
-        # We keep min and max of the first episode only
-        self.min = self.min.reshape(3, 1, 1)
-        self.max = self.max.reshape(3, 1, 1)
+        if self.mean.shape == (3,):
+            self.mean = self.mean.reshape(3, 1, 1)
+            self.std = self.std.reshape(3, 1, 1)
+            # For the first episode the shape is (3,)
+            # For the next ones the shape is (3,1,3)
+            # We keep min and max of the first episode only
+            self.min = self.min.reshape(3, 1, 1)
+            self.max = self.max.reshape(3, 1, 1)
 
 
 class StatsModel(BaseModel):
@@ -1463,7 +1717,11 @@ class StatsModel(BaseModel):
     The other stats are dim 1
     """
 
-    observation_state: Stats = Field(default_factory=Stats)  # At init, will do Stats()
+    observation_state: Stats = Field(
+        default_factory=Stats,
+        serialization_alias="observation.state",
+        validation_alias=AliasChoices("observation.state", "observation_state"),
+    )
     action: Stats = Field(default_factory=Stats)
     timestamp: Stats = Field(default_factory=Stats)
     frame_index: Stats = Field(default_factory=Stats)
@@ -1475,7 +1733,16 @@ class StatsModel(BaseModel):
 
     # key is like: observation.images.main
     # value is Stats of the object: average pixel value, std, min, max ; and shape (height, width, channel)
-    observation_images: Dict[str, Stats] = Field(default_factory=dict)
+    observation_images: Dict[str, Stats] = Field(
+        default_factory=dict,
+        serialization_alias="observation.images",
+        validation_alias=AliasChoices(
+            "observation.images",
+            "observation.image",
+            "observation_images",
+            "observation_image",
+        ),
+    )
 
     @classmethod
     def from_json(cls, meta_folder_path: str) -> "StatsModel":
@@ -1489,18 +1756,18 @@ class StatsModel(BaseModel):
         ):
             return cls()
 
-        with open(f"{meta_folder_path}/stats.json", "r") as f:
+        with open(
+            f"{meta_folder_path}/stats.json", "r", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
             stats_dict: Dict[str, Stats] = json.load(f)
-            # Rename observation.state to observation_state
-            stats_dict["observation_state"] = stats_dict.pop("observation.state")
 
-            # Create a temporary dictionary for observation_images
-            observation_images = {}
-            # We need to create a list of keys in order not to modify
-            # the dictionary while iterating over it
-            for key in list(stats_dict.keys()):
-                if "images" in key:
-                    observation_images[key] = stats_dict.pop(key)
+        # Create a temporary dictionary for observation_images
+        observation_images = {}
+        # We need to create a list of keys in order not to modify
+        # the dictionary while iterating over it
+        for key in list(stats_dict.keys()):
+            if "image" in key:
+                observation_images[key] = stats_dict.pop(key)
 
         # Pass observation_images into the model constructor
         return cls(**stats_dict, observation_images=observation_images)
@@ -1509,19 +1776,17 @@ class StatsModel(BaseModel):
         """
         Write the stats.json file in the meta folder path.
         """
-        # Write stats files
-        with open(f"{meta_folder_path}/stats.json", "w") as f:
+        model_dict = self.model_dump(by_alias=True)
+
+        # We flatten the fields in the dict observations images
+        for key, value in model_dict["observation.images"].items():
+            model_dict[key] = value
+        model_dict.pop("observation.images")
+
+        with open(
+            f"{meta_folder_path}/stats.json", "w", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
             # Write the pydantic Basemodel as a str
-            model_dict = self.model_dump()
-
-            # Renamed observation_state to observation.state here
-            model_dict["observation.state"] = model_dict.pop("observation_state")
-
-            # We expose the fields in the dict observations images
-            for key, value in model_dict["observation_images"].items():
-                model_dict[key] = value
-            model_dict.pop("observation_images")
-
             f.write(json.dumps(model_dict, indent=4))
 
     def update(
@@ -1581,8 +1846,11 @@ class StatsModel(BaseModel):
             # Special case for images
             if isinstance(field_value, dict) and field_key == "observation_images":
                 for key, value in field_value.items():
-                    if isinstance(value, Stats):
-                        value.compute_from_rolling_images()
+                    try:
+                        if isinstance(value, Stats):
+                            value.compute_from_rolling_images()
+                    except ValueError as e:
+                        logger.error(f"Error computing mean and std for {key}: {e}")
 
         self.to_json(meta_folder_path)
 
@@ -1595,12 +1863,28 @@ class StatsModel(BaseModel):
         We prefer to do it after the episode removal to directly access new indexes and episodes indexes.
         This only updates mean, std, sum, square_sum, and count.
         """
+        if df_episode_to_delete.empty:
+            return
+
         # Load the parquet file
         nb_steps_deleted_episode = len(df_episode_to_delete)
 
-        # Compute the sum and square sum for each column
+        # Remove [nan, nan, ...] arrays from actions and observation.state columns
+        df_episode_to_delete = df_episode_to_delete[
+            df_episode_to_delete["observation.state"].apply(
+                lambda x: not np.all(np.isnan(x))
+            )
+        ]
+        df_episode_to_delete = df_episode_to_delete[
+            df_episode_to_delete["action"].apply(lambda x: not np.all(np.isnan(x)))
+        ]
+
         df_sums_squaresums = pd.concat(
-            [df_episode_to_delete.sum(), (df_episode_to_delete**2).sum()], axis=1
+            [
+                df_episode_to_delete.sum(skipna=True),
+                (df_episode_to_delete**2).sum(skipna=True),
+            ],
+            axis=1,
         )
         df_sums_squaresums = df_sums_squaresums.rename(
             columns={0: "sums", 1: "squaresums"}
@@ -1639,9 +1923,9 @@ class StatsModel(BaseModel):
                     variance = (field_value.square_sum / field_value.count) - np.square(
                         field_value.mean
                     )
-                    if (
-                        isinstance(variance, np.ndarray) and np.all(variance >= 0)
-                    ) or variance >= 0:
+                    if (isinstance(variance, np.ndarray) and np.all(variance >= 0)) or (
+                        isinstance(variance, float) and variance >= 0
+                    ):
                         field_value.std = np.sqrt(variance)
                     else:
                         logger.error(
@@ -1650,11 +1934,108 @@ class StatsModel(BaseModel):
                         )
                 else:
                     logger.error(
-                        f"Field {field_name} count is 0. Cannot calculate mean and std for episode {df_episode_to_delete['episode_index'].iloc[0]}"
+                        f"Field {field_name} count is 0. Cannot compute mean and std for episode {df_episode_to_delete['episode_index'].iloc[0]}"
                     )
 
+    def get_total_frames(self, meta_folder_path: str) -> int:
+        """
+        Return the total number of frames in the dataset
+        """
+        info_path = os.path.join(meta_folder_path, "info.json")
+        with open(info_path, "r", encoding=DEFAULT_FILE_ENCODING) as f:
+            info_dict = json.load(f)
+        return info_dict.get("total_frames", 0)
+
+    def get_images_shapes(self, meta_folder_path: str, camera_key: str) -> List[int]:
+        """
+        Return the tuple (height, width, channel) of the images for a given camera key
+        """
+        info_path = os.path.join(meta_folder_path, "info.json")
+        with open(info_path, "r", encoding=DEFAULT_FILE_ENCODING) as f:
+            info_dict = json.load(f)
+        return info_dict["features"][camera_key]["shape"]
+
+    def _compute_count_sum_square_sum_item_from_mean_std(
+        self, stats_item: "Stats", stats_key: str, meta_folder_path: str
+    ):
+        """Helper function to compute sum and square_sum from mean, std, and count
+        meta_folder_path is used to compute the count from info.json
+        This is the number of frames or the number of frames times the dimension of images for videos
+        """
+        if stats_item.mean is None or stats_item.std is None:
+            raise ValueError(f"Mean and std are not computed for {stats_item}")
+
+        if (
+            stats_item.sum is None
+            or stats_item.square_sum is None
+            or stats_item.count == 0
+        ):
+            is_video = "image" in stats_key or "video" in stats_key
+            # Get the number of frames from info.json
+            count = (
+                self.get_total_frames(meta_folder_path)
+                * self.get_images_shapes(
+                    meta_folder_path=meta_folder_path, camera_key=stats_key
+                )[0]
+                * self.get_images_shapes(
+                    meta_folder_path=meta_folder_path, camera_key=stats_key
+                )[1]
+                if is_video
+                else self.get_total_frames(meta_folder_path),
+            )[0]
+            if is_video:
+                logger.debug(f"Mean shape for {stats_key}: {stats_item.mean.shape}")
+                logger.debug(f"Count for {stats_key}: {count}")
+
+            mean = stats_item.mean
+            std = stats_item.std
+
+            stats_item.count = count
+            logger.debug(f"Count for {stats_key}: {count}")
+            sum_array = mean * count
+            square_sum_array = (std**2 + mean**2) * count
+
+            stats_item.sum = sum_array
+            stats_item.square_sum = square_sum_array
+            if is_video:
+                logger.debug(
+                    f"Mean shape for {stats_key} after: {stats_item.mean.shape}"
+                )
+
+    def compute_count_square_sum_framecount_from_mean_std(self, meta_folder_path: str):
+        """
+        Compute the sum and square sum from the mean and std.
+        This is useful when we want to update the stats after repairing a dataset.
+        """
+        # Process all stats fields
+        for stats_key, stats_item in self.__dict__.items():
+            if stats_key != "observation_images":
+                # Process regular stats items
+                try:
+                    self._compute_count_sum_square_sum_item_from_mean_std(
+                        stats_item=stats_item,
+                        stats_key=stats_key,
+                        meta_folder_path=meta_folder_path,
+                    )
+                except ValueError as e:
+                    raise ValueError(f"{e} for {stats_key}")
+            else:
+                # Process observation_images items
+                for camera_key, video_stats_item in stats_item.items():
+                    try:
+                        self._compute_count_sum_square_sum_item_from_mean_std(
+                            stats_item=video_stats_item,
+                            stats_key=camera_key,
+                            meta_folder_path=meta_folder_path,
+                        )
+                    except ValueError as e:
+                        raise ValueError(f"{e} for {camera_key}")
+
     def _update_for_episode_removal_images_stats(
-        self, folder_videos_path: str, episode_to_delete_index: int
+        self,
+        folder_videos_path: str,
+        episode_to_delete_index: int,
+        meta_folder_path: str,
     ) -> None:
         """
         Update the stats for images.
@@ -1662,7 +2043,13 @@ class StatsModel(BaseModel):
         For every camera, we need to delete the episode_{episode_index:06d}.mp4 file.
 
         We update the sum, square_sum, and count for each camera.
+
+        We do not update the min and the max here. It is always 0 and 1 by experience
         """
+
+        self.compute_count_square_sum_framecount_from_mean_std(
+            meta_folder_path=meta_folder_path
+        )
 
         cameras_folders = os.listdir(folder_videos_path)
         for camera_name in cameras_folders:
@@ -1707,12 +2094,16 @@ class StatsModel(BaseModel):
     def _update_for_episode_removal_min_max(
         self,
         data_folder_path: str,
+        meta_folder_path: str,
         episode_to_delete_index: int,
     ) -> None:
         """
         Update the min and max in stats after removing an episode from the dataset.
         Be sure to call this function after reindexing the data.
         """
+        self.compute_count_square_sum_framecount_from_mean_std(
+            meta_folder_path=meta_folder_path
+        )
 
         # Load all the other parquet files in one dataFrame
         li_data_folder_filenames = [
@@ -1771,22 +2162,40 @@ class VideoInfo(BaseModel):
     Information about the video
     """
 
-    video_fps: int = 10
-    video_codec: VideoCodecs
+    video_fps: int = Field(
+        default=10,
+        serialization_alias="video.fps",
+        validation_alias=AliasChoices("video.fps", "video_fps"),
+    )
+    video_codec: VideoCodecs = Field(
+        serialization_alias="video.codec",
+        validation_alias=AliasChoices("video.codec", "video_codec"),
+    )
 
-    video_pix_fmt: str = "yuv420p"
-    video_is_depth_map: bool = False
+    video_pix_fmt: str = Field(
+        default="yuv420p",
+        serialization_alias="video.pix_fmt",
+        validation_alias=AliasChoices("video.pix_fmt", "video_pix_fmt"),
+    )
+    video_is_depth_map: bool = Field(
+        default=False,
+        serialization_alias="video.is_depth_map",
+        validation_alias=AliasChoices("video.is_depth_map", "video_is_depth_map"),
+    )
     has_audio: bool = False
 
 
 class VideoFeatureDetails(FeatureDetails):
     dtype: Literal["video"] = "video"
-    info: VideoInfo
+    info: VideoInfo = Field(validation_alias=AliasChoices("video_info", "info"))
 
 
 class InfoFeatures(BaseModel):
     action: FeatureDetails
-    observation_state: FeatureDetails
+    observation_state: FeatureDetails = Field(
+        serialization_alias="observation.state",
+        validation_alias=AliasChoices("observation.state", "observation_state"),
+    )
 
     timestamp: FeatureDetails = Field(
         default_factory=lambda: FeatureDetails(dtype="float32", shape=[1], names=None)
@@ -1804,28 +2213,46 @@ class InfoFeatures(BaseModel):
         default_factory=lambda: FeatureDetails(dtype="int64", shape=[1], names=None)
     )
     # Camera images
-    observation_images: Dict[str, VideoFeatureDetails] = Field(default_factory=dict)
+    observation_images: Dict[str, VideoFeatureDetails] = Field(
+        default_factory=dict,
+        serialization_alias="observation.images",
+        validation_alias=AliasChoices(
+            "observation.image",
+            "observation.images",
+            "observation_image",
+            "observation_images",
+        ),
+    )
 
     # Optional fields (RL)
-    next_done: FeatureDetails | None = None
-    next_success: FeatureDetails | None = None
-    next_reward: FeatureDetails | None = None
+    next_done: FeatureDetails | None = Field(
+        default=None,
+        serialization_alias="next.done",
+        validation_alias=AliasChoices("next.done", "next_done"),
+    )
+    next_success: FeatureDetails | None = Field(
+        default=None,
+        serialization_alias="next.success",
+        validation_alias=AliasChoices("next.success", "next_success"),
+    )
+    next_reward: FeatureDetails | None = Field(
+        default=None,
+        serialization_alias="next.reward",
+        validation_alias=AliasChoices("next.reward", "next_reward"),
+    )
 
     def to_dict(self) -> dict:
         """
         Convert the InfoFeatures to a dictionary.
         This transforms observation_images and observation_state to the correct format.
         """
-        model_dict = self.model_dump()
-
-        # Rename key observation_state to observation.state same with images
-        model_dict["observation.state"] = model_dict.pop("observation_state")
+        model_dict = self.model_dump(by_alias=True)
 
         if self.observation_images is not None:
             for key, value in self.observation_images.items():
-                model_dict[key] = value.model_dump()
+                model_dict[key] = value.model_dump(by_alias=True)
 
-        model_dict.pop("observation_images")
+        model_dict.pop("observation.images")
 
         # Filter all None values
         model_dict = {
@@ -1840,7 +2267,10 @@ class InfoFeatures(BaseModel):
 class BaseRobotInfo(BaseModel):
     robot_type: str
     action: FeatureDetails
-    observation_state: FeatureDetails
+    observation_state: FeatureDetails = Field(
+        serialization_alias="observation.state",
+        validation_alias=AliasChoices("observation.state", "observation_state"),
+    )
 
     def merge_base_robot_info(
         self, base_robot_info: "BaseRobotInfo"
@@ -1924,7 +2354,7 @@ class InfoModel(BaseModel):
         Convert the InfoModel to a dictionary. This is different from
         model_dump() as it transforms the features to the correct format.
         """
-        model_dict = self.model_dump()
+        model_dict = self.model_dump(by_alias=True)
         model_dict["features"] = self.features.to_dict()
         return model_dict
 
@@ -1990,38 +2420,156 @@ class InfoModel(BaseModel):
 
             return info_model
 
-        with open(f"{meta_folder_path}/info.json", "r") as f:
-            stats_dict = json.load(f)
-            stats_dict["features"]["observation_state"] = stats_dict["features"].pop(
-                "observation.state"
+        with open(
+            f"{meta_folder_path}/info.json", "r", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
+            info_model_dict = json.load(f)
+
+        info_model_dict["features"]["observation_state"] = info_model_dict[
+            "features"
+        ].pop("observation.state")
+        observation_images = {}
+        keys_to_remove = []
+        for key, value in info_model_dict["features"].items():
+            if "observation.image" in key:
+                observation_images[key] = value
+                keys_to_remove.append(key)
+        for key in keys_to_remove:
+            del info_model_dict["features"][key]
+        info_model_dict["features"]["observation_images"] = observation_images
+        infos = cls.model_validate(info_model_dict)
+        return infos
+
+    @classmethod
+    def from_multidataset(
+        cls,
+        robot_type: str,
+        nb_cameras: int,
+        fps: int,
+        nb_motors: int,
+        chunks_size: int,
+        resize_video: Tuple[int, int],
+        # li_datasets is a list of LeRobotDatasets
+        # We dont type it as List[LeRobotDataset] to avoid importing LeRobotDataset
+        li_datasets: list,
+    ) -> "InfoModel":
+        """Create an InfoModel from multiple datasets information."""
+
+        # Create the action and observation_state FeatureDetails
+        action_details = FeatureDetails(
+            dtype="float32",
+            shape=[nb_motors],
+            names=[f"motor_{i + 1}" for i in range(nb_motors)],
+        )
+
+        observation_state_details = FeatureDetails(
+            dtype="float32",
+            shape=[nb_motors],
+            names=[f"motor_{i + 1}" for i in range(nb_motors)],
+        )
+
+        # Create the observation_images dictionary
+        observation_images = {}
+        for i in range(nb_cameras):
+            camera_key = (
+                f"observation.images.{'main' if i == 0 else f'secondary_{i - 1}'}"
+            )
+            observation_images[camera_key] = VideoFeatureDetails(
+                shape=[resize_video[1], resize_video[0], 3],
+                names=["height", "width", "channel"],
+                info=VideoInfo(
+                    video_fps=fps,
+                    video_codec="mp4v",
+                    video_pix_fmt="yuv420p",
+                    video_is_depth_map=False,
+                    has_audio=False,
+                ),
             )
 
-            observation_images = {}
-            keys_to_remove = []
-            for key, value in stats_dict["features"].items():
-                if "observation.images" in key:
-                    observation_images[key] = value
-                    keys_to_remove.append(key)
-            for key in keys_to_remove:
-                del stats_dict["features"][key]
-            stats_dict["features"]["observation_images"] = observation_images
+        # Create InfoFeatures object
+        features = InfoFeatures(
+            action=action_details,
+            observation_state=observation_state_details,
+            observation_images=observation_images,
+        )
 
-        return cls(**stats_dict)
+        # Create the base InfoModel
+        info_model = cls(
+            robot_type=robot_type,
+            codebase_version="v2.0",
+            total_episodes=0,
+            total_frames=0,
+            total_tasks=1,
+            total_videos=0,
+            total_chunks=1,
+            chunks_size=chunks_size,
+            fps=fps,
+            features=features,
+        )
+
+        # Update with dataset information if provided
+        if li_datasets:
+            # Calculate totals from all datasets
+            for dataset in li_datasets:
+                info = dataset.meta.info
+                info_model.total_frames += info.get("total_frames", 0)
+                info_model.total_videos += info.get("total_videos", 0)
+                info_model.total_episodes += info.get("total_episodes", 0)
+
+            info_model.splits = {"train": f"0:{info_model.total_episodes}"}
+            info_model.total_chunks = info_model.total_episodes // chunks_size
+
+            # Count unique tasks
+            unique_tasks = set()
+            for dataset in li_datasets:
+                unique_tasks.update(dataset.meta.task_to_task_index.keys())
+
+            info_model.total_tasks = len(unique_tasks)
+
+        return info_model
 
     def to_json(self, meta_folder_path: str) -> None:
         """
         Write the info.json file in the meta folder path.
         """
-        with open(f"{meta_folder_path}/info.json", "w") as f:
+        with open(
+            f"{meta_folder_path}/info.json", "w", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
             f.write(json.dumps(self.to_dict(), indent=4))
 
     def update(self, episode: Episode) -> None:
         """
         Update the info given a new recorded Episode.
         """
-        self.total_episodes += 1
+        # Read the number of total episodes and videos based on the number of files
+        # in the data folder
+
+        nb_episodes = len(
+            [
+                file
+                for file in os.listdir(episode.episodes_path)
+                if file.endswith(".parquet")
+            ]
+        )
+
+        self.total_episodes = nb_episodes
         self.total_frames += len(episode.steps)
-        self.total_videos += len(self.features.observation_images.keys())
+        # Count the number of videos in every subfolder
+        video_path = os.path.join(episode.dataset_path, "videos", "chunk-000")
+        total_videos = 0
+        for camera_name in os.listdir(video_path):
+            # Count the number of videos in the subfolder
+            if camera_name == ".DS_Store":
+                continue
+            total_videos += len(
+                [
+                    file
+                    for file in os.listdir(os.path.join(video_path, camera_name))
+                    if file.endswith(".mp4")
+                ]
+            )
+
+        self.total_videos = total_videos
         self.splits = {"train": f"0:{self.total_episodes}"}
         # TODO: Handle multiple language instructions
         # TODO: Implement support for multiple chunks
@@ -2039,7 +2587,10 @@ class InfoModel(BaseModel):
         """
         Update the info before removing an episode from the dataset.
         """
+        if df_episode_to_delete.empty:
+            return
 
+        # Read from the data folder
         self.total_episodes -= 1
         self.total_frames -= len(df_episode_to_delete)
         self.total_videos -= len(self.features.observation_images.keys())
@@ -2073,7 +2624,9 @@ class TasksModel(BaseModel):
         if not os.path.exists(f"{meta_folder_path}/tasks.jsonl"):
             return cls(tasks=[])
 
-        with open(f"{meta_folder_path}/tasks.jsonl", "r") as f:
+        with open(
+            f"{meta_folder_path}/tasks.jsonl", "r", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
             tasks = []
             for line in f:
                 tasks.append(TasksFeatures(**json.loads(line)))
@@ -2083,12 +2636,24 @@ class TasksModel(BaseModel):
         tasks_model._initial_nb_total_tasks = len(tasks)
         return tasks_model
 
+    @classmethod
+    def from_li_tasks(cls, li_tasks: List[str]) -> "TasksModel":
+        """Create a TasksModel from a list of tasks."""
+        # Ensure that the tasks are unique
+        li_tasks = list(set(li_tasks))
+        tasks = [
+            TasksFeatures(task_index=i, task=task) for i, task in enumerate(li_tasks)
+        ]
+        return cls(tasks=tasks, _initial_nb_total_tasks=len(tasks))
+
     def to_jsonl(self, meta_folder_path: str) -> None:
         """
         Write the tasks.jsonl file in the meta folder path.
         """
 
-        with open(f"{meta_folder_path}/tasks.jsonl", "a") as f:
+        with open(
+            f"{meta_folder_path}/tasks.jsonl", "a", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
             # Only append the new tasks to the file
             for task in self.tasks[self._initial_nb_total_tasks :]:
                 f.write(task.model_dump_json() + "\n")
@@ -2119,6 +2684,9 @@ class TasksModel(BaseModel):
         We count the number of occurences of task_index in the dataset.
         If the episode is the only one with this task_index, we remove it from the tasks.jsonl file.
         """
+        if df_episode_to_delete.empty:
+            return
+
         # For each file in the data folder get the task indexes (unique)
         task_indexes: List[int] = []
         for file in os.listdir(data_folder_full_path):
@@ -2165,7 +2733,9 @@ class EpisodesModel(BaseModel):
         episode_index is the index of the episode of the current step.
         """
         # If episode_index is not in the episodes, add it
-        if episode_index not in [episode.episode_index for episode in self.episodes]:
+        if episode_index not in [
+            episode.episode_index for episode in self.episodes
+        ] or episode_index >= len(self.episodes):
             self.episodes.append(
                 EpisodesFeatures(
                     episode_index=episode_index,
@@ -2210,15 +2780,18 @@ class EpisodesModel(BaseModel):
         if not os.path.exists(f"{meta_folder_path}/episodes.jsonl"):
             return EpisodesModel()
 
-        with open(f"{meta_folder_path}/episodes.jsonl", "r") as f:
-            episodes_model = []
+        with open(
+            f"{meta_folder_path}/episodes.jsonl", "r", encoding=DEFAULT_FILE_ENCODING
+        ) as f:
+            episodes_features: Dict[int, EpisodesFeatures] = {}
             for line in f:
-                episodes_model.append(EpisodesFeatures(**json.loads(line)))
+                episodes_feature = EpisodesFeatures.model_validate_json(line)
+                episodes_features[episodes_feature.episode_index] = episodes_feature
 
-        episode = EpisodesModel(episodes=episodes_model)
+        episodes_model = EpisodesModel(episodes=list(episodes_features.values()))
         # Do it after model init, otherwise pydantic ignores the value of _original_nb_total_episodes
-        episode._original_nb_total_episodes = len(episodes_model)
-        return episode
+        episodes_model._original_nb_total_episodes = len(episodes_features.keys())
+        return episodes_model
 
     def save(
         self,
@@ -2230,18 +2803,37 @@ class EpisodesModel(BaseModel):
         """
         self.to_jsonl(meta_folder_path=meta_folder_path, save_mode=save_mode)
 
-    def update_for_episode_removal(self, episode_to_delete_index: int):
+    def update_for_episode_removal(
+        self, episode_to_delete_index: int, old_index_to_new_index: Dict[int, int]
+    ) -> None:
         """
         Update the episodes model before removing an episode from the dataset.
         We just remove the line corresponding to the episode_index of the parquet file.
         """
-        self.episodes = [
-            episode
-            for episode in self.episodes
-            if episode.episode_index != episode_to_delete_index
-        ]
+        if not old_index_to_new_index:
+            self.episodes = [
+                episode
+                for episode in self.episodes
+                if episode.episode_index != episode_to_delete_index
+            ]
 
-        # Reindex the episodes
-        for episode in self.episodes:
-            if episode.episode_index > episode_to_delete_index:
-                episode.episode_index -= 1
+            # Reindex the episodes
+            for episode in self.episodes:
+                if episode.episode_index > episode_to_delete_index:
+                    episode.episode_index -= 1
+        else:
+            # Use the old_index_to_new_index to update the episode index
+            current_max_index = max(old_index_to_new_index.keys()) + 1
+            for episode in self.episodes:
+                if episode.episode_index == episode_to_delete_index:
+                    # Remove the episode
+                    self.episodes.remove(episode)
+                elif episode.episode_index in old_index_to_new_index.keys():
+                    # Update the episode index
+                    episode.episode_index = old_index_to_new_index[
+                        episode.episode_index
+                    ]
+                else:
+                    # Update the episode index to the new one
+                    episode.episode_index = current_max_index
+                    current_max_index += 1

@@ -1,0 +1,380 @@
+import cv2
+import time
+import asyncio
+from phosphobot.control_signal import AIControlSignal
+import requests
+import json_numpy  # type: ignore
+import numpy as np
+from loguru import logger
+from typing import Literal
+from typing import Dict, List
+from fastapi import HTTPException
+from huggingface_hub import HfApi
+from phosphobot.camera import AllCameras
+from phosphobot.utils import background_task_log_exceptions, get_hf_token
+from phosphobot.am.base import ActionModel
+from phosphobot.models.dataset import BaseRobot
+from pydantic import BaseModel, model_validator, field_validator
+
+
+class InputFeature(BaseModel):
+    type: Literal["STATE", "VISUAL"]
+    shape: List[int]
+
+
+# Define the InputFeatures model to parse input_features
+class InputFeatures(BaseModel):
+    state_key: str
+    video_keys: List[str]
+    features: Dict[str, InputFeature]
+
+    @property
+    def number_of_arms(self) -> int:
+        """
+        We assume each arm has 6 joints.
+        """
+        return self.features[self.state_key].shape[0] // 6
+
+    @model_validator(mode="before")
+    def infer_keys(cls, values):
+        """
+        Preprocess input to infer state_key and video_keys if input is a flat features dict.
+        Runs before field validation.
+        """
+        if isinstance(values, dict) and "features" not in values:
+            features = values
+            state_keys = [k for k in features if "state" in k.lower()]
+            video_keys = [k for k in features if "image" in k.lower()]
+            if len(state_keys) != 1:
+                raise ValueError(
+                    "Exactly one state key must be present in the features"
+                )
+            state_key = state_keys[0]
+            return {
+                "state_key": state_key,
+                "video_keys": video_keys,
+                "features": features,
+            }
+        return values
+
+    @field_validator("features", mode="before")
+    def validate_features(cls, value):
+        """
+        Validate and transform the features dictionary into InputFeature instances.
+        """
+        if not isinstance(value, dict):
+            raise ValueError("Features must be a dictionary")
+        result = {}
+        for key, item in value.items():
+            if "state" in key.lower():
+                if item.get("type") != "STATE":
+                    raise ValueError(f"Key {key} with 'state' must have type 'STATE'")
+            elif "image" in key.lower():
+                if item.get("type") != "VISUAL":
+                    raise ValueError(f"Key {key} with 'image' must have type 'VISUAL'")
+            else:
+                raise ValueError(f"Key {key} must contain 'state' or 'image'")
+            result[key] = InputFeature(**item)
+        return result
+
+    @model_validator(mode="after")
+    def validate_keys(self):
+        """
+        Validate state_key and video_keys against features after all fields are processed.
+        """
+        features = self.features
+        state_key = self.state_key
+        video_keys = self.video_keys
+
+        # Validate state_key
+        if state_key not in features:
+            raise ValueError(f"State key {state_key} not found in features")
+        if "state" not in state_key.lower():
+            raise ValueError(f"State key {state_key} must contain 'state'")
+        if features[state_key].type != "STATE":
+            raise ValueError(f"State key {state_key} must map to a STATE feature")
+
+        # Validate video_keys
+        for key in video_keys:
+            if key not in features:
+                raise ValueError(f"Image key {key} not found in features")
+            if "image" not in key.lower():
+                raise ValueError(f"Image key {key} must contain 'image'")
+            if features[key].type != "VISUAL":
+                raise ValueError(f"Image key {key} must map to a VISUAL feature")
+
+        # Ensure all image keys in features are in video_keys
+        feature_video_keys = [k for k in features.keys() if "image" in k.lower()]
+        if sorted(video_keys) != sorted(feature_video_keys):
+            raise ValueError(
+                "Video keys must include all image-related keys in features"
+            )
+
+        return self
+
+
+# Top-level model to validate the entire JSON
+class HuggingFaceModelValidator(BaseModel):
+    type: Literal["act"]
+    input_features: InputFeatures
+
+    class Config:
+        extra = "allow"
+
+
+class ACTSpawnConfig(BaseModel):
+    state_key: str
+    state_size: list[int]
+    video_keys: list[str]
+    video_size: list[int]
+    hf_model_config: HuggingFaceModelValidator
+
+
+class ACT(ActionModel):
+    def __init__(
+        self,
+        server_url: str = "http://localhost",
+        server_port: int = 8080,
+        **kwargs,
+    ):
+        super().__init__(server_url, server_port)
+
+    def sample_actions(self, inputs: dict) -> np.ndarray:
+        # Double-encoded version (to send numpy arrays as JSON)
+        encoded_payload = {"encoded": json_numpy.dumps(inputs)}
+
+        try:
+            response = requests.post(
+                f"{self.server_url}/act",
+                json=encoded_payload,
+                timeout=10,
+            )
+            if response.status_code != 200:
+                raise RuntimeError(response.text)
+            action = json_numpy.loads(response.json())
+        except Exception as e:
+            logger.error(f"Error in sampling actions: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error in sampling actions: {e}",
+            )
+        return np.array([action])
+
+    @classmethod
+    def fetch_config(cls, model_id: str) -> HuggingFaceModelValidator:
+        """
+        Fetch the model configuration from HuggingFace.
+        """
+        try:
+            api = HfApi(token=get_hf_token())
+            model_info = api.model_info(model_id)
+            if model_info is None:
+                raise Exception(f"Model {model_id} not found on HuggingFace.")
+            config_path = api.hf_hub_download(
+                repo_id=model_id,
+                filename="config.json",
+                force_download=True,
+            )
+            with open(config_path, "r") as f:
+                config_content = f.read()
+            hf_model_config = HuggingFaceModelValidator.model_validate_json(
+                config_content
+            )
+        except Exception as e:
+            raise Exception(f"Error loading model {model_id} from HuggingFace: {e}")
+        return hf_model_config
+
+    @classmethod
+    def fetch_and_verify_config(
+        cls,
+        model_id: str,
+        all_cameras: AllCameras,
+        robots: list[BaseRobot],
+        cameras_keys_mapping: Dict[str, int] | None = None,
+    ) -> ACTSpawnConfig:
+        """
+        Verify if the HuggingFace model is compatible with the current setup.
+        """
+
+        hf_model_config = cls.fetch_config(model_id=model_id)
+
+        state_key: str = hf_model_config.input_features.state_key
+        state_size: list[int] = hf_model_config.input_features.features[state_key].shape
+        video_keys: list[str] = hf_model_config.input_features.video_keys
+        video_size: list[int] = hf_model_config.input_features.features[
+            video_keys[0]
+        ].shape
+
+        if cameras_keys_mapping is None:
+            nb_connected_cams = len(all_cameras.video_cameras)
+        else:
+            # Check if all keys are in the model config
+            keys_in_common = set(
+                [
+                    k.replace("video.", "") if k.startswith("video.") else k
+                    for k in cameras_keys_mapping.keys()
+                ]
+            ).intersection(hf_model_config.input_features.video_keys)
+            nb_connected_cams = len(keys_in_common)
+
+        if nb_connected_cams < len(video_keys):
+            logger.warning(
+                f"Model has {len(video_keys)} cameras but {nb_connected_cams} camera streams are detected."
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model has {len(video_keys)} cameras but {nb_connected_cams} camera streams are detected.",
+            )
+
+        number_of_robots = hf_model_config.input_features.number_of_arms
+        if number_of_robots != len(robots):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model has {number_of_robots} robots but {len(robots)} robots are connected.",
+            )
+
+        return ACTSpawnConfig(
+            state_key=state_key,
+            state_size=state_size,
+            video_keys=video_keys,
+            video_size=video_size,
+            hf_model_config=hf_model_config,
+        )
+
+    @background_task_log_exceptions
+    async def control_loop(
+        self,
+        control_signal: AIControlSignal,
+        robots: list[BaseRobot],
+        model_spawn_config: ACTSpawnConfig,
+        all_cameras: AllCameras,
+        fps: int = 30,
+        speed: float = 1.0,
+        cameras_keys_mapping: Dict[str, int] | None = None,
+        **kwargs,
+    ):
+        """
+        AI control loop that runs in the background and sends actions to the robot.
+        It uses the model to get the actions based on the current state of the robot and the cameras.
+        The loop runs until the control signal is stopped or the model is not available anymore.
+        The loop runs at the specified fps and speed.
+        """
+
+        nb_iter = 0
+        # We don't have any information about the unit of the model
+        # So we assume it's in radians, if we receive actions greater than 2pi
+        # we switch to using degrees
+        unit: Literal["rad", "degrees"] = "rad"
+        config = model_spawn_config.hf_model_config
+
+        db_state_updated = False
+
+        while control_signal.is_running():
+            logger.debug(f"AI control loop iteration {nb_iter}")
+            if control_signal.status == "paused":
+                logger.debug("AI control loop paused")
+                await asyncio.sleep(0.1)
+                continue
+
+            start_time = time.perf_counter()
+
+            # Get the images from the cameras based on the config
+            # For now, just put as many cameras as the model config
+            image_inputs: Dict[str, np.ndarray] = {}
+            for i, camera_name in enumerate(config.input_features.video_keys):
+                if cameras_keys_mapping is None:
+                    camera_id = i
+                else:
+                    camera_id = cameras_keys_mapping.get(camera_name, i)
+
+                video_resolution = config.input_features.features[camera_name].shape
+                rgb_frame = all_cameras.get_rgb_frame(
+                    camera_id=camera_id,
+                    resize=(video_resolution[2], video_resolution[1]),
+                )
+                if rgb_frame is not None:
+                    # Convert to BGR
+                    image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+                    # Ensure dtype is uint8 (if it isn’t already)
+                    converted_array = image.astype(np.uint8)
+                    image_inputs[camera_name] = converted_array
+
+                else:
+                    logger.warning(
+                        f"Camera {camera_name} not available. Sending all black."
+                    )
+                    image_inputs[camera_name] = np.zeros(
+                        (video_resolution[2], video_resolution[1], video_resolution[0]),
+                        dtype=np.uint8,
+                    )
+
+            # Number of cameras
+            if len(image_inputs) != len(config.input_features.video_keys):
+                logger.warning(
+                    f"Model has {len(config.input_features.video_keys)} cameras but {len(image_inputs)} cameras are plugged."
+                )
+                control_signal.stop()
+                raise Exception(
+                    f"Model has {config.input_features.video_keys} cameras but {len(image_inputs)} cameras are plugged."
+                )
+
+            # Number of robots
+            number_of_robots = len(robots)
+            number_of_robots_in_config = config.input_features.number_of_arms
+            if number_of_robots != number_of_robots_in_config:
+                logger.warning("No robot connected. Exiting AI control loop.")
+                control_signal.stop()
+                raise Exception("No robot connected. Exiting AI control loop.")
+
+            # Concatenate all robot states
+            state = robots[0].current_position(rad=True)
+            for robot in robots[1:]:
+                state = np.concatenate(
+                    (state, robot.current_position(rad=True)), axis=0
+                )
+
+            inputs = {
+                config.input_features.state_key: state,
+                **image_inputs,
+            }
+
+            try:
+                actions = self(inputs)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get actions from model: {e}. Exiting AI control loop."
+                )
+                control_signal.stop()
+                break
+
+            if not db_state_updated:
+                control_signal.set_running()
+                db_state_updated = True
+                # Small delay to let the UI update
+                await asyncio.sleep(1)
+
+            # Early stop
+            if not control_signal.is_running():
+                break
+
+            for action in actions:
+                if unit == "rad":
+                    if action.max() > 2 * np.pi:
+                        logger.warning("Actions are in degrees. Converting to radians.")
+                        unit = "degrees"
+
+                # Send the new joint position to the robot
+                action_list = action.tolist()
+                for robot_index in range(len(robots)):
+                    robots[robot_index].write_joint_positions(
+                        angles=action_list[robot_index * 6 : robot_index * 6 + 6],
+                        unit=unit,
+                    )
+
+                # Wait fps time
+                elapsed_time = time.perf_counter() - start_time
+                sleep_time = max(0, 1.0 / (fps * speed) - elapsed_time)
+                await asyncio.sleep(sleep_time)
+                start_time = time.perf_counter()
+
+            nb_iter += 1

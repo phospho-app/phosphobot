@@ -2,9 +2,11 @@
 
 from ..core.pydantic_utilities import UniversalBaseModel
 import typing
-from .all_cameras_status import AllCamerasStatus
-from .status import Status
+from .server_status_ai_running_status import ServerStatusAiRunningStatus
 import pydantic
+from .all_cameras_status import AllCamerasStatus
+from .robot_config_status import RobotConfigStatus
+from .status import Status
 from ..core.pydantic_utilities import IS_PYDANTIC_V2
 
 
@@ -13,9 +15,25 @@ class ServerStatus(UniversalBaseModel):
     Contains the status of the app
     """
 
+    ai_running_status: typing.Optional[ServerStatusAiRunningStatus] = pydantic.Field(default=None)
+    """
+    Whether the robot is currently controlled by an AI model.
+    """
+
     cameras: typing.Optional[AllCamerasStatus] = None
+    is_recording: typing.Optional[bool] = pydantic.Field(default=None)
+    """
+    Whether the server is currently recording an episode.
+    """
+
     name: str
+    robot_status: typing.Optional[typing.List[RobotConfigStatus]] = None
     robots: typing.Optional[typing.List[str]] = None
+    server_ip: str = pydantic.Field()
+    """
+    IP address of the server
+    """
+
     status: Status
     version_id: typing.Optional[str] = pydantic.Field(default=None)
     """
@@ -23,9 +41,7 @@ class ServerStatus(UniversalBaseModel):
     """
 
     if IS_PYDANTIC_V2:
-        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
-            extra="allow", frozen=True
-        )  # type: ignore # Pydantic v2
+        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(extra="allow", frozen=True)  # type: ignore # Pydantic v2
     else:
 
         class Config:

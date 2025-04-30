@@ -13,13 +13,11 @@ class VoltageReadResponse(UniversalBaseModel):
 
     current_voltage: typing.List[float] = pydantic.Field()
     """
-    A list of length 7, with the current voltage of each joint.
+    A list of length 6, with the current voltage of each joint.
     """
 
     if IS_PYDANTIC_V2:
-        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
-            extra="allow", frozen=True
-        )  # type: ignore # Pydantic v2
+        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(extra="allow", frozen=True)  # type: ignore # Pydantic v2
     else:
 
         class Config:

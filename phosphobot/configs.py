@@ -5,9 +5,9 @@ Store constants and configurations for the app in this file.
 from pathlib import Path
 from typing import Literal
 
-import yaml
+import yaml  # type: ignore
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from phosphobot.types import SimulationMode, VideoCodecs
 from phosphobot.utils import get_home_app_path
@@ -42,34 +42,34 @@ class Configuration(BaseModel):
     # Profiling (creates a profile.html file in the root directory)
     PROFILE: bool = False
 
-    # Camera
-    CAMERA_DISABLED: bool = False
-
     # Recording
     MAIN_CAMERA_ID: int | None = None  # defaults to min(detected cameras)
 
-    # If Set to True, the main camera will be the realsense camera and we ignore MAIN_CAMERA_ID
-    USE_REALSENSE_MAIN: bool = True
+    # Whether to initialize the RealSense camera
+    ENABLE_REALSENSE: bool = True
 
     # How simulation should be run
     SIM_MODE: SimulationMode = SimulationMode.headless
     # Only simulation: Only use the simulation
     ONLY_SIMULATION: bool = False
-
     SIMULATE_CAMERAS: bool = False
 
-    # Serial ports of leader robots
-    LEADER_ARM_DEVICE_NAMES: list[str] | None = None
+    # HF token
+    HF_TOKEN_VALID: bool = False
 
     # These fields will be set after loading the user config
     DEFAULT_DATASET_NAME: str = "example_dataset"
     DEFAULT_FREQ: int = 30
     DEFAULT_EPISODE_FORMAT: Literal["lerobot_v2", "json"] = "lerobot_v2"
-    DEFAULT_VIDEO_CODEC: VideoCodecs = "mp4v"
-    DEFAULT_VIDEO_SIZE: tuple[int, int] = (320, 240)
-    DEFAULT_REMOTE_SERVER_INFERENCE_URL: str = "http://localhost"
-    DEFAULT_REMOTE_SERVER_INFERENCE_PORT: int = 8080
+    DEFAULT_VIDEO_CODEC: VideoCodecs = Field(default_factory=lambda: "avc1")
+    DEFAULT_VIDEO_SIZE: list[int] = [320, 240]
     DEFAULT_TASK_INSTRUCTION: str = "None"
+    # List of camera ids to disable, set to -1 to disable all cameras
+    DEFAULT_CAMERAS_TO_DISABLE: list[int] | None = None
+    DEFAULT_CAMERAS_TO_RECORD: list[int] | None = None
+
+    class Config:
+        extra = "ignore"
 
     @classmethod
     def from_yaml(cls, config_path: str | Path | None = None) -> "Configuration":
@@ -83,25 +83,24 @@ class Configuration(BaseModel):
         if config_path is None:
             config_path = YAML_CONFIG_PATH
 
-        logger.info(f"Loading configuration from {config_path}")
-
         # Ensure the file exists. If not, create it.
         if not Path(config_path).exists():
-            logger.info(
-                f"Configuration file not found. Creating a new one at {config_path}"
-            )
-
             with open(config_path, "w") as file:
                 file.write("")
-                return cls()
+            return cls()
 
         with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-            if config is None or not isinstance(config, dict):
-                config = {}
-            config = rename_keys_for_config(config)
+            try:
+                config = yaml.safe_load(file)
+            except yaml.YAMLError as e:
+                logger.error(
+                    f"Error loading configuration file: {e}.\nUsing default config. Please shut down the program and edit the config file."
+                )
+                config = None
 
-        logger.info(f"Loaded configuration: {config}")
+        if config is None or not isinstance(config, dict):
+            config = {}
+        config = rename_keys_for_config(config)
 
         return cls(**config)
 
@@ -115,7 +114,7 @@ class Configuration(BaseModel):
         try:
             # Read the user_settings as a config
             user_settings = rename_keys_for_config(user_settings)
-            new_config = Configuration(**user_settings)
+            new_config = Configuration.model_validate(user_settings)
         except Exception as e:
             logger.error(f"Error saving user settings: {e}")
             return
@@ -125,7 +124,7 @@ class Configuration(BaseModel):
             yaml.dump(user_settings, file)
 
         # Then, replace inplace the fields of the current instance with the new instance
-        for field in new_config.model_fields.keys():
+        for field in Configuration.model_fields.keys():
             setattr(self, field, getattr(new_config, field))
 
 

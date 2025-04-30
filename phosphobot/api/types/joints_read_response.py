@@ -13,18 +13,16 @@ class JointsReadResponse(UniversalBaseModel):
 
     angles_motor_units: typing.List[int] = pydantic.Field()
     """
-    A list of length 7, with the position of each joint in motor units.
+    A list of length 6, with the position of each joint in motor units.
     """
 
     angles_rad: typing.List[float] = pydantic.Field()
     """
-    A list of length 7, with the position of each joint in radian.
+    A list of length 6, with the position of each joint in radian.
     """
 
     if IS_PYDANTIC_V2:
-        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
-            extra="allow", frozen=True
-        )  # type: ignore # Pydantic v2
+        model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(extra="allow", frozen=True)  # type: ignore # Pydantic v2
     else:
 
         class Config:

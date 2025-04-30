@@ -1,5 +1,25 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "lerobot",
+#     "phosphobot",
+#     "json_numpy",
+#     "fastapi",
+#     "uvicorn",
+#     "packaging",
+#     "torch",
+#     "loguru",
+# ]
+#
+# [tool.uv.sources]
+# lerobot = { git = "https://github.com/phospho-app/lerobot" }
+# ///
+
+from loguru import logger
+
+logger.info("Starting ACT policy server...")
+
 import argparse
-import logging
 from pathlib import Path
 from typing import List
 import json
@@ -33,11 +53,11 @@ def get_safe_torch_device(device_str: str, log: bool = True) -> torch.device:
     """Get a safe torch device, defaulting to CPU if requested device is not available."""
     if device_str == "cuda" and not torch.cuda.is_available():
         if log:
-            logging.warning("CUDA requested but not available. Using CPU instead.")
+            logger.warning("CUDA requested but not available. Using CPU instead.")
         return torch.device("cpu")
     elif device_str == "mps" and not torch.backends.mps.is_available():
         if log:
-            logging.warning("MPS requested but not available. Using CPU instead.")
+            logger.warning("MPS requested but not available. Using CPU instead.")
         return torch.device("cpu")
     return torch.device(device_str)
 
@@ -53,7 +73,7 @@ def get_pretrained_policy_path(pretrained_policy_name_or_path, revision=None):
             error_message = "The provided pretrained_policy_name_or_path is not a valid Hugging Face Hub repo ID."
         else:
             error_message = "The provided pretrained_policy_name_or_path was not found on the Hugging Face Hub."
-        logging.warning(f"{error_message} Treating it as a local directory.")
+        logger.warning(f"{error_message} Treating it as a local directory.")
         pretrained_policy_path = Path(pretrained_policy_name_or_path)
 
     if not pretrained_policy_path.is_dir() or not pretrained_policy_path.exists():
@@ -94,7 +114,7 @@ def load_policy(model_id: str, revision: str | None = None):
     """Download and load the ACT policy."""
     global policy, device, input_features
     try:
-        logging.info(f"Loading policy from {model_id}")
+        logger.info(f"Loading policy from {model_id}")
 
         # Get the policy path
         policy_path = get_pretrained_policy_path(model_id, revision=revision)
@@ -103,24 +123,24 @@ def load_policy(model_id: str, revision: str | None = None):
         device = get_safe_torch_device(device_str="mps", log=True)
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
-        logging.info(f"Device set to {device}")
+        logger.info(f"Device set to {device}")
 
         # Load the policy
         policy = ACTPolicy.from_pretrained(policy_path).to(device)
         assert isinstance(policy, nn.Module)
-        logging.info("Policy loaded successfully")
+        logger.info("Policy loaded successfully")
 
         input_features = parse_input_features(policy_path / "config.json")
-        logging.info(f"Input features required for model: {input_features.keys()}")
+        logger.success(f"Input features required for model: {input_features.keys()}")
 
         # Set to evaluation mode
         policy.eval()
-        logging.info("Policy set to evaluation mode")
+        logger.debug("Policy set to evaluation mode")
 
         return input_features
 
     except Exception as e:
-        logging.error(f"Error loading policy: {str(e)}")
+        logger.error(f"Error loading policy: {str(e)}")
         raise
 
 
@@ -178,7 +198,7 @@ def process_image(
                 return action.cpu().numpy()
 
         except Exception as e:
-            logging.error(f"Error during inference: {str(e)}")
+            logger.error(f"Error during inference: {str(e)}")
             raise
     else:
         raise ValueError("Invalid image format. Expected RGB image.")
@@ -203,13 +223,13 @@ async def inference(request: InferenceRequest) -> str | None:
         ]
 
         if "observation.state" not in payload:
-            logging.error("observation.state not found in payload")
+            logger.error("observation.state not found in payload")
             raise ValueError("observation.state required in payload")
 
         if len(payload.keys()) != len(input_features.keys()):
             for feature in input_features.keys():
                 if feature not in payload:
-                    logging.error(f"{feature} required but not found in payload")
+                    logger.error(f"{feature} required but not found in payload")
             raise ValueError("Missing required features in payload")
         else:
             shape = input_features[image_names[0]]["shape"]
@@ -265,10 +285,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
-
     # Load the policy
     load_policy(args.model_id, revision=args.revision)
 

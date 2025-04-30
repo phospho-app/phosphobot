@@ -1,16 +1,19 @@
 import base64
+import functools
+import inspect
 import json
 import os
+import traceback
 from pathlib import Path
 from typing import Annotated, Any, Tuple, Union
 
+import av
 import cv2
-from huggingface_hub import HfApi
 import numpy as np
-from loguru import logger
 import pandas as pd
+from huggingface_hub import HfApi
+from loguru import logger
 from pydantic import BeforeValidator, PlainSerializer
-from rich import print
 
 from phosphobot.types import VideoCodecs
 
@@ -76,108 +79,158 @@ def create_video_file(
     output_path: str,
     fps: float,
     codec: VideoCodecs,
-) -> str | Tuple[str, str]:
+) -> Union[str, Tuple[str, str]]:
     """
-    Create a video file from a list of frames and resize video to target size.
+    Create a video file from a 4D numpy array of frames and resize to target size.
     For stereo cameras (aspect ratio >= 8/3), creates separate left and right video files.
 
     Args:
-        frames (list of np.ndarray): List of frames in RGB format.
+        frames (np.ndarray): Array of shape (N, height, width, 3) in RGB format.
         target_size (Tuple[int, int]): Target dimensions (width, height) for the output video.
         output_path (str): Path to save the video file.
         fps (float): Frames per second for the video.
-        codec (str): FourCC codec for the video. Defaults to "mp4v" (MPEG-4 for MP4).
+        codec (str): Codec name for PyAV (e.g. "mpeg4", "h264").
 
     Returns:
         Union[str, Tuple[str, str]]: Path(s) to created video file(s). Returns tuple of paths for stereo.
 
     Raises:
-        ValueError: If frames are empty or incorrectly formatted.
-        RuntimeError: If the video writer cannot be initialized.
+        ValueError: If frames array is empty or has incorrect shape.
+        RuntimeError: If writing fails unexpectedly.
     """
-    # Check if stereo camera based on aspect ratio
-    sample_frame = frames[0]
-    aspect_ratio = sample_frame.shape[1] / sample_frame.shape[0]  # width/height
+    # Map FourCC-style codec literals to PyAV codec names
+    CODEC_MAP = {
+        "avc1": "h264",
+        "avc3": "h264",
+        "mp4v": "mpeg4",
+        "hev1": "hevc",
+        "hvc1": "hevc",
+        "av01": "av1",
+        "vp09": "vp9",
+    }
+    codec_av = CODEC_MAP.get(codec, codec)
+    logger.info(f"Using codec: {codec}")
+
+    # Validate input array
+    if frames.ndim != 4 or frames.shape[-1] != 3:
+        raise ValueError(
+            f"Frames must be a 4D array with shape (N, H, W, 3), got {frames.shape}"
+        )
+    num_frames, h, w, _ = frames.shape
+    if num_frames == 0:
+        raise ValueError("Frames array is empty (N=0)")
+
+    aspect_ratio = w / h
     is_stereo = aspect_ratio >= 8 / 3
+    logger.info(f"Stereo={is_stereo}, aspect_ratio={aspect_ratio:.2f}")
 
-    logger.info(
-        f"Creating video file - stereo: {is_stereo} - Aspect ratio: {aspect_ratio}"
-    )
-
-    def init_video_writer(path: str, size: Tuple[int, int]) -> cv2.VideoWriter:
-        # Ensure the directory exists
+    def open_container(path: str, size: Tuple[int, int]):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        logger.info(f"Creating video file at path: {path}")
+        container = av.open(path, mode="w")
 
-        fourcc = cv2.VideoWriter_fourcc(*codec)  # type: ignore
-        out = cv2.VideoWriter(path, fourcc, fps, size)
+        # pick encoder options based on codec
+        encoder_opts: dict[str, str] = {}
+        if codec_av in ("h264", "mpeg4", "hevc"):
+            # CRF = quality (lower = better), preset = speed/efficiency trade-off
+            encoder_opts = {"crf": "18", "preset": "slow"}
+        elif codec_av == "av1":
+            # AV1 needs slightly higher CRF to match visually (~30),
+            # and cpu-used trades speed vs. quality (0=slowest/best)
+            encoder_opts = {
+                "crf": "30",
+                "cpu-used": "4",
+                "row-mt": "1",  # multi-threading
+                "tile-columns": "2",  # parallel tile encoding
+            }
+        elif codec_av == "vp9":
+            # VP9: crf + speed (0=best, 5=fastest)
+            encoder_opts = {"crf": "30", "speed": "1"}
+        elif codec_av == "mpeg4":
+            # old MPEG-4 Part 2: no CRF, use qscale OR fixed bitrate
+            # Lower qscale = better quality. 2–5 is a good range.
+            encoder_opts = {"qscale": "2"}
+        # else: leave encoder_opts empty for codecs that don’t support these flags
 
-        if not out.isOpened():
-            try:
-                out.open(path, fourcc, fps, size)
-            except Exception as e:
-                logger.error(f"Error while creating video file: {e}")
-                raise RuntimeError(f"Error while creating video: {e}")
-        return out
+        stream = container.add_stream(
+            codec_av,
+            rate=fps,
+            options=encoder_opts or None,  # type: ignore
+        )  # type: ignore
+        # Force a minimum bitrate for mpeg4 to avoid artifacts
+        if codec_av == "mpeg4":
+            stream.bit_rate = 5_000_000  # ~5 Mb/s
 
-    def process_frame(frame: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
+        stream.width, stream.height = size
+        stream.pix_fmt = "yuv420p"
+        return container, stream
+
+    def process_and_encode(frame: np.ndarray, stream, container, size: Tuple[int, int]):
+        # Convert to uint8 RGB if needed
         if frame.dtype != np.uint8:
             frame = np.clip(frame, 0, 255).astype(np.uint8)
-        resized_frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
-        return cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
+        # Wrap as PyAV frame and resize/convert
+        video_frame = av.VideoFrame.from_ndarray(frame, format="rgb24")
+        video_frame = video_frame.reformat(
+            width=size[0], height=size[1], format="yuv420p"
+        )
+        for packet in stream.encode(video_frame):
+            container.mux(packet)
 
     if is_stereo:
-        # Split path for stereo output
-        path = output_path.split("/episode")
-        left_path = f"{path[0]}.left/episode{path[1]}"
-        right_path = f"{path[0]}.right/episode{path[1]}"
+        size = (target_size[0] // 2, target_size[1])
+        base, suffix = output_path.rsplit("/episode", 1)
+        left_path = f"{base}.left/episode{suffix}"
+        right_path = f"{base}.right/episode{suffix}"
 
-        # Split width in half for stereo
-        target_size = (target_size[0] // 2, target_size[1])
+        left_ct = right_ct = None
+        try:
+            left_ct, left_stream = open_container(left_path, size)
+            right_ct, right_stream = open_container(right_path, size)
 
-        logger.info(
-            f"Splitting stereo video into left and right - paths: {left_path}, {right_path}"
-        )
+            mid_w = w // 2
+            for frame in frames:
+                left_frame = frame[:, :mid_w, :]
+                right_frame = frame[:, mid_w:, :]
+                process_and_encode(left_frame, left_stream, left_ct, size)
+                process_and_encode(right_frame, right_stream, right_ct, size)
 
-        # Initialize writers for both streams
-        out_left = init_video_writer(left_path, target_size)
-        out_right = init_video_writer(right_path, target_size)
+            # flush encoders
+            for packet in left_stream.encode():
+                left_ct.mux(packet)
+            for packet in right_stream.encode():
+                right_ct.mux(packet)
 
-        frame_width = sample_frame.shape[1] // 2  # Split width in half for stereo
+            return left_path, right_path
 
-        for frame in frames:
-            # Split frame into left and right
-            left_frame = frame[:, :frame_width]
-            right_frame = frame[:, frame_width:]
-
-            # Process and write each frame
-            out_left.write(process_frame(left_frame, target_size))
-            out_right.write(process_frame(right_frame, target_size))
-
-        out_left.release()
-        out_right.release()
-
-        print(f"""[green]Left output path: {left_path}
-Right output path: {right_path}
-fps: {fps}
-codec: {codec}
-target_size of each video: {target_size}[/green]""")
-        return left_path, right_path
+        except Exception:
+            logger.error("Error writing stereo video", exc_info=True)
+            raise
+        finally:
+            if left_ct:
+                left_ct.close()
+            if right_ct:
+                right_ct.close()
 
     else:
-        # Single camera processing
-        out = init_video_writer(output_path, target_size)
+        size = target_size
+        container = None
+        try:
+            container, stream = open_container(output_path, size)
+            for frame in frames:
+                process_and_encode(frame, stream, container, size)
 
-        for frame in frames:
-            out.write(process_frame(frame, target_size))
+            # flush encoder
+            for packet in stream.encode():
+                container.mux(packet)
 
-        out.release()
+            return output_path
 
-        print(f"""[green]Output path: {output_path}
-Fps: {fps}
-codec: {codec}
-Target_size of video: {target_size}[/green]""")
-        return output_path
+        except Exception:
+            logger.error("Error writing video", exc_info=True)
+            raise
+        finally:
+            if container:
+                container.close()
 
 
 def get_home_app_path() -> Path:
@@ -204,6 +257,7 @@ def get_home_app_path() -> Path:
 
 def compute_sum_squaresum_framecount_from_video(
     video_path: str,
+    raise_if_not_found: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, int]:
     """
     Process a video file and calculate the sum of RGB values and sum of squares of RGB values for each frame.
@@ -214,7 +268,14 @@ def compute_sum_squaresum_framecount_from_video(
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
-        raise FileNotFoundError(f"Error: Could not open video at path: {video_path}")
+        if raise_if_not_found:
+            raise FileNotFoundError(
+                f"Error: Could not open video at path: {video_path}"
+            )
+        logger.warning(
+            f"Error: Could not open video at path: {video_path}. Returning 0."
+        )
+        return (np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32), 0)
 
     nb_pixel = 0
     total_sum_rgb = np.zeros(3, dtype=np.float32)  # To store sum of RGB values
@@ -276,17 +337,11 @@ def get_field_min_max(df: pd.DataFrame, field_name: str) -> tuple:
         # Check that df[field_name].values is a np.ndarray
         array_values = df[field_name].values
 
-        if not isinstance(array_values, np.ndarray):
-            raise ValueError(
-                f"Field '{field_name}' values are not stored as a numpy array in the DataFrame"
-            )
-        else:
-            # No overload variant of "vstack" matches argument type "ndarray[Any, Any]"
-            return np.min(np.vstack(array_values), axis=1), np.max(  # type: ignore
-                np.vstack(array_values),  # type: ignore
-                axis=1,
-            )
-
+        # No overload variant of "vstack" matches argument type "ndarray[Any, Any]"
+        return (
+            np.min(np.vstack(array_values), axis=0),  # type: ignore
+            np.max(np.vstack(array_values), axis=0),  # type: ignore
+        )
     else:
         # Otherwise, assume the field is numeric and return the scalar min.
         return (df[field_name].min(), df[field_name].max())
@@ -311,7 +366,6 @@ def parse_hf_username_or_orgid(user_info: dict) -> str | None:
     scoped_permissions = fine_grained_permissions.get("scoped", [])
 
     # Check if the token has write access to the user account
-    user_has_write_access = False
     org_with_write_access = None
 
     for scope in scoped_permissions:
@@ -322,7 +376,6 @@ def parse_hf_username_or_orgid(user_info: dict) -> str | None:
 
         # Check if the entity is the user and has write access
         if entity_type == "user" and "repo.write" in permissions:
-            user_has_write_access = True
             # Return the username
             return username
 
@@ -360,8 +413,57 @@ def get_hf_username_or_orgid() -> str | None:
             username_or_orgid = parse_hf_username_or_orgid(user_info)
             return username_or_orgid
         except Exception as e:
-            logger.error(f"Error logging in to Hugging Face: {e}")
+            logger.warning(f"Error logging in to Hugging Face: {e}")
             return None
     else:
         logger.warning(f"Empty token file: {token_file}. Won't push to HuggingFace.")
         return None
+
+
+def get_hf_token() -> str | None:
+    """
+    Returns the hf token from the token file.
+    Returns None if there is no token.
+    """
+    token_file = get_home_app_path() / "huggingface.token"
+
+    # Check the file exists
+    if not token_file.exists():
+        logger.info("Token file not found.")
+        return None
+
+    with open(token_file, "r") as file:
+        hf_token = file.read().strip()
+    if hf_token:
+        return hf_token
+    else:
+        logger.warning(f"Empty token file: {token_file}.")
+        return None
+
+
+def background_task_log_exceptions(func):
+    """
+    Decorator to log exceptions in background tasks (works for both sync/async functions).
+    Otherwise, the exception is silently swallowed.
+    """
+
+    @functools.wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Background task error: {str(e)}\n{traceback.format_exc()}")
+            raise
+
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Background task error: {str(e)}\n{traceback.format_exc()}")
+            raise
+
+    if inspect.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper

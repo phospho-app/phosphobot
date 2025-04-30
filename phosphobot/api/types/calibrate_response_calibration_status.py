@@ -2,6 +2,4 @@
 
 import typing
 
-CalibrateResponseCalibrationStatus = typing.Union[
-    typing.Literal["error", "success", "in_progress"], typing.Any
-]
+CalibrateResponseCalibrationStatus = typing.Union[typing.Literal["error", "success", "in_progress"], typing.Any]

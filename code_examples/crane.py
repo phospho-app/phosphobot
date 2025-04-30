@@ -15,6 +15,7 @@ The robot arm is controlled using the following keys:
 import requests
 import time
 import logging
+from typing import cast
 from pynput.keyboard import KeyCode
 from typing import Dict, Literal, Set, Tuple
 from pynput import keyboard as pynput_keyboard
@@ -39,7 +40,8 @@ def behind_or_front() -> Literal["Behind", "Facing"]:
         )
         if inp in ["Behind", "Facing"]:
             print(f"You chose '{inp}'")
-            return inp  # type: Literal["Behind", "Facing"]
+            inp = cast(Literal["Behind", "Facing"], inp)
+            return inp
         else:
             print("You must choose between 'Behind' or 'Facing'")
 
@@ -102,7 +104,7 @@ def on_press(key: KeyCode | str) -> None:
         return
     # Handle alphanumeric keys (e.g. "a", "d")
     try:
-        char = key.char.lower()
+        char = key.char.lower()  # type: ignore
         if char in KEY_MAPPINGS:
             keys_pressed.add(char)
     except AttributeError:
@@ -114,7 +116,7 @@ def on_press(key: KeyCode | str) -> None:
 def on_release(key: KeyCode | str) -> None:
     # Remove keys from the pressed set when released.
     try:
-        char = key.char.lower()
+        char = key.char.lower()  # type: ignore
         keys_pressed.discard(char)
     except AttributeError:
         if key in SPECIAL_KEY_MAPPINGS:
@@ -146,8 +148,8 @@ def control_robot():
     endpoint = f"{BASE_URL}move/relative"
 
     logging.info("Control the end effector using the following keys:")
-    logging.info("  Arrow Up:    Move forward (increase Y)")
-    logging.info("  Arrow Down:  Move backward (decrease Y)")
+    logging.info("  Arrow Up:    Move forward (increase RZ)")
+    logging.info("  Arrow Down:  Move backward (decrease RZ)")
     logging.info("  Arrow Right: Move up (increase Z)")
     logging.info("  Arrow Left:  Move down (decrease Z)")
     logging.info("  A:           Move left (decrease X)")
@@ -162,35 +164,35 @@ def control_robot():
     try:
         while True:
             # Reset movement deltas.
-            delta_x, delta_y, delta_z = 0.0, 0.0, 0.0
+            delta_x, delta_rz, delta_z = 0.0, 0.0, 0.0
 
             # Aggregate movement contributions from pressed keys.
             for key in keys_pressed:
                 if isinstance(key, str):  # Alphanumeric keys.
-                    dx, dy, dz = KEY_MAPPINGS.get(key, (0, 0, 0))
+                    dx, drz, dz = KEY_MAPPINGS.get(key, (0, 0, 0))
                 else:  # Special keys (arrow keys).
-                    dx, dy, dz = SPECIAL_KEY_MAPPINGS.get(key, (0, 0, 0))
+                    dx, drz, dz = SPECIAL_KEY_MAPPINGS.get(key, (0, 0, 0))
                 delta_x += dx
-                delta_y += dy
+                delta_rz += drz
                 delta_z += dz
 
             global open_state
             # Send a relative move command if any movement key is pressed.
-            if delta_x or delta_y or delta_z:
+            if delta_x or delta_rz or delta_z:
                 data = {
                     "x": delta_x,
-                    "y": delta_y,
+                    "y": 0,
                     "z": delta_z,
                     "rx": 0,
                     "ry": 0,
-                    "rz": 0,
+                    "rz": delta_rz,
                     "open": open_state,
                 }
                 try:
                     response = requests.post(endpoint, json=data, timeout=1)
                     response.raise_for_status()
                     logging.info(
-                        f"Sent movement: x={delta_x}, y={delta_y}, z={delta_z}"
+                        f"Sent movement: x={delta_x}, y={delta_rz}, z={delta_z}"
                     )
                 except requests.exceptions.RequestException as e:
                     logging.error(f"Request failed: {e}")

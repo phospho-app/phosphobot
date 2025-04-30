@@ -5,10 +5,8 @@ import datetime as dt
 import typing
 from collections import defaultdict
 
-import typing_extensions
-
 import pydantic
-
+import typing_extensions
 from .datetime_utils import serialize_datetime
 from .serialization import convert_and_respect_annotation_metadata
 
@@ -57,9 +55,7 @@ Model = typing.TypeVar("Model", bound=pydantic.BaseModel)
 
 
 def parse_obj_as(type_: typing.Type[T], object_: typing.Any) -> T:
-    dealiased_object = convert_and_respect_annotation_metadata(
-        object_=object_, annotation=type_, direction="read"
-    )
+    dealiased_object = convert_and_respect_annotation_metadata(object_=object_, annotation=type_, direction="read")
     if IS_PYDANTIC_V2:
         adapter = pydantic.TypeAdapter(type_)  # type: ignore # Pydantic v2
         return adapter.validate_python(dealiased_object)
@@ -81,19 +77,14 @@ def to_jsonable_with_fallback(
 class UniversalBaseModel(pydantic.BaseModel):
     if IS_PYDANTIC_V2:
         model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
-            # Allow fields begining with `model_` to be used in the model
+            # Allow fields beginning with `model_` to be used in the model
             protected_namespaces=(),
         )  # type: ignore # Pydantic v2
 
         @pydantic.model_serializer(mode="wrap", when_used="json")  # type: ignore # Pydantic v2
-        def serialize_model(
-            self, handler: pydantic.SerializerFunctionWrapHandler
-        ) -> typing.Any:  # type: ignore # Pydantic v2
+        def serialize_model(self, handler: pydantic.SerializerFunctionWrapHandler) -> typing.Any:  # type: ignore # Pydantic v2
             serialized = handler(self)
-            data = {
-                k: serialize_datetime(v) if isinstance(v, dt.datetime) else v
-                for k, v in serialized.items()
-            }
+            data = {k: serialize_datetime(v) if isinstance(v, dt.datetime) else v for k, v in serialized.items()}
             return data
 
     else:
@@ -104,24 +95,16 @@ class UniversalBaseModel(pydantic.BaseModel):
 
     @classmethod
     def model_construct(
-        cls: typing.Type["Model"],
-        _fields_set: typing.Optional[typing.Set[str]] = None,
-        **values: typing.Any,
+        cls: typing.Type["Model"], _fields_set: typing.Optional[typing.Set[str]] = None, **values: typing.Any
     ) -> "Model":
-        dealiased_object = convert_and_respect_annotation_metadata(
-            object_=values, annotation=cls, direction="read"
-        )
+        dealiased_object = convert_and_respect_annotation_metadata(object_=values, annotation=cls, direction="read")
         return cls.construct(_fields_set, **dealiased_object)
 
     @classmethod
     def construct(
-        cls: typing.Type["Model"],
-        _fields_set: typing.Optional[typing.Set[str]] = None,
-        **values: typing.Any,
+        cls: typing.Type["Model"], _fields_set: typing.Optional[typing.Set[str]] = None, **values: typing.Any
     ) -> "Model":
-        dealiased_object = convert_and_respect_annotation_metadata(
-            object_=values, annotation=cls, direction="read"
-        )
+        dealiased_object = convert_and_respect_annotation_metadata(object_=values, annotation=cls, direction="read")
         if IS_PYDANTIC_V2:
             return super().model_construct(_fields_set, **dealiased_object)  # type: ignore # Pydantic v2
         else:
@@ -143,7 +126,7 @@ class UniversalBaseModel(pydantic.BaseModel):
         Override the default dict method to `exclude_unset` by default. This function patches
         `exclude_unset` to work include fields within non-None default values.
         """
-        # Note: the logic here is multi-plexed given the levers exposed in Pydantic V1 vs V2
+        # Note: the logic here is multiplexed given the levers exposed in Pydantic V1 vs V2
         # Pydantic V1's .dict can be extremely slow, so we do not want to call it twice.
         #
         # We'd ideally do the same for Pydantic V2, but it shells out to a library to serialize models
@@ -177,9 +160,7 @@ class UniversalBaseModel(pydantic.BaseModel):
                     # If the default values are non-null act like they've been set
                     # This effectively allows exclude_unset to work like exclude_none where
                     # the latter passes through intentionally set none values.
-                    if default is not None or (
-                        "exclude_unset" in kwargs and not kwargs["exclude_unset"]
-                    ):
+                    if default is not None or ("exclude_unset" in kwargs and not kwargs["exclude_unset"]):
                         _fields_set.add(name)
 
                         if default is not None:
@@ -192,13 +173,9 @@ class UniversalBaseModel(pydantic.BaseModel):
                 **kwargs,
             }
 
-            dict_dump = super().dict(
-                **kwargs_with_defaults_exclude_unset_include_fields
-            )
+            dict_dump = super().dict(**kwargs_with_defaults_exclude_unset_include_fields)
 
-        return convert_and_respect_annotation_metadata(
-            object_=dict_dump, annotation=self.__class__, direction="write"
-        )
+        return convert_and_respect_annotation_metadata(object_=dict_dump, annotation=self.__class__, direction="write")
 
 
 def _union_list_of_pydantic_dicts(
@@ -210,9 +187,7 @@ def _union_list_of_pydantic_dicts(
         if isinstance(item, dict):
             converted_list.append(deep_union_pydantic_dicts(item, destination_value))
         elif isinstance(item, list):
-            converted_list.append(
-                _union_list_of_pydantic_dicts(item, destination_value)
-            )
+            converted_list.append(_union_list_of_pydantic_dicts(item, destination_value))
         else:
             converted_list.append(item)
     return converted_list
@@ -247,9 +222,9 @@ else:
 
 
 def encode_by_type(o: typing.Any) -> typing.Any:
-    encoders_by_class_tuples: typing.Dict[
-        typing.Callable[[typing.Any], typing.Any], typing.Tuple[typing.Any, ...]
-    ] = defaultdict(tuple)
+    encoders_by_class_tuples: typing.Dict[typing.Callable[[typing.Any], typing.Any], typing.Tuple[typing.Any, ...]] = (
+        defaultdict(tuple)
+    )
     for type_, encoder in encoders_by_type.items():
         encoders_by_class_tuples[encoder] += (type_,)
 
@@ -283,14 +258,10 @@ def universal_root_validator(
     return decorator
 
 
-def universal_field_validator(
-    field_name: str, pre: bool = False
-) -> typing.Callable[[AnyCallable], AnyCallable]:
+def universal_field_validator(field_name: str, pre: bool = False) -> typing.Callable[[AnyCallable], AnyCallable]:
     def decorator(func: AnyCallable) -> AnyCallable:
         if IS_PYDANTIC_V2:
-            return pydantic.field_validator(
-                field_name, mode="before" if pre else "after"
-            )(func)  # type: ignore # Pydantic v2
+            return pydantic.field_validator(field_name, mode="before" if pre else "after")(func)  # type: ignore # Pydantic v2
         else:
             return pydantic.validator(field_name, pre=pre)(func)  # type: ignore # Pydantic v1
 

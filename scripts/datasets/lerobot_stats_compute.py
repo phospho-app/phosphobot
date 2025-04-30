@@ -12,6 +12,7 @@ import torchvision
 import tqdm
 from loguru import logger
 from torch.utils.data import Dataset
+import argparse
 
 
 class ParquetEpisodesDataset(Dataset):
@@ -90,7 +91,6 @@ class ParquetEpisodesDataset(Dataset):
         # video keys are the unique names of the folders in the videos directory
         videos_folders = os.path.join(self.videos_dir, "chunk-000")
         self.video_keys = str(os.listdir(videos_folders)).split("chunk-000.")[-1]
-        logger.info(f"Video keys: {self.video_keys}")
 
     def __len__(self):
         return self.total_length
@@ -146,10 +146,23 @@ class ParquetEpisodesDataset(Dataset):
         # {"episode_index": 0, "length": 57}
         # {"episode_index": 1, "length": 88}
         # ...
+
+        # For now, we resolve ot a temporary fix: use the first task from the meta/tasks.json file
+        # But we would like to be able to handle multiple tasks
+        # See the training/phospho_lerobot/scripts/multidataset.py save_episodes_jsonl() method
+        task = None
+        with open(os.path.join(self.dataset_dir, "meta", "tasks.jsonl"), "r") as file:
+            for line in file:
+                if line.strip():  # Skip empty lines
+                    row = json.loads(line)
+                    task = row["task"]
+        if task is None:
+            raise ValueError("No task found in the meta/tasks.json file")
+
         for episode_idx, nb_steps in self.steps_per_episode.items():
             episode = {
                 "episode_index": episode_idx,
-                "tasks": ["None"],
+                "tasks": task,
                 "length": nb_steps,
             }
             with open(output_dir, "a") as f:
@@ -478,23 +491,56 @@ def decode_video_frames_torchvision(
 
 
 if __name__ == "__main__":
-    # Edit to add your own path
-    DATASET_PATH: str = ...
-    if DATASET_PATH is None:
-        raise ValueError(
-            "Please set the DATASET_PATH variable to the path of the dataset."
-        )
+    parser = argparse.ArgumentParser(description="Compute statistics for a dataset.")
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        required=True,
+        help="Path to the dataset directory containing data, videos, and meta subfolders.",
+    )
+    args = parser.parse_args()
+
+    DATASET_PATH = args.dataset_path
 
     stats = tensor_to_list(compute_stats(DATASET_PATH))
 
-    # Write stats into a json file
-    with open("stats.json", "w") as f:
-        json.dump(stats, f)
+    META_PATH = os.path.join(DATASET_PATH, "meta")
 
-    logger.success(f"Compute stats: {stats}")
+    STATS_FILE = os.path.join(META_PATH, "stats.json")
+    # Overwrite the stats.json file
+    with open(STATS_FILE, "w") as f:
+        json.dump(stats, f, indent=4)
 
+    logger.success(f"Stats computed and saved to {STATS_FILE}")
+
+    # Edit the info.json file
     dataset = ParquetEpisodesDataset(DATASET_PATH)
-    print(f"Total frames: {dataset.total_length}")
 
-    # Write episodes into a json file
-    dataset.write_episodes("episodes.jsonl")
+    # Find the data that has changed
+    total_episodes = len(dataset.parquet_cache)
+    total_frames = dataset.total_length
+    total_videos = len(dataset.video_paths)
+    splits = {"train": f"0:{total_episodes}"}
+
+    INFO_FILE = os.path.join(META_PATH, "info.json")
+    with open(INFO_FILE, "r") as f:
+        info = json.load(f)
+    info["total_episodes"] = total_episodes
+    info["total_frames"] = total_frames
+    info["total_videos"] = total_videos
+    info["splits"] = splits
+
+    with open(INFO_FILE, "w") as f:
+        json.dump(info, f, indent=4)
+
+    logger.success(f"Info updated and saved to {INFO_FILE}")
+
+    # Overwrite the episodes.jsonl file
+    EPISODES_FILE = os.path.join(META_PATH, "episodes.jsonl")
+    # delete the episodes file if it exists
+    if os.path.exists(EPISODES_FILE):
+        os.remove(EPISODES_FILE)
+    dataset.write_episodes(EPISODES_FILE)
+
+    logger.success(f"Episodes written to {EPISODES_FILE}")
+    logger.success("Stats computation complete")

@@ -2,10 +2,26 @@ from typing import Literal
 from enum import Enum
 
 
-VideoCodecs = Literal["avc1", "hev1", "mp4v", "hvc1", "avc3", "av01", "vp09"]
+VideoCodecs = Literal[
+    "avc1",
+    "hev1",
+    "mp4v",
+    "hvc1",
+    "avc3",
+    "av01",
+    "vp09",
+    "av1",
+]
 
 CameraTypes = Literal[
-    "classic", "stereo", "realsense", "dummy", "dummy_stereo", "unknown"
+    "classic",
+    "stereo",
+    "realsense",
+    "realsense_rgb",
+    "realsense_depth",
+    "dummy",
+    "dummy_stereo",
+    "unknown",
 ]
 
 
@@ -24,3 +40,4 @@ class VideoCodecsEnum(str, Enum):
     avc3 = "avc3"
     av01 = "av01"
     vp09 = "vp09"
+    av1 = "av1"
