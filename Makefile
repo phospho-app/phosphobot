@@ -48,7 +48,6 @@ build_pyinstaller:
 	--onefile \
 	--name $(OUTPUT_FILENAME) \
 	--add-data "resources:resources" \
-	--add-data "dashboard/dist:dashboard/dist" \
 	--hidden-import phosphobot \
 	--collect-all phosphobot \
 	--collect-all phosphobot \

@@ -277,7 +277,7 @@ jobs:
       #       --wait --verbose
       # # END NOTARIZATION STEPS.
       - name: Run the built application
-        run: ./phosphobot/${{ env.OUTPUT_FILENAME }} run --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 --only-simulation &
+        run: ./phosphobot/${{ env.OUTPUT_FILENAME }} run --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 --only-simulation --no-telemetry &
 
       - name: Wait for server
         run: |
@@ -475,9 +475,12 @@ jobs:
           VITE_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         working-directory: dashboard
         run: |
-          npm run build 
-          $sourcePath = Join-Path -Path "phosphobot/resources/dist" -ChildPath "*"
-          $destinationPath = Join-Path -Path "phosphobot" -ChildPath "resources/dist"
+          npm run build
+
+      - name: Copy dashboard frontend to resources
+        run: |
+          $sourcePath = Join-Path -Path "dashboard/dist" -ChildPath "*"
+          $destinationPath = Join-Path -Path "phosphobot/resources" -ChildPath "dist"
           if (!(Test-Path $destinationPath)) {
             New-Item -ItemType Directory -Force -Path $destinationPath
           }
@@ -522,7 +525,6 @@ jobs:
             --name "$env:OUTPUT_FILENAME" `
             --onefile `
             --add-data "resources:resources" `
-            --add-data "dashboard/dist:dashboard/dist" `
             --hidden-import phosphobot `
             --collect-all phosphobot `
             --collect-all phosphobot `
@@ -562,11 +564,7 @@ jobs:
         run: uv cache prune --ci
 
   publish_phospho_python:
-    needs: build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: phosphobot
 
     steps:
       - uses: actions/checkout@v4
@@ -587,14 +585,107 @@ jobs:
           VITE_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: make build_frontend
 
+      - name: Check that the frontend build was successful (dist folder not empty)
+        run: |
+          if [ ! -d "phosphobot/resources/dist" ]; then
+            echo "Dashboard frontend build failed: dist folder not found"
+            exit 1
+          fi
+          if [ ! "$(ls -A phosphobot/resources/dist)" ]; then
+            echo "Dashboard frontend build failed: dist folder is empty"
+            exit 1
+          fi
+
+      - name: Create tokens.toml
+        run: |
+          mkdir -p phosphobot/resources
+          cat > phosphobot/resources/tokens.toml << EOF
+          ENV = "prod"
+          SENTRY_DSN = "${{ secrets.SENTRY_DSN }}"
+          POSTHOG_API_KEY = "${{ secrets.POSTHOG_API_KEY }}"
+          POSTHOG_HOST = "${{ vars.POSTHOG_HOST }}"
+          SUPABASE_URL = "${{ vars.SUPABASE_URL }}"
+          SUPABASE_KEY = "${{ secrets.SUPABASE_KEY }}"
+          MODAL_API_URL = "${{ vars.MODAL_API_URL }}"
+          EOF
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
       - name: Build
-        run: uv build
+        run: |
+          cd phosphobot
+          uv build
 
-      - name: Publish
-        run: uv publish
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install built wheel
+        run: |
+          python -m venv .testvenv
+          source .testvenv/bin/activate
+          pip install phosphobot/dist/phosphobot-*.whl
+
+      - name: Run installed app
+        run: |
+          source .testvenv/bin/activate
+          # Run in a different directory to avoid conflicts
+          cd docs
+          python -m phosphobot --version
+          python -m phosphobot run --no-telemetry --simulation=headless --simulate-cameras --only-simulation --port=8080 --host=127.0.0.1 &
+
+      - name: Wait for server
+        run: |
+          for i in {1..45}; do
+            if curl -s http://localhost:8080/status; then
+              echo "Server ready! in $i seconds" >> server.log
+              echo "Server ready! in $i seconds"
+              break
+            else
+              echo "Waiting for server..." >> server.log
+              echo "Waiting for server..."
+              sleep 1
+            fi
+          done
+
+      - name: Create lerobot folder
+        run: |
+          if [ ! -d "lerobot" ]; then
+            mkdir lerobot
+          fi
+
+      - name: Create pyproject.toml file in lerobot folder
+        run: |
+          if [ ! -f "lerobot/pyproject.toml" ]; then
+            cat > lerobot/pyproject.toml << EOF
+          [build-system]
+          requires = ["hatchling"]
+          build-backend = "hatchling.build"
+
+          [project]
+          name = "lerobot"
+          version = "0.1.0"
+          description = "Lerobot package"
+          requires-python = ">=3.10"
+
+          [tool.hatch.build.targets.wheel]
+          packages = ["lerobot"]
+          EOF
+            touch lerobot/__init__.py
+          fi
+
+      - name: Run integration tests
+        run: |
+          cd phosphobot
+          uv run pytest tests/api/
+        continue-on-error: false
+
+      - name: Publish to PyPI
+        run: |
+          cd phosphobot
+          uv publish
 
   upload-deb:
     needs: build

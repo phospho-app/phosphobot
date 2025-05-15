@@ -4,8 +4,10 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from phosphobot._version import __version__
-from phosphobot.models.camera import AllCamerasStatus, SingleCameraStatus
-from phosphobot.models.dataset import (
+from phosphobot.types import VideoCodecs
+
+from .camera import AllCamerasStatus, SingleCameraStatus
+from .dataset import (
     BaseRobot,
     BaseRobotConfig,
     BaseRobotInfo,
@@ -29,7 +31,6 @@ from phosphobot.models.dataset import (
     VideoFeatureDetails,
     VideoInfo,
 )
-from phosphobot.types import VideoCodecs
 
 
 class RobotConfigStatus(BaseModel):

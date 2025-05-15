@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.0"
+version = "0.3.1"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
@@ -79,11 +79,14 @@ phosphobot = "phosphobot.main:cli"
 requires = ["setuptools>=42", "wheel", "toml"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["phosphobot", "resources"]
 
-[tool.setuptools.package-data]
-resources = ["*"] # Include all files in the resources directory
+[tool.setuptools]
+# include data files as listed in MANIFEST.in
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
 
 [tool.ruff]
 src = ["app"]

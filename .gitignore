@@ -179,3 +179,4 @@ outputs/
 wandb/
 config.yaml
 node_modules
+.testenv

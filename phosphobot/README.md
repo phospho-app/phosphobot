@@ -1,93 +1,99 @@
-# Teleoperation server
+**phosphobot** – CLI Toolkit for Robot Teleoperation and Action Models
+[![PyPI version](https://img.shields.io/pypi/v/phosphobot?style=flat-square)](https://pypi.org/project/phosphobot/)
+[![GitHub](https://img.shields.io/badge/GitHub-Repo-blue?style=flat-square)](https://github.com/phospho-app/phosphobot)
+[![Discord](https://img.shields.io/discord/1106594252043071509?style=flat-square)](https://discord.gg/cbkggY6NSK)
 
-## Setup and run
+A simple, community-driven middleware for controlling robots, recording datasets, training action models.
 
-We instead use the [uv package manager](https://github.com/astral-sh/uv), which handles gracefully python version and dependencies. Think of uv like an alternative to pip, venv, and pyenv.
+All from your terminal or browser dashboard.
 
-1. Install uv:
+---
+
+## Features
+
+- **Easy Installation** via `pip` or the `uv` package manager
+- **Web Dashboard**: Instant access to an interactive control panel for teleoperation
+- **Dataset Recording**: Record expert demonstrations with a keyboard, in VR, or with a leader arm
+- **Model Training & Inference**: Kick off training jobs or serve models through HTTP/WebSocket APIs
+
+---
+
+## Installation
+
+### 1. Using pip
 
 ```bash
+pip install phosphobot
+```
+
+### 2. Using [uv](https://github.com/astral-sh/uv)
+
+If you already use `uv` to manage Python versions and deps:
+
+```bash
+# Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add phosphobot to your project
+uv add phosphobot
 ```
 
-2. Pin python version
-   In the teleop folder run:
+---
+
+## Quick Start
+
+Once installed, you can start the phosphobot server instantly.
 
 ```bash
-uv python pin 3.10
+# Verify installation and view info
+phosphobot info
+
+# Start the teleoperation server (default: localhost:80)
+phosphobot run
+
+# For custom port, e.g. 8080
+phosphobot run --port 8080
 ```
 
-3. Run the fastapi server
+If you’re managing via uv:
 
 ```bash
-cd ..
-make
+uv run phosphobot info
+uv run phosphobot run
 ```
 
-### Run locally on port `8080` with simulation
+---
 
-```bash
-cd ..
-make local
+## Dashboard & Control
+
+After launching the server, open your browser and navigate to:
+
+```
+http://<YOUR_SERVER_ADDRESS>:<PORT>/
 ```
 
-### Run using the CLI
+By default, the address is [localhost:80](localhost:80)
 
-This program is a command line interface
+Here you can:
 
-```bash
-# Display cool logo and check config
-uv run teleop info
-# Display help
-uv run teleop --help
-# Run on port 8080
-uv run teleop run --port 8080
-```
+- **Teleoperate** your robot via keyboard, leader arm, or Meta Quest
+- **Record** demonstration datasets (40 episodes recommended)
+- **Train** and **deploy** action models directly from the UI
 
-### How to add dependencies?
+---
 
-To install a new Python package, use uv:
+## Start building
 
-```bash
-cd teleop
-sudo uv add numpy
-```
+- **Docs**: Full user guide at [https://docs.phospho.ai](https://docs.phospho.ai)
+- **Discord**: Join us on Discord for support and community chat: [https://discord.gg/cbkggY6NSK](https://discord.gg/cbkggY6NSK)
+- **GitHub Repo**: [https://github.com/phospho-app/phosphobot](https://github.com/phospho-app/phosphobot)
+- **Examples**: Browse [the examples](https://github.com/phospho-app/phosphobot/tree/main/examples)
+- **Contribute**: Open a PR to expand the examples, support more robots, improve the tool
 
-Keep the dependencies lean, use optional dependency groups: `dev` and `test`. To add to one of those groups, do this:
+---
 
-```bash
-sudo uv add mypy --optional dev
-```
+## License
 
-### Robot logic
+MIT License
 
-The robot logic is in `hardware/base.py`
-
-### GUI vs headless mode
-
-In GUI mode, the FastAPI server launches `simulation/pybullet`.
-
-#### Stop
-
-If you have the error "Cannot connect to pybullet server" in GUI mode, do this
-
-```bash
-# Stop, then relaunch
-make stop
-make
-```
-
-And then relaunch.
-
-## Build binary
-
-We use [nuitka](https://github.com/Nuitka/Nuitka) to build the project into a binary.
-
-```bash
-cd ..
-make build
-```
-
-This takes about 10min on a MacBook pro. The result is a binary `main.bin`
-
-This binary only works for the same platform: eg MacOS. To compile it on Linux, you need to run a Linux machine.
+Made with 💚 by the Phospho community.
