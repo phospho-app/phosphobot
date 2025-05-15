@@ -452,7 +452,7 @@ async def merge_datasets(merge_request: MergeDatasetsRequest):
             detail=f"Dataset {merge_request.second_dataset} not found",
         )
 
-    # 5
+    # 3
     first_info = InfoModel.from_json(
         meta_folder_path=os.path.join(ROOT_DIR, merge_request.first_dataset, "meta"),
         format=cast(Literal["lerobot_v2", "lerobot_v2.1"], first_datatype),
