@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import time
 from typing import Dict, List, Literal
 
@@ -188,17 +189,18 @@ class ACT(ActionModel):
             response = await self.async_client.post(
                 f"{self.server_url}/act", json=encoded_payload
             )
+            logger.debug(f"Response: {response}")
 
             if response.status_code != 200:
                 raise RuntimeError(response.text)
-            action = json_numpy.loads(response.json())
+            actions = json_numpy.loads(response.json())
         except Exception as e:
             logger.error(f"Error in sampling actions: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Error in sampling actions: {e}",
             )
-        return np.array([action])
+        return actions
 
     @classmethod
     def fetch_config(cls, model_id: str) -> HuggingFaceModelValidator:
@@ -337,6 +339,8 @@ class ACT(ActionModel):
 
         db_state_updated = False
 
+        actions_queue: deque = deque([])
+
         while control_signal.is_in_loop():
             logger.debug(
                 f"AI control loop iteration {nb_iter}, status: {control_signal.status}, with id {control_signal.id}"
@@ -407,9 +411,16 @@ class ACT(ActionModel):
                 config.input_features.state_key: state,
                 **image_inputs,
             }
+            logger.debug(f"Inputs: {inputs.keys()}")
 
             try:
-                actions = await self.async_sample_actions(inputs)
+                if len(actions_queue) == 0:
+                    actions = await self.async_sample_actions(inputs)
+                    actions_queue.extend(actions)
+                logger.debug(f"Actions queue length: {len(actions_queue)}")
+                logger.debug(f"Actions queue: {actions_queue}")
+                actions = actions_queue.popleft()
+                logger.debug(f"Actions: {actions}")
             except Exception as e:
                 logger.warning(
                     f"Failed to get actions from model: {e}. Exiting AI control loop."
