@@ -374,10 +374,9 @@ main() {
     # Common installation steps
     if [[ "$PLATFORM" != "darwin" ]]; then
         echo "Installing phosphobot..."
-        DISTRO_CODENAME="$(lsb_release -sc)"
         curl -fsSL https://europe-west1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/phosphobot-archive-keyring.gpg
 
-        echo "deb [signed-by=/usr/share/keyrings/phosphobot-archive-keyring.gpg] https://europe-west1-apt.pkg.dev/projects/portal-385519 phospho-apt ${DISTRO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/phosphobot.list > /dev/null
+        echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/phosphobot-archive-keyring.gpg] https://europe-west1-apt.pkg.dev/projects/portal-385519 phospho-apt main" | sudo tee /etc/apt/sources.list.d/phosphobot.list > /dev/null
         sudo apt update
         sudo apt install -y phosphobot
     else
