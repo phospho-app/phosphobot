@@ -937,11 +937,34 @@ async def run_gr00t_training(
     output_lines = []
 
     async def read_output():
+        # We read small chunks because some lines can be very long
+        # and can cause the buffer to fill up which crashes the process
         assert process.stdout is not None
-        async for line in process.stdout:
-            stripped_line = line.decode().strip()
-            print(stripped_line)
-            output_lines.append(stripped_line)
+        buffer = b""
+        chunk_size = 1024  # Read in 1KB chunks
+
+        while True:
+            chunk = await process.stdout.read(chunk_size)
+            if not chunk:  # EOF
+                break
+
+            buffer += chunk
+            lines = buffer.split(b"\n")
+
+            # Process all complete lines
+            for line in lines[:-1]:
+                decoded_line = line.decode().strip()
+                print(decoded_line)
+                output_lines.append(decoded_line)
+
+            # Keep the incomplete line in the buffer
+            buffer = lines[-1]
+
+        # Don't forget the last line if there's anything left in the buffer
+        if buffer:
+            decoded_line = buffer.decode().strip()
+            print(decoded_line)
+            output_lines.append(decoded_line)
 
     try:
         if timeout_seconds is None:
