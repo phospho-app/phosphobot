@@ -309,6 +309,9 @@ export default function FileBrowser() {
   const [hfDatasetName, setHFDatasetName] = useState("");
   const [confirmRepairOpen, setConfirmRepairOpen] = useState(false);
 
+  // Loading state for HF dataset download
+  const [loadingDownloadDataset, setLoadingDownloadDataset] = useState(false);
+
   // Loading state for episode deletion
   const [loadingDeleteEpisode, setLoadingDeleteEpisode] = useState(false);
 
@@ -913,6 +916,7 @@ export default function FileBrowser() {
                   toast.error("No dataset selected for download");
                   return;
                 }
+                setLoadingDownloadDataset(true);
                 const resp = await fetchWithBaseUrl(
                   `/dataset/hf_download`,
                   "POST",
@@ -925,12 +929,21 @@ export default function FileBrowser() {
                 } else {
                   toast.success("Dataset downloaded successfully");
                 }
+                setLoadingDownloadDataset(false);
                 setOpenDownloadModal(false);
                 mutate();
                 redirect(path);
               }}
+              disabled={loadingDownloadDataset}
             >
-              Download
+              {loadingDownloadDataset ? (
+                <span className="flex items-center">
+                  <LoaderCircle className="animate-spin size-5 mr-1" />
+                  Downloading...
+                </span>
+              ) : (
+                "Download"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
