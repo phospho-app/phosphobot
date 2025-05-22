@@ -413,6 +413,31 @@ class DatasetRepairRequest(BaseModel):
     )
 
 
+class DatasetSplitRequest(BaseModel):
+    dataset_path: str = Field(
+        ...,
+        description="Path to the dataset to split",
+        examples=["/lerobot_v2.1/example_dataset"],
+    )
+    split_ratio: float = Field(
+        ...,
+        description="Ratio of the dataset to split in the first part. The second part will be 1 - split_ratio.",
+        ge=0,
+        le=1,
+        examples=[0.8],
+    )
+    first_dataset_name: str = Field(
+        ...,
+        description="Name of the first dataset to create",
+        examples=["example_dataset_training"],
+    )
+    second_dataset_name: str = Field(
+        ...,
+        description="Name of the second dataset to create",
+        examples=["example_dataset_validation"],
+    )
+
+
 class SpawnStatusResponse(StatusResponse):
     """
     Response to spawn a server.

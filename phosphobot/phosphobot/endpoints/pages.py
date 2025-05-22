@@ -22,6 +22,7 @@ from phosphobot.models import (
     Dataset,
     DatasetListResponse,
     DatasetRepairRequest,
+    DatasetSplitRequest,
     DeleteEpisodeRequest,
     HFDownloadDatasetRequest,
     HuggingFaceTokenRequest,
@@ -850,4 +851,18 @@ async def repair_dataset(query: DatasetRepairRequest):
     else:
         return StatusResponse(
             status="error", message="Please check the logs for more details."
+        )
+
+
+@router.post("/dataset/split", response_model=StatusResponse)
+async def split_dataset(query: DatasetSplitRequest):
+    """
+    Split a dataset into 2 new datasets.
+    Requires v2.1 format.
+    """
+    dataset_path = os.path.join(ROOT_DIR, query.dataset_path)
+    # Check if the path exists and is a directory
+    if not os.path.exists(dataset_path) or not os.path.isdir(dataset_path):
+        raise StatusResponse(
+            status="error", message=f"Dataset {query.dataset_path} not found"
         )
