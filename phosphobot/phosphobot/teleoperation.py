@@ -162,11 +162,19 @@ class TeleopManager:
         ) = control_data.to_robot(robot_name=robot.name)
 
         # TODO: Raise an error if initial_position or initial_orientation_rad is None ?
-        initial_position = getattr(robot, "initial_position", np.zeros(3))
-        initial_orientation_rad = getattr(robot, "initial_orientation_rad", np.zeros(3))
+        initial_position = getattr(robot, "initial_position", None)
+        initial_orientation_rad = getattr(robot, "initial_orientation_rad", None)
 
-        target_position = target_pos + initial_position
-        target_orientation_rad = np.deg2rad(target_orient_deg) + initial_orientation_rad
+        target_position = (
+            target_pos + initial_position
+            if initial_position is not None
+            else target_pos
+        )
+        target_orientation_rad = (
+            np.deg2rad(target_orient_deg) + initial_orientation_rad
+            if initial_orientation_rad is not None
+            else np.deg2rad(target_orient_deg)
+        )
 
         # if robot.is_moving, wait for it to stop
         start_wait_time = time.perf_counter()
