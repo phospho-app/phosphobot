@@ -788,19 +788,20 @@ class Dataset:
     # Full path to the dataset folder
     folder_full_path: Path
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, enforce_path: bool = True) -> None:
         """
         Load an existing dataset.
         """
         # Check path format
         path_obj = Path(path)
         path_parts = path_obj.parts
-        if len(path_parts) < 2 or path_parts[-2] not in [
-            "json",
-            "lerobot_v2",
-            "lerobot_v2.1",
-        ]:
-            raise ValueError("Wrong dataset path provided.")
+        if enforce_path:
+            if len(path_parts) < 2 or path_parts[-2] not in [
+                "json",
+                "lerobot_v2",
+                "lerobot_v2.1",
+            ]:
+                raise ValueError("Wrong dataset path provided.")
 
         self.path = str(path_obj)
         self.episodes = []
@@ -1477,6 +1478,7 @@ It's compatible with LeRobot and RLDS.
         second_dataset: "Dataset",
         new_dataset_name: str,
         video_transform: dict[str, str],
+        check_format: bool = True,
     ) -> None:
         """
         Merge multiple datasets into one.
@@ -1514,10 +1516,11 @@ It's compatible with LeRobot and RLDS.
         / README.md
         """
         # Check that all datasets have the same format
-        if second_dataset.episode_format != self.episode_format:
-            raise ValueError(
-                f"Dataset {second_dataset.dataset_name} has a different format: {second_dataset.episode_format}"
-            )
+        if check_format:
+            if second_dataset.episode_format != self.episode_format:
+                raise ValueError(
+                    f"Dataset {second_dataset.dataset_name} has a different format: {second_dataset.episode_format}"
+                )
 
         path_result_dataset = os.path.join(
             os.path.dirname(self.folder_full_path),
@@ -1616,6 +1619,7 @@ It's compatible with LeRobot and RLDS.
             meta_folder_path=second_dataset.meta_folder_full_path,
             format="lerobot_v2.1",
         )
+
         first_info.merge_with(
             second_info_model=second_info,
             meta_folder_to_save_to=meta_folder_path,
