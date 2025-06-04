@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.32"
+version = "0.3.33"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
