@@ -1025,6 +1025,11 @@ class Dataset:
 
         # Create a mapping of old index to new index
         if old_index_to_new_index is None:
+            if nb_steps_deleted_episode <= 0:
+                raise ValueError(
+                    "No mapping provided and we are not deleting any episode. Please provide a mapping."
+                )
+
             old_index_to_new_index = {}
             current_new_index_max = 0
 
@@ -1042,23 +1047,42 @@ class Dataset:
 
         # Reindex the files in the folder
         total_nb_steps = 0
-        for filename in sorted(os.listdir(folder_path)):
+        logger.debug(f"Reindexing episodes in {folder_path}")
+
+        # Check it's actually a folder
+        # The .DS_Store can cause issues otherwise
+        if not os.path.isdir(folder_path):
+            logger.warning(f"The folder {folder_path} is not a folder, skipping")
+            return old_index_to_new_index
+
+        filenames = sorted(os.listdir(folder_path))
+        logger.debug(
+            f"Detected {len(filenames)} files in {folder_path}, some might be skipped"
+        )
+
+        number_of_files_moved = 0
+        for filename in filenames:
             if filename.startswith("episode_"):
                 file_extension = filename.split(".")[-1]
-
                 old_index = int(filename.split("_")[-1].split(".")[0])
                 if old_index in old_index_to_new_index.keys():
                     new_index = old_index_to_new_index[old_index]
                 else:
+                    if nb_steps_deleted_episode <= 0:
+                        logger.warning(
+                            f"The file {filename} is not in the mapping, but we are not deleting any episode, skipping"
+                        )
+                        continue
                     # If the file is not in the mapping, we need to create a new index
                     new_index = current_new_index_max
                     current_new_index_max += 1
 
-                new_filename = f"episode_{new_index:06d}.{file_extension}"
+                new_filename = f"tmp_episode_{new_index:06d}.{file_extension}"
                 os.rename(
                     os.path.join(folder_path, filename),
                     os.path.join(folder_path, new_filename),
                 )
+                number_of_files_moved += 1
 
                 # Update the episode index inside the parquet file
                 if file_extension == "parquet":
@@ -1089,7 +1113,217 @@ class Dataset:
                     )
                     df.to_json(os.path.join(folder_path, new_filename))
 
+        # Then remove the tmp_ prefix to all files
+        for filename in os.listdir(folder_path):
+            if filename.startswith("tmp_episode_"):
+                os.rename(
+                    os.path.join(folder_path, filename),
+                    os.path.join(folder_path, filename.replace("tmp_", "")),
+                )
+
+        logger.info(
+            f"Reindexed {number_of_files_moved} files in {folder_path} with {len(old_index_to_new_index)} episodes"
+        )
+
         return old_index_to_new_index
+
+    def reindex_episodes_shuffling(
+        self,
+        folder_path: str,
+        nb_steps_deleted_episode: int = 0,  # Retained for context, less critical for logic now
+        old_index_to_new_index: Optional[Dict[int, int]] = None,
+    ) -> Dict[int, int]:
+        """
+        Reindexes episode files (e.g., .parquet, .mp4) in a folder.
+        Handles renaming and, for parquet files, updates 'episode_index' and global 'index' columns.
+
+        Args:
+            folder_path: Path to the folder containing episode files.
+            nb_steps_deleted_episode: Contextual, mainly for deletion. Not used if old_index_to_new_index is provided.
+            old_index_to_new_index: If provided, this map (old_idx -> new_idx) is used for remapping.
+                                    If None, assumes deletion/compaction: generates a map to compact existing indices.
+
+        Returns:
+            The mapping (old_idx -> new_idx) that was used.
+        """
+        is_shuffle_or_remap_mode = old_index_to_new_index is not None
+
+        # This map will hold the definitive old_idx -> new_idx mapping to be used.
+        final_map_old_to_new: Dict[int, int]
+
+        if not os.path.isdir(folder_path):
+            logger.warning(
+                f"The folder {folder_path} is not a folder, skipping reindex."
+            )
+            return old_index_to_new_index or {}
+
+        if is_shuffle_or_remap_mode:
+            final_map_old_to_new = old_index_to_new_index
+            logger.debug(
+                f"Reindexing in shuffle/remap mode for {folder_path} using provided map."
+            )
+        else:  # Deletion/compaction mode: generate the map
+            logger.debug(
+                f"Reindexing in deletion/compaction mode for {folder_path}. Generating map."
+            )
+            generated_map: Dict[int, int] = {}
+            current_new_idx_counter = 0
+            # List files once and sort by their current (old) index
+            # Filter for actual episode files to avoid .DS_Store etc.
+            current_files = sorted(
+                [
+                    f
+                    for f in os.listdir(folder_path)
+                    if f.startswith("episode_") and ("." in f)
+                ],
+                key=lambda x: int(x.split("_")[-1].split(".")[0]),
+            )
+            for filename in current_files:
+                try:
+                    old_idx = int(filename.split("_")[-1].split(".")[0])
+                    generated_map[old_idx] = current_new_idx_counter
+                    current_new_idx_counter += 1
+                except ValueError:
+                    logger.warning(
+                        f"Could not parse episode index from filename {filename} in {folder_path}. Skipping."
+                    )
+                    continue
+            final_map_old_to_new = generated_map
+            logger.debug(
+                f"Generated map for deletion/compaction: {final_map_old_to_new}"
+            )
+
+        if not final_map_old_to_new and any(
+            f.startswith("episode_") for f in os.listdir(folder_path)
+        ):
+            logger.warning(
+                f"Empty mapping generated or provided, but episode files exist in {folder_path}. Recheck logic."
+            )
+            # This might happen if folder_path contains subdirs that look like episode files etc.
+
+        # --- Pass 1: Rename files to temporary names and update 'episode_index' in parquets ---
+        logger.debug(
+            f"Starting Pass 1 for {folder_path}: Rename to tmp, set 'episode_index'."
+        )
+        original_filenames = sorted(
+            os.listdir(folder_path)
+        )  # Rescan, could include non-episode files
+        files_processed_pass1 = 0
+
+        for filename in original_filenames:
+            if (
+                not filename.startswith("episode_") or "." not in filename
+            ):  # Ensure it's an episode file
+                continue
+
+            try:
+                old_idx = int(filename.split("_")[-1].split(".")[0])
+            except ValueError:
+                logger.warning(
+                    f"Could not parse episode index from filename {filename} in {folder_path} during Pass 1. Skipping."
+                )
+                continue
+
+            if old_idx not in final_map_old_to_new:
+                # This could happen if a file was deleted between map generation and this loop,
+                # or if the map is incomplete for shuffle mode.
+                logger.warning(
+                    f"File {filename} (old_idx {old_idx}) not in final mapping. Skipping."
+                )
+                continue
+
+            new_idx = final_map_old_to_new[old_idx]
+            file_extension = filename.split(".")[-1]
+
+            temp_new_filename = f"tmp_episode_{new_idx:06d}.{file_extension}"
+            old_filepath = os.path.join(folder_path, filename)
+            temp_new_filepath = os.path.join(folder_path, temp_new_filename)
+
+            try:
+                os.rename(old_filepath, temp_new_filepath)
+                files_processed_pass1 += 1
+            except OSError as e:
+                logger.error(
+                    f"Error renaming {old_filepath} to {temp_new_filepath}: {e}"
+                )
+                continue
+
+            if file_extension == "parquet":
+                try:
+                    df = pd.read_parquet(temp_new_filepath)
+                    df["episode_index"] = new_idx  # Set to the new episode index
+                    df.to_parquet(temp_new_filepath, index=False)
+                except Exception as e:
+                    logger.error(
+                        f"Error processing parquet file {temp_new_filepath} in Pass 1: {e}"
+                    )
+
+        logger.info(
+            f"Pass 1 in {folder_path}: Processed {files_processed_pass1} files into temporary names."
+        )
+
+        # --- Pass 2: Update global 'index' in parquets and rename from tmp to final names ---
+        logger.debug(
+            f"Starting Pass 2 for {folder_path}: Update global 'index', final rename."
+        )
+        current_global_frame_index = 0
+
+        # List temporary files and sort them by their new index (embedded in tmp_episode_XXXXXX)
+        temp_files_in_folder = sorted(
+            [
+                f
+                for f in os.listdir(folder_path)
+                if f.startswith("tmp_episode_") and "." in f
+            ],
+            key=lambda x: int(x.split("_")[-1].split(".")[0]),
+        )
+
+        files_processed_pass2 = 0
+        for temp_filename in temp_files_in_folder:
+            try:
+                current_new_idx_from_tmp_name = int(
+                    temp_filename.split("_")[-1].split(".")[0]
+                )
+            except ValueError:
+                logger.warning(
+                    f"Could not parse episode index from tmp filename {temp_filename} in {folder_path} during Pass 2. Skipping."
+                )
+                continue
+
+            file_extension = temp_filename.split(".")[-1]
+
+            temp_filepath = os.path.join(folder_path, temp_filename)
+            final_filename = (
+                f"episode_{current_new_idx_from_tmp_name:06d}.{file_extension}"
+            )
+            final_filepath = os.path.join(folder_path, final_filename)
+
+            if file_extension == "parquet":
+                try:
+                    df = pd.read_parquet(temp_filepath)
+                    # 'episode_index' column should already be correct from Pass 1
+                    df["index"] = np.arange(len(df)) + current_global_frame_index
+                    df.to_parquet(temp_filepath, index=False)
+                    current_global_frame_index += len(df)
+                except Exception as e:
+                    logger.error(
+                        f"Error processing parquet file {temp_filepath} in Pass 2: {e}"
+                    )
+                    # Decide if to proceed with rename or skip
+
+            try:
+                os.rename(temp_filepath, final_filepath)
+                files_processed_pass2 += 1
+            except OSError as e:
+                logger.error(
+                    f"Error renaming {temp_filepath} to {final_filepath} in Pass 2: {e}"
+                )
+
+        logger.info(
+            f"Pass 2 in {folder_path}: Finalized reindexing for {files_processed_pass2} files."
+        )
+
+        return final_map_old_to_new
 
     def delete_episode(self, episode_id: int, update_hub: bool = True) -> None:
         """
@@ -2108,23 +2342,26 @@ It's compatible with LeRobot and RLDS.
         shuffle = np.random.permutation(number_of_episodes)
         # Generate a mapping of type Dict[int, int] that maps the old episode index to the new episode index
         # This will be used to reindex the episodes.jsonl file
-        old_index_to_new_index = {k: int(v) for k, v in enumerate(shuffle)}
+        old_index_to_new_index = {int(v): k for k, v in enumerate(shuffle)}
 
-        # Reindex the data folder
-        old_index_to_new_index = self.reindex_episodes(
+        logger.info(f"old_index_to_new_index: {old_index_to_new_index}")
+
+        # Reindex the data folder with the parquet files
+        old_index_to_new_index = self.reindex_episodes_shuffling(
             folder_path=self.data_folder_full_path,
+            old_index_to_new_index=old_index_to_new_index,
         )
         # Reindex the episode videos
         for camera_folder_full_path in self.get_camera_folders_full_paths():
-            self.reindex_episodes(
+            self.reindex_episodes_shuffling(
                 folder_path=camera_folder_full_path,
-                old_index_to_new_index=old_index_to_new_index,  # type: ignore
+                old_index_to_new_index=old_index_to_new_index,
             )
 
-        episodes_model.update_for_episode_removal(
-            -1,
-            old_index_to_new_index=old_index_to_new_index,
+        episodes_model.shuffle(
+            permutation=shuffle,
         )
+
         episodes_model.save(
             meta_folder_path=self.meta_folder_full_path, save_mode="overwrite"
         )
@@ -2135,20 +2372,6 @@ It's compatible with LeRobot and RLDS.
 
         #### INFO
         # No need to shuffle
-
-        #### EPISODES
-        logger.debug("Shuffling episodes.jsonl file")
-        episodes_model = EpisodesModel.from_jsonl(
-            meta_folder_path=self.meta_folder_full_path,
-            format="lerobot_v2.1",
-        )
-        episodes_model.shuffle(
-            permutation=shuffle,
-        )
-        episodes_model.save(
-            meta_folder_path=self.meta_folder_full_path,
-            save_mode="overwrite",
-        )
 
         #### EPISODES STATS
         logger.debug("Shuffling episodes_stats.jsonl file")
@@ -3985,6 +4208,10 @@ class EpisodesModel(BaseModel):
                         episode.episode_index
                     ]
                 else:
+                    if episode_to_delete_index < 0:
+                        raise ValueError(
+                            f"Episode {episode.episode_index} not found in the old_index_to_new_index mapping"
+                        )
                     # Update the episode index to the new one
                     episode.episode_index = current_max_index
                     current_max_index += 1
