@@ -11,6 +11,7 @@ import BrowsePage from "@/pages/BrowsePage";
 import CalibrationPage from "@/pages/CalibrationPage";
 import ControlPage from "@/pages/ControlPage";
 import DashboardPage from "@/pages/DashboardPage";
+import GamepadControlPage from "@/pages/GamepadControlPage";
 import KeyboardControlPage from "@/pages/KeyboardControlPage";
 import LeaderArmControlPage from "@/pages/LeaderArmControlPage";
 import NetworkPage from "@/pages/NetworkPage";
@@ -26,6 +27,7 @@ function App() {
           <Route index element={<DashboardPage />} />
           <Route path="/control" element={<ControlPage />} />
           <Route path="/keyboard" element={<KeyboardControlPage />} />
+          <Route path="/gamepad" element={<GamepadControlPage />} />
           <Route path="/leader" element={<LeaderArmControlPage />} />
           <Route path="/replay" element={<SingleArmReplayPage />} />
           <Route path="/browse" element={<BrowsePage />} />

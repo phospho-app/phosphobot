@@ -1,9 +1,17 @@
 import { Recorder } from "@/components/common/recorder";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useGlobalStore } from "@/lib/hooks";
-import { BicepsFlexed, Glasses, Keyboard, Repeat } from "lucide-react";
+import { BicepsFlexed, Gamepad2, RectangleGoggles, Keyboard, Hand } from "lucide-react";
+import { useState } from "react";
 
+import GamepadControlPage from "./GamepadControlPage";
 import KeyboardControlPage from "./KeyboardControlPage";
 import LeaderArmPage from "./LeaderArmControlPage";
 import ReplayPage from "./SingleArmReplayPage";
@@ -12,34 +20,61 @@ import ViewVideo from "./ViewVideoPage";
 export default function ControlPage() {
   const showCamera = useGlobalStore((state) => state.showCamera);
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
+  const [activeTab, setActiveTab] = useState("keyboard");
+
+  const controlOptions = [
+    { value: "keyboard", icon: Keyboard, label: "Keyboard", tooltip: "Keyboard control" },
+    { value: "gamepad", icon: Gamepad2, label: "Gamepad", tooltip: "Gamepad control" },
+    { value: "leader", icon: BicepsFlexed, label: "Leader arm", tooltip: "Leader arm control" },
+    { value: "single", icon: Hand, label: "By hand", tooltip: "Move with your hands" },
+    { value: "VR", icon: RectangleGoggles, label: "VR", tooltip: "VR control" },
+  ];
 
   return (
     <div>
-      <Tabs defaultValue="keyboard">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col md:flex-row justify-between gap-2">
-          <TabsList className="flex gap-4 border-1">
-            <TabsTrigger value="keyboard" className="cursor-pointer">
-              <Keyboard className="size-4 mr-2" />
-              Keyboard control
-            </TabsTrigger>
-            <TabsTrigger value="leader" className="cursor-pointer">
-              <BicepsFlexed className="size-4 mr-2" />
-              Leader arm control
-            </TabsTrigger>
-            <TabsTrigger value="single" className="cursor-pointer">
-              <Repeat className="size-4 mr-2" />
-              Move with your hands
-            </TabsTrigger>
-            <TabsTrigger value="VR" className="cursor-pointer">
-              <Glasses className="size-4 mr-2" />
-              VR control
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-2 bg-muted rounded-lg p-1 border-1">
+            <span className="text-sm font-medium text-muted-foreground px-2">Control</span>
+            <TabsList className="flex gap-1 border-0 bg-transparent p-0">
+              <TooltipProvider delayDuration={300}>
+                {controlOptions.map((option) => {
+                  const Icon = option.icon;
+                  const isActive = activeTab === option.value;
+                  return (
+                    <Tooltip key={option.value}>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger
+                          value={option.value}
+                          className={`cursor-pointer transition-all ${
+                            isActive
+                              ? "px-3 py-1.5 bg-background shadow-sm"
+                              : "px-2 py-1.5 hover:bg-background/50"
+                          }`}
+                        >
+                          <Icon className="size-4" />
+                          {isActive && <span className="ml-2">{option.label}</span>}
+                        </TabsTrigger>
+                      </TooltipTrigger>
+                      {!isActive && (
+                        <TooltipContent>
+                          <p>{option.tooltip}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  );
+                })}
+              </TooltipProvider>
+            </TabsList>
+          </div>
           <Recorder showCamera={showCamera} setShowCamera={setShowCamera} />
         </div>
         {showCamera && <ViewVideo />}
         <TabsContent value="keyboard">
           <KeyboardControlPage />
+        </TabsContent>
+        <TabsContent value="gamepad">
+          <GamepadControlPage />
         </TabsContent>
         <TabsContent value="leader">
           <LeaderArmPage />
