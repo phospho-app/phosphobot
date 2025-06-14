@@ -2,12 +2,11 @@ import asyncio
 import datetime
 import json
 from copy import copy
-from typing import cast
-from typing import Literal
-from dateutil import parser
+from typing import Literal, cast
 
 import json_numpy  # type: ignore
 import numpy as np
+from dateutil import parser  # type: ignore
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -49,17 +48,17 @@ from phosphobot.models import (
     VoltageReadResponse,
 )
 from phosphobot.robot import (
+    RemotePhosphobot,
     RobotConnectionManager,
     SO100Hardware,
     get_rcm,
-    RemotePhosphobot,
 )
 from phosphobot.supabase import get_client, user_is_logged_in
 from phosphobot.teleoperation import (
-    UDPServer,
-    get_udp_server,
     TeleopManager,
+    UDPServer,
     get_teleop_manager,
+    get_udp_server,
 )
 from phosphobot.utils import background_task_log_exceptions
 

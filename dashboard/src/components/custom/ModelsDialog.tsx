@@ -1,3 +1,5 @@
+"use client";
+
 import { CopyButton } from "@/components/common/copy-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +39,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fetcher } from "@/lib/utils";
+import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { SupabaseTrainingModel, TrainingConfig } from "@/types";
-import { Check, ExternalLink, Loader2, X } from "lucide-react";
+import { Ban, Check, ExternalLink, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 
 type ModelStatus = "succeeded" | "failed" | "running" | "canceled" | null;
@@ -109,7 +112,7 @@ export function ModelStatusFilter({
           <span>Running</span>
         </ToggleGroupItem>
 
-        {/* <ToggleGroupItem
+        <ToggleGroupItem
           value="canceled"
           aria-label="Filter by canceled status"
           className={cn(
@@ -119,7 +122,7 @@ export function ModelStatusFilter({
         >
           <Ban className="h-4 w-4 text-gray-600 dark:text-gray-400" />
           <span>Canceled</span>
-        </ToggleGroupItem> */}
+        </ToggleGroupItem>
       </ToggleGroup>
     </div>
   );
@@ -132,12 +135,12 @@ interface ModelsDialogProps {
 
 const ValueWithTooltip = ({ value }: { value: string }) => {
   // Don't use tooltip if value is short
-  if (!value || value.length < 25) {
+  if (!value || value.length < 30) {
     return <span>{value}</span>;
   }
 
   // Show a preview of the first 20 characters after the last "/"
-  const preview = value.split("/").pop()?.slice(0, 20) + "..." || value;
+  const preview = value.split("/").pop()?.slice(0, 25) + "..." || value;
 
   return (
     <TooltipProvider>
@@ -157,11 +160,32 @@ const ValueWithTooltip = ({ value }: { value: string }) => {
 
 // ModelRow component
 const ModelRow: React.FC<{ model: SupabaseTrainingModel }> = ({ model }) => {
+  const [isCanceling, setIsCanceling] = useState(false);
+
   // Set uppercase status for display
   const status = model.status.charAt(0).toUpperCase() + model.status.slice(1);
 
   // Define model url
   const url = "https://huggingface.co/" + model.model_name;
+
+  const handleCancel = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to cancel this training? This action cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setIsCanceling(true);
+    const status_response = await fetchWithBaseUrl("/training/cancel", "POST", {
+      training_id: model.id,
+    });
+
+    if (status_response?.status === "ok") {
+      toast.success(status_response?.message);
+    }
+  };
 
   return (
     <>
@@ -173,15 +197,17 @@ const ModelRow: React.FC<{ model: SupabaseTrainingModel }> = ({ model }) => {
           {status === "Running" && (
             <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
           )}
-          {(status === "Failed" || status === "Canceled") && (
+          {status === "Failed" && (
             <X className="h-4 w-4 inline mr-1 text-red-500" />
+          )}
+          {status === "Canceled" && (
+            <Ban className="h-4 w-4 inline mr-1 text-gray-500" />
           )}
           {status}
         </TableCell>
         <TableCell>
           <div className="flex items-center flex-row justify-between">
             {ValueWithTooltip({ value: model.model_name })}
-
             <div className="flex items-center">
               <CopyButton text={model.model_name} hint={"Copy model name"} />
               {/* Button to open model page */}
@@ -195,6 +221,31 @@ const ModelRow: React.FC<{ model: SupabaseTrainingModel }> = ({ model }) => {
               >
                 <ExternalLink className="h-4 w-4" />
               </Button>
+              {/* Cancel button - only show for running models */}
+              {model.status === "running" && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={handleCancel}
+                        disabled={isCanceling}
+                        variant="ghost"
+                        size="icon"
+                        className="text-orange-600 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+                      >
+                        {isCanceling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Ban className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isCanceling ? "Canceling..." : "Cancel training"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           </div>
         </TableCell>
@@ -212,7 +263,10 @@ const ModelRow: React.FC<{ model: SupabaseTrainingModel }> = ({ model }) => {
               )}
           </div>
         </TableCell>
-        <TableCell>{ValueWithTooltip({ value: model.dataset_name })}</TableCell>
+        <TableCell>
+          {ValueWithTooltip({ value: model.dataset_name })}
+          <CopyButton text={model.dataset_name} hint={"Copy dataset name"} />
+        </TableCell>
         <TableCell>
           {model.used_wandb ? (
             <Check className="h-4 w-4 inline mr-1 text-green-500" />

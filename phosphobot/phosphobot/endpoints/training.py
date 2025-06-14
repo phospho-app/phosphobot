@@ -1,23 +1,25 @@
-import os
-import time
 import asyncio
+import os
 import platform
+import time
 from typing import cast
 
-from fastapi.responses import PlainTextResponse, StreamingResponse
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from huggingface_hub import HfApi
 from loguru import logger
 
-from phosphobot.am.base import TrainingRequest, TrainingParamsGr00T
+from phosphobot.am.base import TrainingParamsGr00T, TrainingRequest
 from phosphobot.models import (
     CustomTrainingRequest,
+    InfoModel,
+    StartTrainingResponse,
+    CancelTrainingRequest,
     StatusResponse,
     SupabaseTrainingModel,
     TrainingConfig,
 )
-from phosphobot.models import InfoModel
 from phosphobot.supabase import get_client, user_is_logged_in
 from phosphobot.utils import get_hf_token, get_home_app_path, get_tokens
 
@@ -49,10 +51,7 @@ async def get_models(
     # Convert the list of models to a TrainingConfig object
     training_config = TrainingConfig(
         models=[
-            SupabaseTrainingModel(
-                **model,
-            )
-            for model in model_list.data
+            SupabaseTrainingModel.model_validate(model) for model in model_list.data
         ]
     )
     return training_config
@@ -60,14 +59,14 @@ async def get_models(
 
 @router.post(
     "/training/start",
-    response_model=StatusResponse,
+    response_model=StartTrainingResponse,
     summary="Start training a model",
     description="Start training an ACT or gr00t model on the specified dataset. This will upload a trained model to the Hugging Face Hub using the main branch of the specified dataset.",
 )
 async def start_training(
     request: TrainingRequest,
     session=Depends(user_is_logged_in),
-) -> StatusResponse | HTTPException:
+) -> StartTrainingResponse | HTTPException:
     """
     Trigger training for a gr00t or ACT model on the specified dataset.
 
@@ -154,14 +153,11 @@ async def start_training(
         if response.status_code == 401:
             raise HTTPException(
                 status_code=401,
-                detail="Token expired, please relogin.",
+                detail="Token expired. Please login again.",
             )
-
         if response.status_code == 429:
-            raise HTTPException(
-                status_code=429,
-                detail="A training is already in progress. Please wait until it is finished.",
-            )
+            # Too many requests: this can happen if the user is trying to train too many models at once
+            raise HTTPException(status_code=429, detail=response.text)
 
         if response.status_code == 422:
             raise HTTPException(
@@ -175,8 +171,11 @@ async def start_training(
                 detail=f"Failed to start training on the backend: {response.text}",
             )
 
-    return StatusResponse(
-        message=f"Training triggered successfully, find your model at: https://huggingface.co/{request.model_name}"
+    response_data = response.json()
+
+    return StartTrainingResponse(
+        message=f"Training triggered successfully, find your model at: https://huggingface.co/{request.model_name}",
+        training_id=response_data.get("training_id", None),
     )
 
 
@@ -288,3 +287,43 @@ async def stream_logs(log_file: str):
                     await asyncio.sleep(0.1)  # Small delay to avoid busy waiting
 
     return StreamingResponse(log_generator(), media_type="text/plain")
+
+
+@router.post("/training/cancel", response_model=StatusResponse)
+async def cancel_training(
+    request: CancelTrainingRequest,
+    session=Depends(user_is_logged_in),
+) -> StatusResponse | HTTPException:
+    """Cancel a training job"""
+    logger.debug(f"Cancelling training request: {request}")
+    tokens = get_tokens()
+    if not tokens.MODAL_API_URL:
+        raise HTTPException(
+            status_code=400,
+            detail="Modal API url not found. Please check your configuration.",
+        )
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"{tokens.MODAL_API_URL}/cancel",
+            json=request.model_dump(mode="json"),
+            headers={"Authorization": f"Bearer {session.access_token}"},
+        )
+
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="Token expired. Please login again.",
+            )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to cancel training on the backend: {response.text}",
+            )
+
+    response_data = response.json()
+
+    return StatusResponse(
+        status=response_data.get("status", "error"),
+        message=response_data.get("message", "No message"),
+    )
