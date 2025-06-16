@@ -110,7 +110,7 @@ Connect with other developers and share your experience in our [Discord communit
 
 ## Install from source
 
-First, download and install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm). Best compatibility is with `python>=3.10` and `node>=20`.
+First, download and install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
 
 Then, to build the frontend and backend, run:
 

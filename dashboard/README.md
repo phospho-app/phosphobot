@@ -2,27 +2,24 @@
 
 ## Install Node and npm and uv
 
-1. Install nvm. That is a library to manage Node version
+First install nvm. That is a library to manage Node version
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 ```
 
-2. Restart your terminal. You can verify the installation of nvm by runnning:
+Restart your terminal. You can verify the installation of nvm by runnning:
 
 ```bash
 command -v nvm
 ```
 
 The output should be `nvm`
-
-3. Install latest version of node.
+Then you can install latest version of node by running this command:
 
 ```bash
 nvm install node # "node" is an alias for the latest version
 ```
-
-Building the app requires `node>=20`.
 
 ## Install uv
 

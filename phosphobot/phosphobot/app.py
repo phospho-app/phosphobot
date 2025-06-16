@@ -113,18 +113,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Check if "/dist" is not empty and exists
-if (
-    not (get_resources_path() / "dist").exists()
-    or not (get_resources_path() / "dist").is_dir()
-    or not any((get_resources_path() / "dist").iterdir())
-):
-    error_message = (
-        "The 'dist' directory does not exist in the resources path. "
-        "You need to build the dashboard first, then copy dashboard/dist to posphobot/resources/dist. "
-        "Make sure node and npm are installed, then run the command: make build_frontend"
-    )
-    raise FileNotFoundError(error_message)
 
 # We do this to serve the static files in the frontend
 # This is a workaround for when the raspberry pi uses its own hotspot

@@ -569,12 +569,9 @@ async def read_torque(
 
     current_torque = robot.current_torque()
 
-    # Replace NaN values with None and convert to list
-    current_torque = [
-        float(torque) if not np.isnan(torque) else None for torque in current_torque
-    ]
-
-    return TorqueReadResponse(current_torque=current_torque)
+    return TorqueReadResponse(
+        current_torque=current_torque.tolist(),
+    )
 
 
 @router.post(
