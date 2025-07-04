@@ -17,6 +17,10 @@ const binariesDir = join(__dirname, '..', 'binaries');
 console.log(`Building Python package for ${platform}...`);
 
 try {
+  // Get target architecture from environment or host  
+  const envTarget = process.env.TAURI_ENV_TARGET_TRIPLE;
+  let targetTriple;
+  
   // Clean build directories
   const buildDirs = [join(phosphobotDir, 'build'), join(phosphobotDir, 'dist')];
   buildDirs.forEach(dir => {
@@ -46,10 +50,6 @@ try {
   if (!existsSync(binariesDir)) {
     mkdirSync(binariesDir, { recursive: true });
   }
-
-  // Get target architecture from environment or host
-  const envTarget = process.env.TAURI_ENV_TARGET_TRIPLE;
-  let targetTriple;
   
   if (envTarget) {
     targetTriple = envTarget;
