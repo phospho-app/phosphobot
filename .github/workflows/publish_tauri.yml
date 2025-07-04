@@ -118,12 +118,15 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # Install Python dependencies and verify Box
+      # Install Python dependencies and build tools
       - name: Install Python dependencies
         run: |
           cd phosphobot
           uv venv
           uv sync
+          # Install hatch globally for box to use as build tool
+          uv tool install hatch
+          # Verify Box can access hatch
           uvx --from box-packager box --help
 
       # Install Node.js dependencies
