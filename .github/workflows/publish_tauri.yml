@@ -124,7 +124,7 @@ jobs:
           cd phosphobot
           uv venv
           uv sync
-          uvx box --help
+          uvx --from box-packager box --help
 
       # Install Node.js dependencies
       - name: Install frontend dependencies
