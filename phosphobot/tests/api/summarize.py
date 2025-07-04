@@ -25,33 +25,69 @@ def main(log_file: str, out_file: str):
                 break
         tests_summary = "".join(lines[-summary_index:])
 
+    # WebSocket performance lines
     performance_line_30Hz: str = ""
     performance_line_500Hz: str = ""
     performance_recording_line_500Hz: str = ""
 
+    # UDP performance lines
+    udp_performance_line_30Hz: str = ""
+    udp_performance_line_500Hz: str = ""
+    udp_performance_line_1000Hz: str = ""
+    udp_performance_recording_line_500Hz: str = ""
+
     # Parse the log file
     for line in lines:
+        # WebSocket performance
         if "[TEST_PERFORMANCE_30Hz]" in line:
-            # I Want to select the line from "TEST_PERFORMANCE" to the end of the line
             performance_line_30Hz = line[line.find("[TEST_PERFORMANCE_30Hz]") :]
         if "[TEST_PERFORMANCE_500Hz]" in line:
-            # I Want to select the line from "TEST_PERFORMANCE" to the end of the line
             performance_line_500Hz = line[line.find("[TEST_PERFORMANCE_500Hz]") :]
-
         if "[TEST_RECORDING_PERFORMANCE_500Hz]" in line:
             performance_recording_line_500Hz = line[
                 line.find("[TEST_RECORDING_PERFORMANCE_500Hz]") :
             ]
 
+        # UDP performance
+        if "[TEST_UDP_PERFORMANCE_30Hz]" in line:
+            udp_performance_line_30Hz = line[line.find("[TEST_UDP_PERFORMANCE_30Hz]") :]
+        if "[TEST_UDP_PERFORMANCE_500Hz]" in line:
+            udp_performance_line_500Hz = line[
+                line.find("[TEST_UDP_PERFORMANCE_500Hz]") :
+            ]
+        if "[TEST_UDP_PERFORMANCE_1000Hz]" in line:
+            udp_performance_line_1000Hz = line[
+                line.find("[TEST_UDP_PERFORMANCE_1000Hz]") :
+            ]
+        if "[TEST_UDP_RECORDING_PERFORMANCE_500Hz]" in line:
+            udp_performance_recording_line_500Hz = line[
+                line.find("[TEST_UDP_RECORDING_PERFORMANCE_500Hz]") :
+            ]
+
     # Build a simple markdown summary
-    emoji = "✅" if some_failed == 0 else "❌"
+    emoji = "✅" if not some_failed else "❌"
     summary = []
     summary.append(f"## {emoji} API integrations tests")
 
-    summary.append("### Performance")
-    summary.append(performance_line_30Hz)
-    summary.append(performance_line_500Hz)
-    summary.append(performance_recording_line_500Hz)
+    # WebSocket Performance Section
+    summary.append("### WebSocket Performance")
+    if performance_line_30Hz:
+        summary.append(performance_line_30Hz.strip())
+    if performance_line_500Hz:
+        summary.append(performance_line_500Hz.strip())
+    if performance_recording_line_500Hz:
+        summary.append(performance_recording_line_500Hz.strip())
+
+    # UDP Performance Section
+    summary.append("### UDP Performance")
+    if udp_performance_line_30Hz:
+        summary.append(udp_performance_line_30Hz.strip())
+    if udp_performance_line_500Hz:
+        summary.append(udp_performance_line_500Hz.strip())
+    if udp_performance_line_1000Hz:
+        summary.append(udp_performance_line_1000Hz.strip())
+    if udp_performance_recording_line_500Hz:
+        summary.append(udp_performance_recording_line_500Hz.strip())
 
     summary.append("### Pytests logs summary")
 
@@ -60,7 +96,7 @@ def main(log_file: str, out_file: str):
         tests_summary = tests_summary[-500:]
     summary.append(f"```{tests_summary}```")
 
-    if some_failed == 0:
+    if not some_failed:
         summary.append(":tada: **All tests passed!** ")
     else:
         summary.append(
