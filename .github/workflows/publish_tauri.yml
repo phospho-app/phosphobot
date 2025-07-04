@@ -120,6 +120,7 @@ jobs:
 
       # Install Python dependencies and build tools
       - name: Install Python dependencies
+        shell: bash
         run: |
           cd phosphobot
           uv venv
@@ -138,6 +139,7 @@ jobs:
 
       # Build Python package (cross-platform)
       - name: Build Python package
+        shell: bash
         run: |
           cd src-tauri
           npm run python:package:build
