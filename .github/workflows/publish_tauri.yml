@@ -118,13 +118,13 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # Install Python dependencies and Box packager
+      # Install Python dependencies and verify Box
       - name: Install Python dependencies
         run: |
           cd phosphobot
           uv venv
           uv sync
-          uvx install box-packager
+          uvx box --help
 
       # Install Node.js dependencies
       - name: Install frontend dependencies
