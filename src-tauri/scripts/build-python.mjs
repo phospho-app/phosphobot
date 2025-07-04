@@ -26,16 +26,11 @@ try {
     }
   });
 
-  // Run box package from virtual environment
+  // Run box package
   console.log('Running box package...');
-  const boxCommand = isWindows 
-    ? '.venv\\Scripts\\python -m box package'
-    : 'source .venv/bin/activate && python -m box package';
-    
-  execSync(boxCommand, {
+  execSync('uvx --from box-packager box package', {
     cwd: phosphobotDir,
-    stdio: 'inherit',
-    shell: true
+    stdio: 'inherit'
   });
 
   // Create binaries directory
