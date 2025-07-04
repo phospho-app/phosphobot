@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { fetcher } from "@/lib/utils";
+import { fetchWithBaseUrl } from "@/lib/utils";
 import { AdminSettings, AdminTokenSettings } from "@/types";
 import {
   AlertCircle,
@@ -47,13 +47,13 @@ export default function AdminPage() {
 
   const { data: adminSettings, mutate } = useSWR<AdminSettings>(
     "/admin/settings",
-    fetcher,
+    fetchWithBaseUrl,
     { revalidateOnFocus: false, revalidateOnReconnect: false },
   );
 
   const { data: adminSettingsTokens } = useSWR<AdminTokenSettings>(
     ["/admin/settings/tokens"],
-    ([url]) => fetcher(url, "POST"),
+    ([url]) => fetchWithBaseUrl(url, "POST"),
   );
 
   // Validation
@@ -71,23 +71,16 @@ export default function AdminPage() {
   // Save settings to server
   const saveSettings = async (settings: AdminSettings) => {
     try {
-      const resp = await fetch("/admin/form/usersettings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      });
+      const result = await fetchWithBaseUrl("/admin/form/usersettings", "POST", settings);
 
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.message || "Error saving settings.");
+      if (result !== undefined) {
+        setFormSubmitted((prev) => ({ ...prev, userSettings: true }));
+        setUserError("");
+        setTimeout(
+          () => setFormSubmitted((prev) => ({ ...prev, userSettings: false })),
+          3000,
+        );
       }
-
-      setFormSubmitted((prev) => ({ ...prev, userSettings: true }));
-      setUserError("");
-      setTimeout(
-        () => setFormSubmitted((prev) => ({ ...prev, userSettings: false })),
-        3000,
-      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error(err);

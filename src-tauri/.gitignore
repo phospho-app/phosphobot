@@ -1,0 +1,9 @@
+# Rust/Cargo build artifacts
+target/
+Cargo.lock
+
+# Tauri
+/gen/
+
+# Python bundled binaries
+binaries/ 

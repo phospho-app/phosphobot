@@ -65,6 +65,8 @@ dev = [
     "pytest-asyncio>=0.25.1",
     "pytest-dependency>=0.6.0",
     "types-python-dateutil>=2.9.0.20250516",
+    "box-packager>=0.4.0",
+    "hatch>=1.14.0",
 ]
 
 
@@ -83,19 +85,37 @@ openpi-client = { git = "https://github.com/phospho-app/openpi.git", subdirector
 phosphobot = "phosphobot.main:cli"
 
 [build-system]
-requires = ["setuptools>=42", "wheel", "toml"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
+# Hatch build configuration to include resources
+[tool.hatch.build.targets.wheel]
+packages = ["phosphobot"]
 
-[tool.setuptools]
-# include data files as listed in MANIFEST.in
-include-package-data = true
+[tool.hatch.build.targets.wheel.force-include]
+"resources" = "phosphobot/resources"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["*"]
+[tool.hatch.build.targets.sdist]
+include = [
+    "phosphobot/",
+    "resources/",
+    "README.md",
+    "LICENSE",
+]
 
 [tool.ruff]
 src = ["app"]
 
 [tool.mypy]
+
+# Box configuration for bundling the Python app into a single executable
+[tool.box]
+builder = "hatch"
+is_gui = false
+app_entry = "phosphobot.main:cli"
+entry_type = "spec"
+python_version = "3.10"
+
+[tool.box.env-vars]
+PYAPP_UV_ENABLED = "true"
+PYAPP_EXPOSE_METADATA = "false"

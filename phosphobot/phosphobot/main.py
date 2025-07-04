@@ -269,6 +269,12 @@ def run(
             help="Enable telemetry. This is used for crash reporting and usage statistics."
         ),
     ] = True,
+    api_only: Annotated[
+        bool,
+        typer.Option(
+            help="Only serve the API endpoints, skip serving the frontend dashboard."
+        ),
+    ] = False,
 ):
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
@@ -282,6 +288,7 @@ def run(
     config.PORT = port
     config.PROFILE = profile
     config.TELEMETRY = telemetry
+    config.API_ONLY = api_only
 
     # Start the FastAPI app using uvicorn with port retry logic
     ports = [port]

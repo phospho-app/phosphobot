@@ -1,0 +1,91 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Phosphobot",
+  "mainBinaryName": "phosphobot-desktop",
+  "version": "0.3.52",
+  "identifier": "ai.phospho.phosphobot",
+  "build": {
+    "beforeDevCommand": "cd ../dashboard && npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "cd ../dashboard && npm run build",
+    "frontendDist": "../dashboard/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Phosphobot",
+        "label": "main",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "maximized": false,
+        "visible": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "center": true,
+        "skipTaskbar": false
+      }
+    ],
+
+    "security": {
+      "csp": {
+        "default-src": "'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:*",
+        "img-src": "'self' ipc: http://ipc.localhost asset: data: blob: http://localhost:* https://*",
+        "connect-src": "'self' ipc: http://ipc.localhost ws://localhost:* http://localhost:* https://* http://127.0.0.1:*",
+        "script-src": "'self' 'unsafe-inline' ipc: http://ipc.localhost",
+        "style-src": "'self' 'unsafe-inline'"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "homepage": "https://phospho.ai",
+    "license": "MIT",
+    "longDescription": "The AI-ready robotics dev kit, with built-in remote control and VLA support.",
+    "shortDescription": "AI-ready robotics development kit",
+    "publisher": "Phospho",
+    "targets": [
+      "app",
+      "dmg",
+      "msi",
+      "nsis",
+      "deb",
+      "appimage"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "externalBin": [
+      "binaries/phosphobot"
+    ]
+  }
+} 

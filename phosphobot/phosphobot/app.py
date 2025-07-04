@@ -115,34 +115,36 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Check if "/dist" is not empty and exists
-if (
-    not (get_resources_path() / "dist").exists()
-    or not (get_resources_path() / "dist").is_dir()
-    or not any((get_resources_path() / "dist").iterdir())
-):
-    error_message = (
-        "The 'dist' directory does not exist in the resources path. "
-        "You need to build the dashboard first, then copy dashboard/dist to posphobot/resources/dist. "
-        "Make sure node and npm are installed, then run the command: make build_frontend"
-    )
-    raise FileNotFoundError(error_message)
+# Only set up frontend serving if not in API-only mode
+if not config.API_ONLY:
+    # Check if "/dist" is not empty and exists
+    if (
+        not (get_resources_path() / "dist").exists()
+        or not (get_resources_path() / "dist").is_dir()
+        or not any((get_resources_path() / "dist").iterdir())
+    ):
+        error_message = (
+            "The 'dist' directory does not exist in the resources path. "
+            "You need to build the dashboard first, then copy dashboard/dist to posphobot/resources/dist. "
+            "Make sure node and npm are installed, then run the command: make build_frontend"
+        )
+        raise FileNotFoundError(error_message)
 
-# We do this to serve the static files in the frontend
-# This is a workaround for when the raspberry pi uses its own hotspot
-app.mount("/resources", StaticFiles(directory=get_resources_path()), name="static")
-# Mount the directory with your dashboard's production build (adjust the path as needed)
-# Mount assets at the root (assuming get_resources_path() contains both index.html and assets)
-app.mount(
-    "/assets",
-    StaticFiles(directory=f"{get_resources_path()}/dist/assets"),
-    name="assets",
-)
-app.mount(
-    "/dashboard",
-    StaticFiles(directory=get_resources_path() / "dist", html=True),
-    name="dashboard",
-)
+    # We do this to serve the static files in the frontend
+    # This is a workaround for when the raspberry pi uses its own hotspot
+    app.mount("/resources", StaticFiles(directory=get_resources_path()), name="static")
+    # Mount the directory with your dashboard's production build (adjust the path as needed)
+    # Mount assets at the root (assuming get_resources_path() contains both index.html and assets)
+    app.mount(
+        "/assets",
+        StaticFiles(directory=f"{get_resources_path()}/dist/assets"),
+        name="assets",
+    )
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=get_resources_path() / "dist", html=True),
+        name="dashboard",
+    )
 
 
 def swagger_monkey_patch(*args, **kwargs):
@@ -204,6 +206,7 @@ app.include_router(control_router)
 app.include_router(camera_router)
 app.include_router(recording_router)
 app.include_router(training_router)
+# Always include pages router for admin endpoints, but frontend serving is conditional
 app.include_router(pages_router)
 app.include_router(networking_router)
 app.include_router(update_router)

@@ -6,7 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { fetcher } from "@/lib/utils";
+import { fetcher, fetchWithBaseUrl } from "@/lib/utils";
 import type { ServerStatus } from "@/types";
 import { Download, ExternalLink, Github } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -25,7 +25,7 @@ export function Footer() {
 
   const { data: updateVersion } = useSWR<{ version?: string; error: string }>(
     ["/update/version"],
-    ([url]) => fetcher(url, "POST"),
+    ([url]) => fetchWithBaseUrl(url, "POST"),
     {
       refreshInterval: 60000,
     },
@@ -67,9 +67,8 @@ export function Footer() {
 
               try {
                 setIsUpdating(true);
-                const res = await fetch("/update/upgrade-to-latest-version");
-                if (!res.ok) throw new Error("Update failed");
-                const data = await res.json();
+                const data = await fetchWithBaseUrl("/update/upgrade-to-latest-version", "POST");
+                if (!data) throw new Error("Update failed");
                 alert(data.status);
                 setTimeout(() => {
                   window.location.reload();

@@ -1,0 +1,40 @@
+[package]
+name = "phosphobot-desktop"
+version = "0.3.52"
+description = "The AI-ready robotics dev kit, with built-in remote control and VLA support"
+authors = ["phospho <contact@phospho.ai>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/phospho-app/phosphobot"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [ 
+  "protocol-asset",
+  "tray-icon",
+  "image-png"
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0.12"
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+log = "0.4"
+env_logger = "0.11"
+
+# Tauri plugins
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2" 

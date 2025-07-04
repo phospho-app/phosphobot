@@ -1,0 +1,35 @@
+{
+  "name": "phosphobot-desktop",
+  "version": "0.3.52",
+  "description": "The AI-ready robotics dev kit, with built-in remote control and VLA support",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "preview": "cd ../dashboard && npm run preview",
+    "dashboard:install": "cd ../dashboard && npm install",
+    "dashboard:dev": "cd ../dashboard && npm run dev",
+    "dashboard:build": "cd ../dashboard && npm run build",
+    "pretauri": "npm run python:package:check && npm run python:package:build:if-needed",
+    "tauri": "tauri",
+    "python:package:build": "node ./scripts/build-python.mjs",
+    "python:package:build:if-needed": "node ./scripts/build-if-needed.mjs",
+    "python:package:reset": "node ./scripts/reset-python.mjs",
+    "python:package:check": "node ./check_build_needed.mjs",
+    "python:package:dev": "cd ../phosphobot && uv run phosphobot run --host=127.0.0.1 --port=8080",
+    "clean": "node ./scripts/clean.mjs",
+    "help": "node ./scripts/help.mjs",
+    "install-deps": "npm run dashboard:install"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phospho-app/phosphobot.git"
+  },
+  "author": "Phospho <contact@phospho.ai>",
+  "homepage": "https://phospho.ai"
+} 

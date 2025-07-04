@@ -2,6 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { fetchWithBaseUrl } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -44,20 +45,12 @@ export function WandBKeyInput() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/admin/wandb", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ token }),
-      });
+      const result = await fetchWithBaseUrl("/admin/wandb", "POST", { token });
 
-      const result = await response.json();
-
-      if (response.ok && result.status == "success") {
+      if (result && result.status == "success") {
         setSuccess(true);
       } else {
-        setError(result.message || "Failed to save token");
+        setError(result?.message || "Failed to save token");
       }
     } catch (error) {
       console.error("Error saving token:", error);

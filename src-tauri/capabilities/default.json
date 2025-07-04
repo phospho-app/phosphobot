@@ -1,0 +1,41 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "platforms": [
+        "macOS",
+        "windows",
+        "linux"
+    ],
+    "windows": [
+        "*"
+    ],
+    "permissions": [
+        "core:default",
+        "core:app:default",
+        "core:window:default",
+        "core:webview:default",
+        "shell:default",
+        "fs:default",
+        {
+            "identifier": "shell:allow-execute",
+            "allow": [
+                {
+                    "args": true,
+                    "name": "binaries/phosphobot",
+                    "sidecar": true
+                }
+            ]
+        },
+        {
+            "identifier": "shell:allow-spawn",
+            "allow": [
+                {
+                    "args": true,
+                    "name": "binaries/phosphobot",
+                    "sidecar": true
+                }
+            ]
+        }
+    ]
+}

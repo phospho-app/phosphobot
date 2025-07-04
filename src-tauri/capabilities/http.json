@@ -1,0 +1,25 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "http",
+    "description": "HTTP requests for phosphobot API",
+    "platforms": [
+        "macOS",
+        "windows", 
+        "linux"
+    ],
+    "windows": ["*"],
+    "permissions": [
+        "http:default",
+        {
+            "identifier": "http:allow-fetch",
+            "allow": [
+                {
+                    "url": "http://localhost:*"
+                },
+                {
+                    "url": "http://127.0.0.1:*"
+                }
+            ]
+        }
+    ]
+} 
