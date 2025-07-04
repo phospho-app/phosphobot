@@ -26,11 +26,20 @@ try {
     }
   });
 
-  // Run box package
+  // Run box package with target architecture
   console.log('Running box package...');
+  const boxEnv = { ...process.env };
+  
+  // Set target architecture for PyApp if we have a specific target
+  if (envTarget) {
+    console.log(`Setting PYAPP_PLATFORM for target: ${envTarget}`);
+    boxEnv.PYAPP_PLATFORM = envTarget;
+  }
+  
   execSync('uvx --from box-packager box package', {
     cwd: phosphobotDir,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: boxEnv
   });
 
   // Create binaries directory
@@ -38,10 +47,19 @@ try {
     mkdirSync(binariesDir, { recursive: true });
   }
 
-  // Get target architecture
-  const rustInfo = execSync('rustc -Vv', { encoding: 'utf8' });
-  const hostMatch = rustInfo.match(/host: (.+)/);
-  const targetTriple = hostMatch ? hostMatch[1] : 'unknown';
+  // Get target architecture from environment or host
+  const envTarget = process.env.TAURI_ENV_TARGET_TRIPLE;
+  let targetTriple;
+  
+  if (envTarget) {
+    targetTriple = envTarget;
+    console.log(`Using target from environment: ${targetTriple}`);
+  } else {
+    const rustInfo = execSync('rustc -Vv', { encoding: 'utf8' });
+    const hostMatch = rustInfo.match(/host: (.+)/);
+    targetTriple = hostMatch ? hostMatch[1] : 'unknown';
+    console.log(`Using host target: ${targetTriple}`);
+  }
 
   console.log(`Target triple: ${targetTriple}`);
 

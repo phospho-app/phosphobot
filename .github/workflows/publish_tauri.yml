@@ -45,39 +45,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # macOS Code Signing Setup
-      - name: Import Apple Developer Certificate (macOS)
-        if: matrix.platform == 'macos-latest'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          if [ -n "$APPLE_CERTIFICATE" ]; then
-            echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-            security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-            security default-keychain -s build.keychain
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-            security set-keychain-settings -t 3600 -u build.keychain
-            security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-            security find-identity -v -p codesigning build.keychain
-            
-            CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
-            CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
-            echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
-            echo "Certificate imported: $CERT_ID"
-          else
-            echo "No Apple certificate provided, skipping code signing"
-          fi
+      # macOS Code Signing Setup (DISABLED)
+      # - name: Import Apple Developer Certificate (macOS)
+      #   if: matrix.platform == 'macos-latest'
+      #   env:
+      #     APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      #     APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      #     KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      #   run: |
+      #     if [ -n "$APPLE_CERTIFICATE" ]; then
+      #       echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+      #       security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+      #       security default-keychain -s build.keychain
+      #       security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+      #       security set-keychain-settings -t 3600 -u build.keychain
+      #       security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+      #       security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+      #       security find-identity -v -p codesigning build.keychain
+      #       
+      #       CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
+      #       CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+      #       echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+      #       echo "Certificate imported: $CERT_ID"
+      #     else
+      #       echo "No Apple certificate provided, skipping code signing"
+      #     fi
 
-      # Windows Code Signing Setup
-      - name: Setup Windows Certificate (Windows)
-        if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
-        run: |
-          echo "${{ secrets.WINDOWS_CERTIFICATE }}" | base64 --decode > certificate.p12
-          echo "WINDOWS_CERTIFICATE_FILE=$PWD/certificate.p12" >> $GITHUB_ENV
-        shell: bash
+      # Windows Code Signing Setup (DISABLED)
+      # - name: Setup Windows Certificate (Windows)
+      #   if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
+      #   run: |
+      #     echo "${{ secrets.WINDOWS_CERTIFICATE }}" | base64 --decode > certificate.p12
+      #     echo "WINDOWS_CERTIFICATE_FILE=$PWD/certificate.p12" >> $GITHUB_ENV
+      #   shell: bash
 
       # Install system dependencies
       - name: Install dependencies (Ubuntu)
@@ -149,15 +149,15 @@ jobs:
         id: build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing
-          ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # Temporarily disable code signing
+          # ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           # Windows signing
-          WINDOWS_CERTIFICATE_FILE: ${{ env.WINDOWS_CERTIFICATE_FILE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # WINDOWS_CERTIFICATE_FILE: ${{ env.WINDOWS_CERTIFICATE_FILE }}
+          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           tagName: phosphobot-v__VERSION__ # the action automatically replaces __VERSION__ with the app version
           releaseName: 'Phosphobot Desktop v__VERSION__'
