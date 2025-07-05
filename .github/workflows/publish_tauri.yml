@@ -16,12 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # for ARM Macs (M1 and above)
+          - platform: 'macos-latest' # for ARM Macs (M1 and above) 
             args: '--target aarch64-apple-darwin'
             arch: 'silicon'
-          - platform: 'macos-latest' # for Intel Macs
-            args: '--target x86_64-apple-darwin'
-            arch: 'intel'
           - platform: 'ubuntu-22.04' # for Linux
             args: ''
           - platform: 'windows-latest' # for Windows
@@ -111,7 +108,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -144,6 +141,54 @@ jobs:
           cd src-tauri
           npm run python:package:build
 
+      # Test Python sidecar
+      - name: Test Python sidecar
+        shell: bash
+        run: |
+          cd src-tauri
+          echo "Testing Python sidecar binary..."
+          
+          # Find the phosphobot binary
+          if [ -f "binaries/phosphobot" ]; then
+            BINARY_PATH="binaries/phosphobot"
+          elif [ -f "binaries/phosphobot.exe" ]; then
+            BINARY_PATH="binaries/phosphobot.exe"
+          else
+            echo "❌ No phosphobot binary found!"
+            ls -la binaries/
+            exit 1
+          fi
+          
+          echo "✅ Found binary: $BINARY_PATH"
+          
+          # Test help command (should be fast)
+          echo "Testing --help command..."
+          timeout 30 ./$BINARY_PATH --help || {
+            echo "❌ Help command failed or timed out"
+            exit 1
+          }
+          
+          echo "✅ Help command works"
+          
+          # Test version command
+          echo "Testing --version command..."
+          timeout 30 ./$BINARY_PATH --version || {
+            echo "❌ Version command failed or timed out"
+            exit 1
+          }
+          
+          echo "✅ Version command works"
+          
+          # Test that we can at least start the Python environment
+          echo "Testing Python environment initialization..."
+          timeout 60 ./$BINARY_PATH run --help || {
+            echo "❌ Python environment initialization failed or timed out"
+            echo "This might indicate missing dependencies or PyApp configuration issues"
+            exit 1
+          }
+          
+          echo "✅ Python sidecar verification completed successfully!"
+
       # Build Tauri app
       - uses: tauri-apps/tauri-action@v0
         id: build
@@ -167,7 +212,7 @@ jobs:
             The AI-ready robotics dev kit, with built-in remote control and VLA support.
             
             ### 📦 Download for your platform:
-            - **macOS**: Download the `.dmg` file (Apple Silicon) or `.app.tar.gz` (Intel)
+            - **macOS**: Download the `.dmg` file (Apple Silicon)
             - **Windows**: Download the `.msi` installer or `.exe` setup
             - **Linux**: Download the `.deb` package or `.AppImage`
             
