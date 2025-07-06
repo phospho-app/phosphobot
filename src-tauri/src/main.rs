@@ -16,7 +16,7 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 async fn is_phosphobot_server_running() -> bool {
     let client = tauri_plugin_http::reqwest::Client::new();
-    match client.get("http://127.0.0.1:8080/status").send().await {
+    match client.get("http://127.0.0.1:8432/status").send().await {
         Ok(resp) => {
             log::info!("Status check response: {:?}", resp.status());
             resp.status().is_success()
@@ -46,7 +46,7 @@ async fn start_phosphobot_server<'a>(
         .args([
             "run",
             "--host=127.0.0.1", 
-            "--port=8080",
+            "--port=8432",
             "--simulation=headless",
             "--simulate-cameras",
             "--only-simulation",

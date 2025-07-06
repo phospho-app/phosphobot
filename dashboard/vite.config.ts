@@ -21,7 +21,7 @@ export default defineConfig({
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   define: {
     // Set API base URL for Tauri development
-    'import.meta.env.VITE_API_BASE_URL': JSON.stringify('http://localhost:8080')
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify('http://localhost:8432')
   },
   resolve: {
     alias: {

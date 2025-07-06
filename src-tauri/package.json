@@ -16,7 +16,7 @@
     "python:package:build:if-needed": "node ./scripts/build-if-needed.mjs",
     "python:package:reset": "node ./scripts/reset-python.mjs",
     "python:package:check": "node ./check_build_needed.mjs",
-    "python:package:dev": "cd ../phosphobot && uv run phosphobot run --host=127.0.0.1 --port=8080",
+    "python:package:dev": "cd ../phosphobot && uv run phosphobot run --host=127.0.0.1 --port=8432",
     "updater:generate-keys": "node ./scripts/generate-updater-keys.mjs",
     "clean": "node ./scripts/clean.mjs",
     "help": "node ./scripts/help.mjs",
