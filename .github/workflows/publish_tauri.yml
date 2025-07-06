@@ -148,6 +148,11 @@ jobs:
           cd src-tauri
           echo "Testing Python sidecar binary..."
           
+          # Install timeout on macOS if needed
+          if [[ "$RUNNER_OS" == "macOS" ]] && ! command -v timeout >/dev/null 2>&1; then
+            brew install coreutils
+          fi
+          
           # Find the phosphobot binary
           if [ -f "binaries/phosphobot" ]; then
             BINARY_PATH="binaries/phosphobot"
@@ -161,9 +166,16 @@ jobs:
           
           echo "✅ Found binary: $BINARY_PATH"
           
+          # Set timeout command based on platform
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            TIMEOUT_CMD="gtimeout"
+          else
+            TIMEOUT_CMD="timeout"
+          fi
+          
           # Test help command (should be fast)
           echo "Testing --help command..."
-          timeout 90 ./$BINARY_PATH --help || {
+          $TIMEOUT_CMD 90 ./$BINARY_PATH --help || {
             echo "❌ Help command failed or timed out"
             exit 1
           }
@@ -172,7 +184,7 @@ jobs:
           
           # Test version command
           echo "Testing --version command..."
-          timeout 90 ./$BINARY_PATH --version || {
+          $TIMEOUT_CMD 90 ./$BINARY_PATH --version || {
             echo "❌ Version command failed or timed out"
             exit 1
           }
@@ -181,7 +193,7 @@ jobs:
           
           # Test that we can at least start the Python environment
           echo "Testing Python environment initialization..."
-          timeout 120 ./$BINARY_PATH run --help || {
+          $TIMEOUT_CMD 120 ./$BINARY_PATH run --help || {
             echo "❌ Python environment initialization failed or timed out"
             echo "This might indicate missing dependencies or PyApp configuration issues"
             exit 1
