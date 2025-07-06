@@ -558,7 +558,7 @@ APPLE_TEAM_ID              # 10-character team ID from developer console
    [Convert]::ToBase64String([IO.File]::ReadAllBytes("certificate.p12")) | clip
    ```
 
-**Required GitHub Secrets**:
+**Required GitHub Secrets** (Windows code signing currently disabled):
 ```bash
 WINDOWS_CERTIFICATE          # Base64 content of .p12/.pfx file
 WINDOWS_CERTIFICATE_PASSWORD # Password you set for certificate
@@ -603,16 +603,17 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD  # Password if you set one (usually empty)
 # Core (always required)
 GITHUB_TOKEN                    # Auto-provided by GitHub
 
-# Apple Code Signing (for macOS)
+# Apple Code Signing (ENABLED - for macOS)
 APPLE_CERTIFICATE               # Base64 .p12 file content
 APPLE_CERTIFICATE_PASSWORD      # Certificate password
 APPLE_ID                        # Apple ID email
 APPLE_PASSWORD                  # App-specific password
 APPLE_TEAM_ID                   # 10-character team ID
+KEYCHAIN_PASSWORD               # Password for build keychain
 
-# Windows Code Signing (for Windows)
-WINDOWS_CERTIFICATE             # Base64 .p12/.pfx file content
-WINDOWS_CERTIFICATE_PASSWORD    # Certificate password
+# Windows Code Signing (DISABLED - uncomment in workflow to enable)
+# WINDOWS_CERTIFICATE             # Base64 .p12/.pfx file content
+# WINDOWS_CERTIFICATE_PASSWORD    # Certificate password
 
 # Tauri Auto-Updater (for all platforms)
 TAURI_SIGNING_PRIVATE_KEY           # Complete private key file content
@@ -987,8 +988,10 @@ The repository includes a comprehensive GitHub Actions workflow that automatical
 
 #### Automatic Features
 - ✅ Cross-platform Python package building with PyApp/Box
-- ✅ Code signing for all platforms (when certificates provided)
+- ✅ **Code signing for macOS** (when Apple certificates provided)
+- ✅ Code signing for Windows (when certificates provided - currently disabled)
 - ✅ Automatic GitHub releases with detailed descriptions
+- ✅ Standalone Python CLI binaries uploaded as release assets
 - ✅ Homebrew cask generation (when configured)
 - ✅ Dependency caching for faster builds
 - ✅ Draft releases (manual publish required)
@@ -997,17 +1000,40 @@ The repository includes a comprehensive GitHub Actions workflow that automatical
 #### Generated Artifacts
 
 **macOS**:
-- `Phosphobot_x.x.x_aarch64.dmg` (Apple Silicon)
-- `Phosphobot_x.x.x_x64.dmg` (Intel)
+- `Phosphobot_x.x.x_aarch64.dmg` (Apple Silicon desktop app)
+- `Phosphobot_x.x.x_x64.dmg` (Intel desktop app)
 - `Phosphobot.app.tar.gz` files for updater
+- `phosphobot-macos-aarch64` (standalone Python CLI binary)
 
 **Windows**:
 - `Phosphobot_x.x.x_x64_en-US.msi` (MSI installer)
 - `Phosphobot_x.x.x_x64-setup.exe` (NSIS installer)
+- `phosphobot-windows-x86_64.exe` (standalone Python CLI binary)
 
 **Linux**:
 - `phosphobot_x.x.x_amd64.deb` (Debian package)
 - `phosphobot_x.x.x_amd64.AppImage` (Universal Linux)
+- `phosphobot-linux-x86_64` (standalone Python CLI binary)
+
+#### Standalone Python CLI Binaries
+
+The workflow automatically generates standalone Python CLI binaries that can be used independently of the desktop application. These binaries:
+
+- **No Python installation required**: Self-contained executables with all dependencies bundled
+- **Direct robot control**: Full access to all Phosphobot CLI commands and APIs
+- **Lightweight**: Smaller download size compared to the full desktop app
+- **Scriptable**: Perfect for automation, CI/CD, or headless environments
+- **Cross-platform**: Native binaries for macOS (Apple Silicon), Windows (x64), and Linux (x64)
+
+Usage example:
+```bash
+# Download the binary for your platform
+chmod +x phosphobot-linux-x86_64  # Linux/macOS only
+./phosphobot-linux-x86_64 --help
+
+# Windows
+phosphobot-windows-x86_64.exe --help
+```
 
 ### Triggering Builds
 

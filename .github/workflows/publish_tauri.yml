@@ -31,6 +31,9 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       # Windows code signing
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -42,31 +45,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # macOS Code Signing Setup (DISABLED)
-      # - name: Import Apple Developer Certificate (macOS)
-      #   if: matrix.platform == 'macos-latest'
-      #   env:
-      #     APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      #     APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      #     KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      #   run: |
-      #     if [ -n "$APPLE_CERTIFICATE" ]; then
-      #       echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-      #       security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-      #       security default-keychain -s build.keychain
-      #       security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-      #       security set-keychain-settings -t 3600 -u build.keychain
-      #       security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-      #       security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-      #       security find-identity -v -p codesigning build.keychain
-      #       
-      #       CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
-      #       CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
-      #       echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
-      #       echo "Certificate imported: $CERT_ID"
-      #     else
-      #       echo "No Apple certificate provided, skipping code signing"
-      #     fi
+      # macOS Code Signing Setup
+      - name: Import Apple Developer Certificate (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+            security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security default-keychain -s build.keychain
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security set-keychain-settings -t 3600 -u build.keychain
+            security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+            security find-identity -v -p codesigning build.keychain
+            
+            CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
+            CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+            echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+            echo "Certificate imported: $CERT_ID"
+          else
+            echo "No Apple certificate provided, skipping code signing"
+          fi
+
+      # Verify Certificate Import
+      - name: Verify Certificate (macOS)
+        if: matrix.platform == 'macos-latest' && env.APPLE_SIGNING_IDENTITY
+        run: |
+          echo "✅ Certificate verification:"
+          echo "Signing Identity: $APPLE_SIGNING_IDENTITY"
+          security find-identity -v -p codesigning build.keychain
 
       # Windows Code Signing Setup (DISABLED)
       # - name: Setup Windows Certificate (Windows)
@@ -250,13 +261,13 @@ jobs:
         id: build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Temporarily disable code signing
-          # ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          # Windows signing
+          # macOS code signing
+          ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # Windows signing (disabled)
           # WINDOWS_CERTIFICATE_FILE: ${{ env.WINDOWS_CERTIFICATE_FILE }}
           # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
@@ -268,15 +279,70 @@ jobs:
             The AI-ready robotics dev kit, with built-in remote control and VLA support.
             
             ### 📦 Download for your platform:
+            
+            #### Desktop Application:
             - **macOS**: Download the `.dmg` file (Apple Silicon)
             - **Windows**: Download the `.msi` installer or `.exe` setup
             - **Linux**: Download the `.deb` package or `.AppImage`
+            
+            #### Python CLI (Standalone):
+            - **macOS**: `phosphobot-macos-aarch64` (Apple Silicon standalone binary)
+            - **Windows**: `phosphobot-windows-x86_64.exe` (Windows standalone binary)
+            - **Linux**: `phosphobot-linux-x86_64` (Linux standalone binary)
+            
+            The standalone Python CLI binaries can be used independently without installing the desktop app.
             
             See the assets below to download and install this version.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
           projectPath: src-tauri
+
+      # Upload Python sidecar binaries as separate release assets
+      - name: Upload Python Sidecar Binary
+        if: steps.build.outputs.appVersion
+        shell: bash
+        run: |
+          cd src-tauri
+          
+          # Determine platform-specific binary name and target name
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            BINARY_NAME="phosphobot"
+            TARGET_NAME="phosphobot-linux-x86_64"
+            CONTENT_TYPE="application/octet-stream"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            BINARY_NAME="phosphobot"
+            TARGET_NAME="phosphobot-macos-aarch64"
+            CONTENT_TYPE="application/octet-stream"
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            BINARY_NAME="phosphobot.exe"
+            TARGET_NAME="phosphobot-windows-x86_64.exe"
+            CONTENT_TYPE="application/vnd.microsoft.portable-executable"
+          else
+            echo "❌ Unknown runner OS: $RUNNER_OS"
+            exit 1
+          fi
+          
+          # Check if binary exists
+          if [ ! -f "binaries/$BINARY_NAME" ]; then
+            echo "❌ Binary not found: binaries/$BINARY_NAME"
+            ls -la binaries/
+            exit 1
+          fi
+          
+          # Copy binary with platform-specific name
+          cp "binaries/$BINARY_NAME" "$TARGET_NAME"
+          
+          echo "📦 Uploading $TARGET_NAME to release..."
+          
+          # Upload to GitHub release using GitHub CLI (use tag name, not release ID)
+          gh release upload "phosphobot-v${{ steps.build.outputs.appVersion }}" "$TARGET_NAME" \
+            --repo ${{ github.repository }} \
+            --clobber
+          
+          echo "✅ Successfully uploaded $TARGET_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     outputs:
       app_version: ${{ steps.build.outputs.appVersion }}
