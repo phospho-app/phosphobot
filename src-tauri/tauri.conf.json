@@ -91,10 +91,12 @@
   },
   "plugins": {
     "updater": {
+      "active": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk3MTAxRDg4ODBDOTI0NzAKUldSd0pNbUFpQjBRbDVyaFN3dUxzd3pESUdJTC8zUlFmUGVjUHoxWU15K3d6aXBDYm1ON0Z5K1UK",
       "endpoints": [
         "https://github.com/julien-blanchon/phosphobot/releases/latest/download/latest.json"
       ],
+      "dialog": true,
       "windows": {
         "installMode": "basicUi"
       }
