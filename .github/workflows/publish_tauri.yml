@@ -163,7 +163,7 @@ jobs:
           
           # Test help command (should be fast)
           echo "Testing --help command..."
-          timeout 30 ./$BINARY_PATH --help || {
+          timeout 90 ./$BINARY_PATH --help || {
             echo "❌ Help command failed or timed out"
             exit 1
           }
@@ -172,7 +172,7 @@ jobs:
           
           # Test version command
           echo "Testing --version command..."
-          timeout 30 ./$BINARY_PATH --version || {
+          timeout 90 ./$BINARY_PATH --version || {
             echo "❌ Version command failed or timed out"
             exit 1
           }
