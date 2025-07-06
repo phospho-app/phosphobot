@@ -903,6 +903,192 @@ Support multiple update channels (stable, beta, dev):
 }
 ```
 
+## 🚀 GitHub Actions Publishing Setup
+
+### Overview
+
+The repository includes a comprehensive GitHub Actions workflow that automatically builds, signs, and publishes the application across all platforms. The workflow creates draft releases for manual review and publishing.
+
+### Required GitHub Secrets
+
+#### Core Publishing Secrets
+
+1. **GITHUB_TOKEN** (automatically provided by GitHub)
+   - Used for creating releases and uploading assets
+   - No setup required - automatically available
+
+#### macOS Code Signing (Optional but Recommended)
+
+2. **APPLE_CERTIFICATE**
+   - Base64 encoded Developer ID Application certificate (.p12 file)
+   - Get from Apple Developer Portal
+   ```bash
+   base64 -i certificate.p12 | pbcopy
+   ```
+
+3. **APPLE_CERTIFICATE_PASSWORD**
+   - Password for the .p12 certificate file
+
+4. **KEYCHAIN_PASSWORD**
+   - Password for the temporary build keychain (choose any strong password)
+
+5. **APPLE_ID**
+   - Your Apple ID email for notarization
+
+6. **APPLE_PASSWORD**
+   - App-specific password for your Apple ID
+   - Generate at [appleid.apple.com](https://appleid.apple.com) → Security → App-Specific Passwords
+
+7. **APPLE_TEAM_ID**
+   - Your Apple Developer Team ID (10-character string)
+   - Find in Apple Developer Portal → Membership
+
+#### Windows Code Signing (Optional)
+
+8. **WINDOWS_CERTIFICATE**
+   - Base64 encoded code signing certificate (.p12 file)
+   - Purchase from a Certificate Authority (DigiCert, Sectigo, etc.)
+   ```bash
+   base64 -i windows-cert.p12 | pbcopy
+   ```
+
+9. **WINDOWS_CERTIFICATE_PASSWORD**
+   - Password for the Windows certificate
+
+#### Tauri Auto-Updater (Required for Updates)
+
+10. **TAURI_SIGNING_PRIVATE_KEY**
+    - Private key for Tauri's built-in updater
+    - Generate with: `npm run updater:generate-keys`
+
+11. **TAURI_SIGNING_PRIVATE_KEY_PASSWORD**
+    - Password for the Tauri signing key (usually empty)
+
+#### Homebrew Distribution (Optional)
+
+12. **HOMEBREW_TAP_TOKEN**
+    - GitHub Personal Access Token with repo permissions
+    - For publishing to a Homebrew tap repository
+    - Only needed if you want automatic Homebrew cask updates
+
+### Setting Up GitHub Secrets
+
+1. Go to your GitHub repository
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Add each secret with the exact name listed above
+
+### Workflow Features
+
+#### Cross-Platform Builds
+- **macOS**: ARM64 (Apple Silicon) and x86_64 (Intel)
+- **Windows**: x86_64 with MSI and NSIS installers
+- **Linux**: x86_64 with DEB packages and AppImage
+
+#### Automatic Features
+- ✅ Cross-platform Python package building with PyApp/Box
+- ✅ Code signing for all platforms (when certificates provided)
+- ✅ Automatic GitHub releases with detailed descriptions
+- ✅ Homebrew cask generation (when configured)
+- ✅ Dependency caching for faster builds
+- ✅ Draft releases (manual publish required)
+- ✅ Version synchronization verification
+
+#### Generated Artifacts
+
+**macOS**:
+- `Phosphobot_x.x.x_aarch64.dmg` (Apple Silicon)
+- `Phosphobot_x.x.x_x64.dmg` (Intel)
+- `Phosphobot.app.tar.gz` files for updater
+
+**Windows**:
+- `Phosphobot_x.x.x_x64_en-US.msi` (MSI installer)
+- `Phosphobot_x.x.x_x64-setup.exe` (NSIS installer)
+
+**Linux**:
+- `phosphobot_x.x.x_amd64.deb` (Debian package)
+- `phosphobot_x.x.x_amd64.AppImage` (Universal Linux)
+
+### Triggering Builds
+
+#### Automatic Triggers
+- Push to `main` branch
+- Push to `release` branch
+- Push to `tauri` branch
+
+#### Manual Trigger
+- Go to **Actions** → **publish_tauri** → **Run workflow**
+
+### Workflow Troubleshooting
+
+#### Common Issues
+
+1. **Code Signing Failures**
+   - Verify certificate is valid and not expired
+   - Check that Apple ID and Team ID are correct
+   - Ensure app-specific password is generated correctly
+
+2. **Build Failures**
+   - Check that all dependencies are properly cached
+   - Verify Python and Node.js versions are compatible
+   - Ensure Rust toolchain has correct targets installed
+
+3. **Release Creation Failures**
+   - Check that `GITHUB_TOKEN` has proper permissions
+   - Verify repository settings allow Actions to create releases
+   - Check that branch protection rules allow automated commits
+
+4. **Version Synchronization Failures**
+   - Ensure all three files have exactly the same version number
+   - Check for extra spaces or formatting issues
+   - Verify JSON/TOML syntax is correct
+
+#### Debug Steps
+
+1. **Enable Debug Logging**
+   ```yaml
+   env:
+     ACTIONS_STEP_DEBUG: true
+     ACTIONS_RUNNER_DEBUG: true
+   ```
+
+2. **Check Build Logs**
+   - Go to Actions tab → Failed workflow → Expand failing step
+   - Look for specific error messages in the logs
+
+3. **Test Local Build**
+   ```bash
+   # Test the build process locally
+   cd src-tauri
+   npm run python:package:build
+   npm run build
+   ```
+
+### Customization for Your Repository
+
+If you fork this repository, update these values in `.github/workflows/publish_tauri.yml`:
+
+```yaml
+# Update repository references
+repository: your-username/your-repo-name
+--repo your-username/your-repo-name
+DOWNLOAD_URL="https://github.com/your-username/your-repo-name/releases/download/phosphobot-v${VERSION}/${{ steps.shasum.outputs.file_name }}"
+verified: "github.com/your-username/your-repo-name/"
+homepage "https://github.com/your-username/your-repo-name"
+```
+
+### Branch Configuration
+
+To change which branches trigger builds:
+
+```yaml
+on:
+  push:
+    branches:
+      - main        # Change to your main branch
+      - release     # Add/remove branches as needed
+```
+
 ## 📚 Additional Resources
 
 ### Official Documentation
@@ -918,6 +1104,13 @@ Support multiple update channels (stable, beta, dev):
 ### Signing Guides
 - [macOS Code Signing](https://v2.tauri.app/distribute/sign/macos/)
 - [Windows Code Signing](https://v2.tauri.app/distribute/sign/windows/)
+
+### GitHub Actions Resources
+- [Tauri GitHub Actions Documentation](https://v2.tauri.app/distribute/pipelines/github/)
+- [tauri-action Repository](https://github.com/tauri-apps/tauri-action)
+- [Apple Code Signing Guide](https://v2.tauri.app/distribute/sign/macos/)
+- [Windows Code Signing Guide](https://v2.tauri.app/distribute/sign/windows/)
+- [Linux Packaging Guide](https://v2.tauri.app/distribute/sign/linux/)
 
 ### Advanced Topics
 - [Sidecar Development](https://v2.tauri.app/develop/sidecar/)

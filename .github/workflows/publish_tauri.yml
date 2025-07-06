@@ -136,7 +136,8 @@ jobs:
           # Extract versions from all three files
           TAURI_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
           PACKAGE_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)
-          PYTHON_VERSION=$(grep -o 'version = "[^"]*"' phosphobot/pyproject.toml | cut -d'"' -f2)
+          # More specific grep for Python version - look for exact pattern and take first match only
+          PYTHON_VERSION=$(grep '^version = ' phosphobot/pyproject.toml | head -1 | cut -d'"' -f2)
           
           echo "📋 Current versions:"
           echo "  Tauri config:    $TAURI_VERSION"
