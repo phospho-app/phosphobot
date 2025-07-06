@@ -6,4 +6,10 @@ Cargo.lock
 /gen/
 
 # Python bundled binaries
-binaries/ 
+binaries/
+
+# Updater keys (contains private key - must not be committed)
+updater-keys/
+
+# Environment variables (may contain sensitive information)
+.env 

@@ -17,6 +17,7 @@
         "core:webview:default",
         "shell:default",
         "fs:default",
+        "updater:default",
         {
             "identifier": "shell:allow-execute",
             "allow": [

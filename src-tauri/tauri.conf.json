@@ -87,5 +87,15 @@
     "externalBin": [
       "binaries/phosphobot"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://api.github.com/repos/phospho-app/phosphobot/releases/latest"
+      ],
+      "dialog": true,
+      "pubkey": ""
+    }
   }
 } 

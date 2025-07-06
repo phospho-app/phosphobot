@@ -131,13 +131,13 @@ pub fn run() {
             }
         }))
         .manage(AppState::new())
-        .invoke_handler(tauri::generate_handler![
-            greet,
-            is_phosphobot_server_running,
-            start_phosphobot_server,
-            stop_phosphobot_server
-        ])
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                // Initialize updater plugin - it will handle everything automatically with built-in dialogs
+                let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+            }
+            
             info!("Phosphobot desktop app is starting...");
             
             // Get the app handle before the async block
@@ -165,6 +165,12 @@ pub fn run() {
             
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            is_phosphobot_server_running,
+            start_phosphobot_server,
+            stop_phosphobot_server
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

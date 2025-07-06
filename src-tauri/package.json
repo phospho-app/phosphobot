@@ -17,6 +17,7 @@
     "python:package:reset": "node ./scripts/reset-python.mjs",
     "python:package:check": "node ./check_build_needed.mjs",
     "python:package:dev": "cd ../phosphobot && uv run phosphobot run --host=127.0.0.1 --port=8080",
+    "updater:generate-keys": "node ./scripts/generate-updater-keys.mjs",
     "clean": "node ./scripts/clean.mjs",
     "help": "node ./scripts/help.mjs",
     "install-deps": "npm run dashboard:install"
@@ -25,7 +26,9 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@tauri-apps/plugin-updater": "^2.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/phospho-app/phosphobot.git"
