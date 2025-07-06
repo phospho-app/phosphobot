@@ -5,7 +5,7 @@ mod state;
 
 use log::info;
 use state::AppState;
-use tauri::{Manager, State, RunEvent};
+use tauri::{Manager, State, RunEvent, AppHandle};
 use tauri_plugin_shell::{ShellExt, process::CommandEvent};
 
 #[tauri::command]
@@ -115,6 +115,86 @@ async fn stop_phosphobot_server<'a>(
     }
 }
 
+// Auto-update functionality
+async fn check_for_updates(app: AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons, MessageDialogKind};
+    
+    log::info!("Checking for application updates...");
+    
+    match app.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    log::info!("Update available: version {}", update.version);
+                    
+                    // Show native dialog asking user if they want to update
+                    let message = format!(
+                        "A new version ({}) is available!\n\nRelease notes:\n{}\n\nWould you like to update now?",
+                        update.version,
+                        update.body.clone().unwrap_or_else(|| "No release notes available.".to_string())
+                    );
+                    
+                    let dialog_result = MessageDialogBuilder::new(app.dialog().clone(), "Update Available", message)
+                        .buttons(MessageDialogButtons::YesNo)
+                        .kind(MessageDialogKind::Info)
+                        .blocking_show();
+                    
+                    if dialog_result {
+                        log::info!("User accepted update, starting download and installation...");
+                        
+                        // Show progress dialog
+                        MessageDialogBuilder::new(app.dialog().clone(), "Updating", "Downloading and installing update...\nThe application will restart automatically when complete.")
+                            .kind(MessageDialogKind::Info)
+                            .blocking_show();
+                        
+                        // Download and install the update
+                        match update.download_and_install(
+                            |chunk_length, content_length| {
+                                if let Some(total) = content_length {
+                                    let progress = (chunk_length as f64 / total as f64) * 100.0;
+                                    log::info!("Download progress: {:.1}%", progress);
+                                }
+                            },
+                            || {
+                                log::info!("Download completed, installing...");
+                            }
+                        ).await {
+                            Ok(_) => {
+                                log::info!("Update installed successfully, restarting application...");
+                                
+                                // Give a moment for the user to see the completion
+                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                                
+                                // Restart the application
+                                app.restart();
+                            }
+                            Err(e) => {
+                                log::error!("Failed to install update: {}", e);
+                                
+                                MessageDialogBuilder::new(app.dialog().clone(), "Update Failed", &format!("Failed to install update: {}", e))
+                                    .kind(MessageDialogKind::Error)
+                                    .blocking_show();
+                            }
+                        }
+                    } else {
+                        log::info!("User declined update");
+                    }
+                }
+                Ok(None) => {
+                    log::info!("No updates available");
+                }
+                Err(e) => {
+                    log::error!("Failed to check for updates: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to get updater: {}", e);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -124,6 +204,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window if app is already running
             if let Some(window) = app.get_webview_window("main") {
@@ -134,7 +216,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             {
-                // Initialize updater plugin - it will handle everything automatically with built-in dialogs
+                // Initialize updater plugin
                 let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
             }
             
@@ -149,18 +231,29 @@ pub fn run() {
                 for i in 0..3 {
                     if is_phosphobot_server_running().await {
                         info!("Phosphobot server is already running.");
-                        return;
+                        break;
                     }
                     info!("Phosphobot server not yet running... retry {i}/3");
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
                 
-                info!("Phosphobot server not running. Launching...");
-                let state = app_handle.state::<AppState>();
-                let handle_clone = app_handle.clone();
-                if let Err(err) = start_phosphobot_server(handle_clone, state).await {
-                    log::error!("Error launching phosphobot server: {}", err);
+                // If server is not running after retries, try to start it
+                if !is_phosphobot_server_running().await {
+                    info!("Phosphobot server not running. Launching...");
+                    let state = app_handle.state::<AppState>();
+                    let handle_clone = app_handle.clone();
+                    if let Err(err) = start_phosphobot_server(handle_clone, state).await {
+                        log::error!("Error launching phosphobot server: {}", err);
+                    }
                 }
+            });
+            
+            // Check for updates on startup
+            let app_handle_for_updates = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Wait a bit for the app to fully initialize
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                check_for_updates(app_handle_for_updates).await;
             });
             
             Ok(())

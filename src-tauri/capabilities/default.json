@@ -18,6 +18,8 @@
         "shell:default",
         "fs:default",
         "updater:default",
+        "dialog:default",
+        "process:default",
         {
             "identifier": "shell:allow-execute",
             "allow": [
