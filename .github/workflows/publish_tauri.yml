@@ -33,10 +33,10 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       # Windows code signing
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       # Tauri updater signing (official environment variable names)
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -47,11 +47,12 @@ jobs:
 
       # macOS Code Signing Setup
       - name: Import Apple Developer Certificate (macOS)
+        id: import_certificate
         if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           if [ -n "$APPLE_CERTIFICATE" ]; then
             echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
@@ -67,16 +68,17 @@ jobs:
             CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
             echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
             echo "Certificate imported: $CERT_ID"
+            rm -f certificate.p12
           else
             echo "No Apple certificate provided, skipping code signing"
           fi
 
       # Verify Certificate Import
       - name: Verify Certificate (macOS)
-        if: matrix.platform == 'macos-latest' && env.APPLE_SIGNING_IDENTITY
+        if: matrix.platform == 'macos-latest' && steps.import_certificate.outputs.signing_identity
         run: |
           echo "✅ Certificate verification:"
-          echo "Signing Identity: $APPLE_SIGNING_IDENTITY"
+          echo "Signing Identity: ${{ steps.import_certificate.outputs.signing_identity }}"
           security find-identity -v -p codesigning build.keychain
 
       # Windows Code Signing Setup (DISABLED)
@@ -263,10 +265,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS code signing
           ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.import_certificate.outputs.signing_identity }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           # Windows signing (disabled)
           # WINDOWS_CERTIFICATE_FILE: ${{ env.WINDOWS_CERTIFICATE_FILE }}
           # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
