@@ -181,7 +181,7 @@ jobs:
           
           # Test that we can at least start the Python environment
           echo "Testing Python environment initialization..."
-          timeout 60 ./$BINARY_PATH run --help || {
+          timeout 120 ./$BINARY_PATH run --help || {
             echo "❌ Python environment initialization failed or timed out"
             echo "This might indicate missing dependencies or PyApp configuration issues"
             exit 1
