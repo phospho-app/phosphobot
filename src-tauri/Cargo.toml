@@ -5,7 +5,7 @@ description = "The AI-ready robotics dev kit, with built-in remote control and V
 authors = ["phospho <contact@phospho.ai>"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/julien-blanchon/phosphobot"
+repository = "https://github.com/phospho-app/phosphobot"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
