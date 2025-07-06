@@ -1,6 +1,6 @@
 [package]
 name = "phosphobot-desktop"
-version = "0.3.53"
+version = "0.3.54"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support"
 authors = ["phospho <contact@phospho.ai>"]
 edition = "2021"
