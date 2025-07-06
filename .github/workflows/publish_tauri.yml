@@ -258,8 +258,22 @@ jobs:
           
           echo "✅ Python sidecar verification completed successfully!"
 
+      # Debug: Check Tauri signing environment
+      - name: Debug Tauri Signing Environment
+        shell: bash
+        run: |
+          echo "🔍 Debugging Tauri signing environment..."
+          echo "TAURI_SIGNING_PRIVATE_KEY: $([ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && echo "✅ Set (${#TAURI_SIGNING_PRIVATE_KEY} chars)" || echo "❌ Not set")"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $([ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && echo "✅ Set" || echo "❌ Not set")"
+          echo "Repository: ${{ github.repository }}"
+          echo "Updater artifacts enabled: $(grep -o '"createUpdaterArtifacts": true' src-tauri/tauri.conf.json || echo "❌ Not found")"
+          echo "Pubkey in config: $(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | head -c 50)..."
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
       # Build Tauri app
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@dev
         id: build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -278,6 +292,7 @@ jobs:
         with:
           tagName: phosphobot-v__VERSION__ # the action automatically replaces __VERSION__ with the app version
           releaseName: 'Phosphobot Desktop v__VERSION__'
+          includeUpdaterJson: true # Explicitly enable latest.json generation
           releaseBody: |
             ## 🤖 Phosphobot Desktop v__VERSION__
             
