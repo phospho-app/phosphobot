@@ -34,9 +34,9 @@ jobs:
       # Windows code signing
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      # Tauri updater signing (correct environment variable names)
-      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      # Tauri updater signing (official environment variable names)
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -126,6 +126,49 @@ jobs:
           uv tool install hatch
           # Verify Box can access hatch
           uvx --from box-packager box --help
+
+      # Verify version synchronization across all configuration files
+      - name: Check Version Synchronization
+        shell: bash
+        run: |
+          echo "🔍 Checking version synchronization across configuration files..."
+          
+          # Extract versions from all three files
+          TAURI_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          PACKAGE_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)
+          PYTHON_VERSION=$(grep -o 'version = "[^"]*"' phosphobot/pyproject.toml | cut -d'"' -f2)
+          
+          echo "📋 Current versions:"
+          echo "  Tauri config:    $TAURI_VERSION"
+          echo "  Package.json:    $PACKAGE_VERSION"
+          echo "  Python package:  $PYTHON_VERSION"
+          
+          # Check if all versions match
+          if [ "$TAURI_VERSION" = "$PACKAGE_VERSION" ] && [ "$PACKAGE_VERSION" = "$PYTHON_VERSION" ]; then
+            echo "✅ All versions are synchronized: $TAURI_VERSION"
+          else
+            echo "❌ Version mismatch detected!"
+            echo ""
+            echo "To fix this issue:"
+            echo "1. Update all three files to have the same version number:"
+            echo "   - src-tauri/tauri.conf.json: \"version\": \"X.Y.Z\""
+            echo "   - src-tauri/package.json: \"version\": \"X.Y.Z\""
+            echo "   - phosphobot/pyproject.toml: version = \"X.Y.Z\""
+            echo "2. Commit the changes and push again"
+            echo ""
+            echo "See VERSION_MANAGEMENT.md for detailed instructions."
+            exit 1
+          fi
+          
+          # Validate semantic versioning format
+          if [[ ! $TAURI_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format: $TAURI_VERSION"
+            echo "Please use semantic versioning: MAJOR.MINOR.PATCH (e.g., 0.3.53)"
+            exit 1
+          fi
+          
+          echo "✅ Version format is valid (semantic versioning)"
+          echo "🚀 Ready to build version $TAURI_VERSION"
 
       # Install Node.js dependencies
       - name: Install frontend dependencies

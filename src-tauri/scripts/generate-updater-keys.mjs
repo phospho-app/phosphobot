@@ -8,11 +8,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const TAURI_DIR = join(__dirname, '..', '..');
-const KEYS_DIR = join(TAURI_DIR, 'updater-keys');
+// Paths relative to src-tauri directory
+const SRC_TAURI_DIR = join(__dirname, '..');
+const KEYS_DIR = join(SRC_TAURI_DIR, 'updater-keys');
 const PRIVATE_KEY_FILE = join(KEYS_DIR, 'phosphobot.key');
-const PUBLIC_KEY_FILE = join(KEYS_DIR, 'phosphobot.pub');
-const TAURI_CONF_FILE = join(TAURI_DIR, 'src-tauri', 'tauri.conf.json');
+const PUBLIC_KEY_FILE = join(KEYS_DIR, 'phosphobot.key.pub');
+const TAURI_CONF_FILE = join(SRC_TAURI_DIR, 'tauri.conf.json');
 
 console.log('🔐 Generating Tauri Updater Keys...');
 
@@ -34,7 +35,7 @@ try {
     console.log('Generating keypair...');
     execSync(`npx tauri signer generate -w "${PRIVATE_KEY_FILE}"`, { 
         stdio: 'inherit',
-        cwd: TAURI_DIR
+        cwd: SRC_TAURI_DIR
     });
 
     // Read the generated public key
@@ -55,11 +56,11 @@ try {
     console.log('   cp .env.example .env');
     console.log('   # Then edit .env to set the correct paths');
     console.log('\n2. For GitHub Actions, add these as secrets:');
-    console.log('   - TAURI_PRIVATE_KEY: (content of the private key file)');
-    console.log('   - TAURI_KEY_PASSWORD: (password if you set one)');
+    console.log('   - TAURI_SIGNING_PRIVATE_KEY: (content of the private key file)');
+    console.log('   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD: (password if you set one)');
     console.log('\n3. Example .env file content:');
-    console.log(`   TAURI_PRIVATE_KEY=${PRIVATE_KEY_FILE}`);
-    console.log('   TAURI_KEY_PASSWORD=  # if you set a password');
+    console.log(`   TAURI_SIGNING_PRIVATE_KEY=# content of the private key file ${PRIVATE_KEY_FILE}`);
+    console.log('   TAURI_SIGNING_PRIVATE_KEY_PASSWORD=  # if you set a password');
     console.log('\n⚠️  IMPORTANT: Keep your private key safe and never commit it to version control!');
     console.log(`   Private key location: ${PRIVATE_KEY_FILE}`);
     console.log(`   Public key location: ${PUBLIC_KEY_FILE}`);

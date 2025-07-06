@@ -2,6 +2,24 @@
 
 A cross-platform desktop application built with [Tauri v2](https://v2.tauri.app/) that provides a native interface for the Phosphobot robotics development kit.
 
+## 📚 Table of Contents
+
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [📋 Prerequisites](#-prerequisites)
+- [🚀 Quick Start](#-quick-start)
+- [🛠️ Development Workflow](#️-development-workflow)
+- [🐍 Python Sidecar Integration](#-python-sidecar-integration)
+- [🔄 Auto-Updater System](#-auto-updater-system)
+- [📦 Version Management](#-version-management)
+- [🔐 Code Signing & Distribution](#-code-signing--distribution)
+- [🚨 Security Considerations](#-security-considerations)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [🎯 Best Practices](#-best-practices)
+- [🚀 Quick Start Checklist](#-quick-start-checklist)
+- [🔧 Advanced Configuration](#-advanced-configuration)
+- [📚 Additional Resources](#-additional-resources)
+- [🤝 Contributing](#-contributing)
+
 ## 🏗️ Architecture Overview
 
 This application follows Tauri's hybrid architecture:
@@ -230,214 +248,439 @@ The app includes automatic updates using Tauri's built-in updater with cryptogra
 - **HTTPS only**: All update downloads use secure transport
 - **User consent**: Built-in dialogs require user approval
 
-## 🔐 Code Signing & Distribution
+### Update Process Flow
 
-### macOS Code Signing
-
-**Requirements**:
-- Apple Developer Account ($99/year)
-- Developer ID Application certificate
-
-**Setup**:
-1. **Get certificate from Apple Developer Portal**:
-   - Log in to [developer.apple.com](https://developer.apple.com)
-   - Certificates, Identifiers & Profiles → Certificates
-   - Create "Developer ID Application" certificate
-   - Download and install in Keychain
-
-2. **Export certificate**:
-   ```bash
-   # Export from Keychain as .p12 file
-   # Set a strong password
-   ```
-
-3. **For GitHub Actions, convert to base64**:
-   ```bash
-   base64 -i certificate.p12 | pbcopy
-   ```
-
-**Environment Variables**:
-```bash
-# For local signing
-APPLE_CERTIFICATE_FILE=path/to/cert.p12
-APPLE_CERTIFICATE_PASSWORD=your_password
-
-# For GitHub Actions (as secrets)
-APPLE_CERTIFICATE=base64_encoded_p12_content
-APPLE_CERTIFICATE_PASSWORD=your_password
-APPLE_ID=your@apple.id
-APPLE_PASSWORD=app_specific_password  # Generate at appleid.apple.com
-APPLE_TEAM_ID=YOUR_TEAM_ID
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as App
+    participant G as GitHub API
+    participant S as Update Server
+    
+    U->>A: Launch App
+    A->>G: Check for updates
+    G-->>A: Latest version info
+    A->>A: Compare versions
+    
+    alt Update Available
+        A->>U: Show update dialog
+        U->>A: Accept update
+        A->>S: Download update bundle
+        S-->>A: Signed update file
+        A->>A: Verify signature
+        A->>A: Install update
+        A->>U: Prompt restart
+        U->>A: Restart app
+    else No Update
+        A->>U: Continue normally
+    end
 ```
 
-### Windows Code Signing
+### Version Comparison Logic
 
-**Requirements**:
-- Code signing certificate from trusted CA (DigiCert, Sectigo, etc.)
-- Windows SDK (for signtool.exe)
+The updater compares versions using semantic versioning rules:
 
-**Setup**:
-1. **Purchase certificate** from Certificate Authority
-2. **Install certificate** in Windows Certificate Store
-3. **For GitHub Actions**:
-   ```bash
-   # Export as .p12 and convert to base64
-   base64 -i windows-cert.p12 | pbcopy
-   ```
-
-**Environment Variables**:
-```bash
-# For GitHub Actions
-WINDOWS_CERTIFICATE=base64_encoded_p12_content
-WINDOWS_CERTIFICATE_PASSWORD=cert_password
+```javascript
+// Examples of version comparisons:
+"0.3.52" < "0.3.53" → Update available
+"0.3.53" < "0.4.0"  → Update available  
+"0.4.0" < "1.0.0"   → Update available
+"1.0.0" = "1.0.0"   → No update
+"1.0.1" > "1.0.0"   → User has newer version (beta/dev)
 ```
 
-### Linux Packaging
+### Update Configuration
 
-Linux builds create:
-- **DEB packages**: For Debian/Ubuntu distributions
-- **AppImage**: Universal Linux executable
-- **No signing required**: Linux distributions handle package signing
-
-## 📦 GitHub Actions CI/CD
-
-### Workflow Overview
-
-The `.github/workflows/publish_tauri.yml` workflow:
-
-1. **Cross-platform builds**: macOS, Windows, Linux
-2. **Python bundling**: Packages Python sidecar for each platform
-3. **Code signing**: Signs binaries when certificates provided
-4. **GitHub releases**: Creates releases with signed artifacts
-5. **Homebrew**: Optionally updates Homebrew cask
-
-### Required GitHub Secrets
-
-**Core Secrets**:
-```bash
-GITHUB_TOKEN                    # Auto-provided by GitHub
-```
-
-**macOS Code Signing**:
-```bash
-APPLE_CERTIFICATE               # Base64 encoded .p12 file
-APPLE_CERTIFICATE_PASSWORD      # Certificate password
-APPLE_ID                        # Your Apple ID
-APPLE_PASSWORD                  # App-specific password
-APPLE_TEAM_ID                   # 10-character team ID
-```
-
-**Windows Code Signing**:
-```bash
-WINDOWS_CERTIFICATE             # Base64 encoded .p12 file
-WINDOWS_CERTIFICATE_PASSWORD    # Certificate password
-```
-
-**Tauri Auto-Updater**:
-```bash
-TAURI_PRIVATE_KEY              # Content of private key file
-TAURI_KEY_PASSWORD             # Key password (if set)
-```
-
-**Optional - Homebrew Distribution**:
-```bash
-HOMEBREW_TAP_TOKEN             # GitHub token for tap repo
-```
-
-### Setting Up Secrets
-
-1. Go to GitHub repository → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Add each secret with exact names listed above
-
-### Triggering Builds
-
-**Automatic triggers**:
-- Push to `main` branch
-- Push to `release` branch
-- Push to `tauri` branch
-
-**Manual trigger**:
-- GitHub Actions → **publish_tauri** → **Run workflow**
-
-### Build Artifacts
-
-The workflow generates:
-
-**macOS**:
-- `Phosphobot_x.x.x_aarch64.dmg` (Apple Silicon)
-- `Phosphobot_x.x.x_x64.dmg` (Intel)
-- `Phosphobot.app.tar.gz` (updater bundles)
-
-**Windows**:
-- `Phosphobot_x.x.x_x64_en-US.msi` (MSI installer)
-- `Phosphobot_x.x.x_x64-setup.exe` (NSIS installer)
-
-**Linux**:
-- `phosphobot_x.x.x_amd64.deb` (Debian package)
-- `phosphobot_x.x.x_amd64.AppImage` (Universal)
-
-## 🔧 Configuration
-
-### Tauri Configuration (`tauri.conf.json`)
-
-Key sections:
+The updater is configured in `tauri.conf.json`:
 
 ```json
 {
-  "identifier": "ai.phospho.phosphobot",     // Unique app identifier
-  "productName": "Phosphobot",               // Display name
-  "version": "0.3.52",                       // App version
-  
-  "build": {
-    "beforeDevCommand": "cd ../dashboard && npm run dev",
-    "beforeBuildCommand": "cd ../dashboard && npm run build",
-    "devUrl": "http://localhost:5173",
-    "frontendDist": "../dashboard/dist"
-  },
-  
-  "bundle": {
-    "targets": ["app", "dmg", "msi", "nsis", "deb", "appimage"],
-    "externalBin": ["binaries/phosphobot"]    // Python sidecar
-  },
-  
   "plugins": {
     "updater": {
       "active": true,
-      "endpoints": ["https://api.github.com/repos/phospho-app/phosphobot/releases/latest"],
-      "dialog": true
+      "endpoints": [
+        "https://api.github.com/repos/phospho-app/phosphobot/releases/latest"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgOEI0RUY..."
     }
   }
 }
 ```
 
-### Security Capabilities
+**Configuration Options**:
+- **`active`**: Enable/disable the updater
+- **`endpoints`**: Array of URLs to check for updates
+- **`dialog`**: Use built-in dialogs (set to `true` for automatic handling)
+- **`pubkey`**: Public key for signature verification (auto-generated)
 
-Tauri uses a capability-based security model:
+## 📦 Version Management
 
-**Core permissions** (`capabilities/default.json`):
-- Window management
-- File system access
-- Shell execution (for Python sidecar)
-- Auto-updater functions
+### How Versioning Works
 
-**HTTP permissions** (`capabilities/http.json`):
-- Local API access (127.0.0.1, localhost)
-- Required for frontend-backend communication
+The Phosphobot Desktop application uses a **synchronized versioning system** where the version number must be consistent across multiple configuration files:
 
-### Environment Variables
+1. **`src-tauri/tauri.conf.json`** - Main Tauri configuration (line 4)
+2. **`src-tauri/package.json`** - Node.js package metadata (line 3)
+3. **`phosphobot/pyproject.toml`** - Python package metadata (line 3)
 
-**Development** (`.env`):
+**Version Format**: `MAJOR.MINOR.PATCH` (following [Semantic Versioning](https://semver.org/))
+
+Example: `0.3.52` means:
+- **Major**: 0 (breaking changes)
+- **Minor**: 3 (new features, backward compatible)
+- **Patch**: 52 (bug fixes, backward compatible)
+
+### How to Update Version
+
+**⚠️ Important**: All three files must have the **exact same version number** for builds to work correctly.
+
+#### Step-by-Step Manual Update
+
+1. **Update `src-tauri/tauri.conf.json`**:
+   ```json
+   {
+     "version": "0.3.53",  // ← Change this line
+     // ... rest of config
+   }
+   ```
+
+2. **Update `src-tauri/package.json`**:
+   ```json
+   {
+     "name": "phosphobot-desktop",
+     "version": "0.3.53",  // ← Change this line
+     // ... rest of package
+   }
+   ```
+
+3. **Update `phosphobot/pyproject.toml`**:
+   ```toml
+   [project]
+   name = "phosphobot"
+   version = "0.3.53"  # ← Change this line
+   # ... rest of config
+   ```
+
+#### Quick sed Commands (Optional)
+
+If you prefer using command line tools:
+
 ```bash
-TAURI_PRIVATE_KEY=./updater-keys/phosphobot.key
-TAURI_KEY_PASSWORD=
+# Replace 0.3.52 with your new version
+NEW_VERSION="0.3.53"
+OLD_VERSION="0.3.52"
+
+# Update all three files
+sed -i.bak "s/\"version\": \"$OLD_VERSION\"/\"version\": \"$NEW_VERSION\"/g" src-tauri/tauri.conf.json
+sed -i.bak "s/\"version\": \"$OLD_VERSION\"/\"version\": \"$NEW_VERSION\"/g" src-tauri/package.json
+sed -i.bak "s/version = \"$OLD_VERSION\"/version = \"$NEW_VERSION\"/g" phosphobot/pyproject.toml
+
+# Clean up backup files
+rm src-tauri/tauri.conf.json.bak src-tauri/package.json.bak phosphobot/pyproject.toml.bak
 ```
 
-**Production** (CI/CD):
-```bash
-TAURI_PRIVATE_KEY=content_of_private_key_file
-TAURI_KEY_PASSWORD=key_password
+### Version Update Workflow
+
+1. **Update version numbers** in all three files (ensure they match exactly)
+2. **Verify synchronization**:
+   ```bash
+   # Check all versions match
+   echo "Tauri config: $(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)"
+   echo "Package.json: $(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)"
+   echo "Python package: $(grep -o 'version = "[^"]*"' phosphobot/pyproject.toml | cut -d'"' -f2)"
+   ```
+3. **Test the build** locally:
+   ```bash
+   npm run build
+   ```
+4. **Commit the changes**:
+   ```bash
+   git add .
+   git commit -m "bump version to 0.3.53"
+   ```
+5. **Create a git tag** (optional but recommended):
+   ```bash
+   git tag v0.3.53
+   ```
+6. **Push to trigger release**:
+   ```bash
+   git push origin main --tags
+   ```
+
+### How GitHub Actions Uses Version
+
+The GitHub Actions workflow automatically:
+
+1. **Checks version synchronization** across all three files
+2. **Fails the build** if versions don't match
+3. **Reads version** from `src-tauri/tauri.conf.json`
+4. **Creates release tag** as `phosphobot-v{VERSION}` (e.g., `phosphobot-v0.3.53`)
+5. **Builds signed binaries** for all platforms
+6. **Creates GitHub release** with auto-generated notes
+7. **Publishes to Homebrew** (if configured)
+
+The workflow uses Tauri's `__VERSION__` placeholder which gets replaced automatically:
+```yaml
+tagName: phosphobot-v__VERSION__  # becomes phosphobot-v0.3.53
+releaseName: 'Phosphobot Desktop v__VERSION__'  # becomes 'Phosphobot Desktop v0.3.53'
 ```
+
+### Version Consistency Verification
+
+To verify all versions are synchronized:
+
+```bash
+# Check all versions match
+echo "Tauri config: $(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)"
+echo "Package.json: $(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)"
+echo "Python package: $(grep -o 'version = "[^"]*"' phosphobot/pyproject.toml | cut -d'"' -f2)"
+```
+
+Expected output:
+```
+Tauri config: 0.3.53
+Package.json: 0.3.53
+Python package: 0.3.53
+```
+
+If any versions don't match, the GitHub Actions build will fail with a clear error message.
+
+### Troubleshooting Version Issues
+
+**Build fails with version mismatch**:
+- Ensure all three files have the same version number
+- Check for typos in version strings
+- Verify JSON/TOML syntax is correct
+
+**Updates not working**:
+- Verify new version is higher than current installed version
+- Check that updater keys are properly configured
+- Ensure GitHub release was created successfully
+
+**Auto-updater not triggered**:
+- Version must be **higher** than currently installed version
+- Updater only checks for updates on app startup
+- Check network connectivity and GitHub API access
+
+## 🔐 Code Signing & Distribution
+
+### Getting Required Certificates and Keys
+
+#### Apple Developer Setup (macOS Code Signing)
+
+**Requirements**:
+- Apple Developer Account ($99/year)
+- macOS machine for certificate management
+
+**Step-by-step setup**:
+
+1. **Join Apple Developer Program**:
+   - Go to [developer.apple.com](https://developer.apple.com)
+   - Sign up for Apple Developer Program ($99/year)
+   - Wait for approval (usually 24-48 hours)
+
+2. **Create Developer ID Certificate**:
+   - Log in to [Apple Developer Console](https://developer.apple.com/account/)
+   - Go to **Certificates, Identifiers & Profiles**
+   - Click **Certificates** → **Create New Certificate**
+   - Select **Developer ID Application** (for distribution outside Mac App Store)
+   - Follow the prompts to create a Certificate Signing Request (CSR)
+   - Download the certificate and install it in **Keychain Access**
+
+3. **Get App-Specific Password**:
+   - Go to [appleid.apple.com](https://appleid.apple.com)
+   - Sign in with your Apple ID
+   - Go to **Security** → **App-Specific Passwords**
+   - Click **Generate Password**
+   - Label it "Phosphobot Notarization"
+   - Save the generated password securely
+
+4. **Find Your Team ID**:
+   - In Apple Developer Console, go to **Membership**
+   - Your **Team ID** is the 10-character alphanumeric string
+
+5. **Export Certificate for CI/CD**:
+   ```bash
+   # In Keychain Access:
+   # 1. Find your "Developer ID Application" certificate
+   # 2. Right-click → Export
+   # 3. Choose .p12 format
+   # 4. Set a strong password
+   # 5. Save as certificate.p12
+   
+   # Convert to base64 for GitHub secrets
+   base64 -i certificate.p12 | pbcopy
+   ```
+
+**Required GitHub Secrets**:
+```bash
+APPLE_CERTIFICATE          # Base64 content of .p12 file
+APPLE_CERTIFICATE_PASSWORD # Password you set for .p12 file
+APPLE_ID                   # Your Apple ID email
+APPLE_PASSWORD             # App-specific password from appleid.apple.com
+APPLE_TEAM_ID              # 10-character team ID from developer console
+```
+
+#### Windows Code Signing Setup
+
+**Requirements**:
+- Code signing certificate from trusted Certificate Authority
+- Windows machine for certificate management (or cross-platform tools)
+
+**Recommended Certificate Authorities**:
+- **DigiCert** (most common, $300-600/year)
+- **Sectigo** (formerly Comodo, $200-400/year)
+- **GlobalSign** ($250-500/year)
+
+**Step-by-step setup**:
+
+1. **Purchase Certificate**:
+   - Choose **Code Signing Certificate** (not EV unless required)
+   - **Organization Validated (OV)** is sufficient for most cases
+   - **Extended Validation (EV)** provides more trust but requires hardware token
+
+2. **Certificate Validation**:
+   - CA will verify your organization (2-7 business days)
+   - You'll receive certificate files via email
+   - Install certificate in Windows Certificate Store
+
+3. **Export Certificate for CI/CD**:
+   ```bash
+   # On Windows, using PowerShell:
+   # 1. Open Certificate Manager (certmgr.msc)
+   # 2. Find your certificate in Personal → Certificates
+   # 3. Right-click → All Tasks → Export
+   # 4. Choose .p12/.pfx format with private key
+   # 5. Set a strong password
+   
+   # Convert to base64 for GitHub secrets
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("certificate.p12")) | clip
+   ```
+
+**Required GitHub Secrets**:
+```bash
+WINDOWS_CERTIFICATE          # Base64 content of .p12/.pfx file
+WINDOWS_CERTIFICATE_PASSWORD # Password you set for certificate
+```
+
+#### Tauri Updater Keys Setup
+
+**Generate updater signing keys**:
+
+1. **Generate keys locally**:
+   ```bash
+   cd src-tauri
+   npm run updater:generate-keys
+   ```
+
+2. **This creates**:
+   - `updater-keys/phosphobot.key` (private key) - **NEVER COMMIT THIS**
+   - `updater-keys/phosphobot.pub` (public key) - gets added to tauri.conf.json
+   - Updates `tauri.conf.json` with public key automatically
+
+3. **For GitHub Actions**:
+   ```bash
+   # Copy the ENTIRE content of the private key file
+   cat updater-keys/phosphobot.key | pbcopy
+   ```
+
+**Required GitHub Secrets**:
+```bash
+TAURI_SIGNING_PRIVATE_KEY           # Complete content of phosphobot.key file
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD  # Password if you set one (usually empty)
+```
+
+#### Setting up GitHub Secrets
+
+1. **Go to your repository on GitHub**
+2. **Navigate to Settings → Secrets and variables → Actions**
+3. **Click "New repository secret"**
+4. **Add each secret with the exact names listed above**
+
+**Complete list of required secrets**:
+```bash
+# Core (always required)
+GITHUB_TOKEN                    # Auto-provided by GitHub
+
+# Apple Code Signing (for macOS)
+APPLE_CERTIFICATE               # Base64 .p12 file content
+APPLE_CERTIFICATE_PASSWORD      # Certificate password
+APPLE_ID                        # Apple ID email
+APPLE_PASSWORD                  # App-specific password
+APPLE_TEAM_ID                   # 10-character team ID
+
+# Windows Code Signing (for Windows)
+WINDOWS_CERTIFICATE             # Base64 .p12/.pfx file content
+WINDOWS_CERTIFICATE_PASSWORD    # Certificate password
+
+# Tauri Auto-Updater (for all platforms)
+TAURI_SIGNING_PRIVATE_KEY           # Complete private key file content
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD  # Key password (usually empty)
+
+# Optional - Homebrew Distribution
+HOMEBREW_TAP_TOKEN             # GitHub token for homebrew-tap repo
+```
+
+### Testing Your Setup
+
+**Test certificates locally**:
+```bash
+# Test Apple certificate
+security find-identity -v -p codesigning
+
+# Test Windows certificate (on Windows)
+certutil -store -user my
+
+# Test Tauri updater keys
+ls -la updater-keys/
+```
+
+**Test build with signing**:
+```bash
+npm run build
+```
+
+**Verify signed artifacts**:
+```bash
+# macOS
+codesign -dv --verbose=4 target/release/bundle/macos/Phosphobot.app
+
+# Windows (on Windows)
+signtool verify /pa target/release/bundle/msi/Phosphobot_0.3.53_x64_en-US.msi
+```
+
+### Cost Breakdown
+
+**Annual costs for full code signing setup**:
+- **Apple Developer Account**: $99/year
+- **Windows Code Signing Certificate**: $200-600/year
+- **Total**: ~$300-700/year
+
+**Free alternatives**:
+- **Self-signed certificates**: Free but users get security warnings
+- **No signing**: Free but users get "Unknown Developer" warnings
+- **Linux**: No signing required
+
+### Security Best Practices
+
+1. **Certificate Security**:
+   - Use strong passwords for certificate files
+   - Store certificates in secure locations
+   - Never commit certificates to version control
+   - Regularly backup certificates
+
+2. **Key Management**:
+   - Generate updater keys on secure machine
+   - Backup private keys securely
+   - Use password managers for secrets
+   - Rotate keys periodically
+
+3. **GitHub Secrets**:
+   - Use least-privilege access
+   - Regularly audit secrets
+   - Remove unused secrets
+   - Use environment-specific secrets if needed
 
 ## 🚨 Security Considerations
 
@@ -514,6 +757,152 @@ export RUST_LOG=debug
 npm run dev
 ```
 
+### Update Testing
+
+Test updates locally:
+
+```bash
+# 1. Build current version
+npm run build
+
+# 2. Install built app
+# macOS: Open target/release/bundle/macos/Phosphobot.app
+# Windows: Install target/release/bundle/msi/Phosphobot_*.msi
+# Linux: Install target/release/bundle/deb/phosphobot_*.deb
+
+# 3. Update version number
+# Edit src-tauri/tauri.conf.json: "version": "0.3.54"
+
+# 4. Build new version
+npm run build
+
+# 5. Create local test release
+# Upload artifacts to GitHub release manually
+
+# 6. Launch installed app
+# Should detect and offer update
+```
+
+## 🎯 Best Practices
+
+### Version Management
+- ✅ Always update all three files together
+- ✅ Use semantic versioning (MAJOR.MINOR.PATCH)
+- ✅ Test builds before releasing
+- ✅ Create git tags for releases
+- ✅ Verify version sync before pushing
+
+### Security
+- ✅ Never commit private keys to version control
+- ✅ Use strong passwords for certificate files
+- ✅ Backup keys securely (password managers, encrypted vaults)
+- ✅ Rotate keys periodically (annual recommended)
+- ✅ Use least-privilege access for GitHub secrets
+
+### Release Process
+- ✅ Test locally first on all target platforms
+- ✅ Include clear release notes in GitHub releases
+- ✅ Monitor update adoption rates
+- ✅ Set up error alerts for failed updates
+- ✅ Don't force immediate restarts
+
+### User Experience
+- ✅ Keep update downloads small when possible
+- ✅ Provide clear release notes
+- ✅ Test update UX on all platforms
+- ✅ Handle network failures gracefully
+
+## 🚀 Quick Start Checklist
+
+### For Development (Free)
+- [ ] Clone repository and install dependencies
+- [ ] Generate updater keys: `npm run updater:generate-keys`
+- [ ] Test build locally: `npm run build`
+- [ ] Update version manually in all three files when releasing
+
+### For Production (Paid)
+- [ ] Get Apple Developer account ($99/year)
+- [ ] Get Windows code signing certificate ($200-600/year)
+- [ ] Export certificates to base64 format
+- [ ] Add all required GitHub secrets
+- [ ] Test full release process with signing
+
+### For Each Release
+- [ ] Update version in all three files manually
+- [ ] Verify versions match with verification commands
+- [ ] Test build locally: `npm run build`
+- [ ] Commit changes: `git add . && git commit -m "bump version to X.Y.Z"`
+- [ ] Create git tag: `git tag vX.Y.Z`
+- [ ] Push to trigger GitHub Actions: `git push origin main --tags`
+- [ ] Monitor GitHub Actions workflow for success
+- [ ] Verify GitHub release was created with proper assets
+- [ ] Test update process with existing installation
+
+## 🔧 Advanced Configuration
+
+### Custom Update Servers
+
+You can use custom update servers instead of GitHub:
+
+```json
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://your-update-server.com/api/updates/check"
+      ]
+    }
+  }
+}
+```
+
+Your server should respond with:
+```json
+{
+  "version": "0.3.53",
+  "notes": "What's new in this version",
+  "pub_date": "2024-01-15T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "base64-signature-here",
+      "url": "https://your-server.com/updates/Phosphobot.app.tar.gz"
+    }
+  }
+}
+```
+
+### Silent Updates
+
+For enterprise deployments, you can configure silent updates:
+
+```json
+{
+  "plugins": {
+    "updater": {
+      "dialog": false,  // Disable user prompts
+      "silent": true    // Install automatically
+    }
+  }
+}
+```
+
+### Multiple Update Channels
+
+Support multiple update channels (stable, beta, dev):
+
+```json
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://api.github.com/repos/phospho-app/phosphobot/releases/latest",
+        "https://api.github.com/repos/phospho-app/phosphobot/releases/tags/beta"
+      ]
+    }
+  }
+}
+```
+
 ## 📚 Additional Resources
 
 ### Official Documentation
@@ -557,5 +946,4 @@ This project is licensed under the MIT License - see the [LICENSE](../LICENSE) f
 
 ---
 
-For more specific information about updater setup, see [UPDATER_README.md](./UPDATER_README.md).
-For GitHub Actions setup details, see [PUBLISH_SETUP.md](../.github/PUBLISH_SETUP.md). 
+**Complete Phosphobot Desktop Documentation** - Everything you need to build, sign, and distribute the application is covered in this guide. 
