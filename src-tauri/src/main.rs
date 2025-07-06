@@ -5,7 +5,7 @@ mod state;
 
 use log::info;
 use state::AppState;
-use tauri::{Manager, State};
+use tauri::{Manager, State, RunEvent};
 use tauri_plugin_shell::{ShellExt, process::CommandEvent};
 
 #[tauri::command]
@@ -119,7 +119,7 @@ async fn stop_phosphobot_server<'a>(
 pub fn run() {
     env_logger::init();
     
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
@@ -171,8 +171,43 @@ pub fn run() {
             start_phosphobot_server,
             stop_phosphobot_server
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+    
+    // Handle app exit events to ensure phosphobot server is always stopped
+    app.run(move |app_handle, event| {
+        match event {
+            RunEvent::ExitRequested { api, code, .. } => {
+                info!("ExitRequested event received");
+                
+                // Kill the phosphobot server when app exit is requested
+                let app_handle_clone = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app_handle_clone.state::<AppState>();
+                    if let Err(err) = stop_phosphobot_server(state).await {
+                        log::error!("Error stopping phosphobot server during exit: {}", err);
+                    } else {
+                        log::info!("Phosphobot server stopped successfully during exit");
+                    }
+                });
+                
+                // If the exit was requested programmatically (code is Some), allow it to proceed
+                // If it was requested by user interaction (code is None), prevent it temporarily
+                // to allow cleanup to complete, then exit programmatically
+                if code.is_none() {
+                    api.prevent_exit();
+                    
+                    // Give a small delay for cleanup to complete, then exit
+                    let app_handle_for_exit = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        app_handle_for_exit.exit(0);
+                    });
+                }
+            }
+            _ => {}
+        }
+    });
 }
 
 fn main() {
