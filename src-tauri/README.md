@@ -772,7 +772,7 @@ npm run build
 # Linux: Install target/release/bundle/deb/phosphobot_*.deb
 
 # 3. Update version number
-# Edit src-tauri/tauri.conf.json: "version": "0.3.56"
+# Edit src-tauri/tauri.conf.json: "version": "0.3.52"
 
 # 4. Build new version
 npm run build
