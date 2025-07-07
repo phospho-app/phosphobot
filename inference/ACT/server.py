@@ -120,7 +120,9 @@ def load_policy(model_id: str, revision: str | None = None):
         policy_path = get_pretrained_policy_path(model_id, revision=revision)
 
         # Set up device
-        device = get_safe_torch_device(device_str="mps", log=True)
+        device = get_safe_torch_device(
+            device_str="mps", log=True
+        )  # "mps" on mac / "cuda" if you have a GPU / "cpu" otherwise
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
         logger.info(f"Device set to {device}")
@@ -193,9 +195,18 @@ def process_image(
                     processed_images.append(tensor_image)
                     batch[image_names[i]] = tensor_image
 
-                # Get action using select_action
-                action = policy.select_action(batch)
-                return action.cpu().numpy()
+                # Get the actions
+                batch = policy.normalize_inputs(batch)  # type: ignore
+                if policy.config.image_features:  # type: ignore
+                    batch = dict(batch)
+                    batch["observation.images"] = [
+                        batch[key]
+                        for key in policy.config.image_features  # type: ignore
+                    ]
+                actions = policy.model(batch)[0][:, : policy.config.n_action_steps]  # type: ignore
+                actions = policy.unnormalize_outputs({"action": actions})["action"]  # type: ignore
+                actions = actions.transpose(0, 1)
+                return actions.cpu().numpy()
 
         except Exception as e:
             logger.error(f"Error during inference: {str(e)}")
@@ -213,13 +224,11 @@ async def inference(request: InferenceRequest) -> str | None:
     try:
         # Decode the double-encoded payload
         payload: dict = json_numpy.loads(request.encoded)
-        target_size: tuple[int, int]
+        target_size: tuple[int, int] = (224, 224)
 
         # Get feature names
         image_names = [
-            feature
-            for feature in input_features.keys()
-            if "observation.images" in feature
+            feature for feature in input_features.keys() if "image" in feature
         ]
 
         if "observation.state" not in payload:

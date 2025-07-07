@@ -1,0 +1,58 @@
+name: Deploy to Modal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "modal/**"
+      - "phosphobot/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_ENVIRONMENT: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # - name: Install submodules
+      #   run: git submodule update --init --recursive phosphobot
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: false
+          cache-dependency-glob: "modal/uv.lock"
+
+      - name: Pin Python 3.10 for uv
+        run: |
+          cd modal
+          uv python install 3.10
+          uv python pin 3.10
+
+      - name: Deploy Admin API
+        run: |
+          cd modal
+          make deploy_admin
+
+      - name: Deploy gr00t model
+        run: |
+          cd modal
+          make deploy_gr00t
+
+      - name: Deploy ACT model
+        run: |
+          cd modal
+          make deploy_act
+
+      - name: Deploy Pali Gemma
+        run: |
+          cd modal
+          make deploy_paligemma

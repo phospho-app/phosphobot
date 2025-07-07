@@ -9,62 +9,42 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  AlertCircle,
-  CheckCircle2,
-  HelpCircle,
-  LoaderCircle,
-  Save,
-} from "lucide-react";
+import { fetchWithBaseUrl } from "@/lib/utils";
+import { CheckCircle2, HelpCircle, LoaderCircle, Save } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 export function WandBKeyInput() {
   const [token, setToken] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   // Form submission
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     // Reset states
-    setError(null);
-    setSuccess(false);
-
-    // Validate token
-    if (!token.trim()) {
-      setError("WandB Token is required");
-      return;
-    }
-
-    // No specific patern for WandB token
-    // So no pattern check here
-
+    setIsError(false);
+    setIsSuccess(false);
     setIsLoading(true);
-
-    try {
-      const result = await fetchWithBaseUrl("/admin/wandb", "POST", { token });
-
-      if (result && result.status == "success") {
-        setSuccess(true);
-      } else {
-        setError(result?.message || "Failed to save token");
-      }
-    } catch (error) {
-      console.error("Error saving token:", error);
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
+    fetchWithBaseUrl("/admin/wandb", "POST", {
+      token,
+    }).then((response) => {
       setIsLoading(false);
-
-      // Auto-hide success message after 5 seconds
-      if (success) {
+      if (response.status == "success") {
+        toast.success("Wandb token saved successfully");
+        setIsSuccess(true);
+        // auto hide success message after 5 seconds
         setTimeout(() => {
-          setSuccess(false);
+          setIsSuccess(false);
         }, 5000);
+      } else {
+        toast.error(response.message || "Failed to save WandB token");
+        setIsError(true);
       }
-    }
+    });
   };
 
   return (
@@ -109,7 +89,7 @@ export function WandBKeyInput() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               className={
-                error ? "border-red-500 focus-visible:ring-red-500" : ""
+                isError ? "border-red-500 focus-visible:ring-red-500" : ""
               }
               disabled={isLoading}
               autoComplete="off"
@@ -135,17 +115,7 @@ export function WandBKeyInput() {
         </div>
       </form>
 
-      {error && (
-        <Alert variant="destructive" className="mt-2">
-          <AlertCircle className="h-4 w-4" />
-          <div className="ml-2">
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </div>
-        </Alert>
-      )}
-
-      {success && (
+      {isSuccess && (
         <Alert className="mt-2 bg-green-50 text-green-800 border-green-200">
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <div className="ml-2">

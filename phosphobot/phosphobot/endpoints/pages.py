@@ -268,6 +268,22 @@ async def whoami():
 
 @router.post("/admin/huggingface")
 async def submit_token(query: HuggingFaceTokenRequest):
+    if query.token == "":
+        # Delete the token file if the token is empty
+        file_path = str(get_home_app_path()) + "/huggingface.token"
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                return {
+                    "status": "success",
+                    "message": "The file huggingface.token has been removed.",
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error removing Hugging Face token: {str(e)}",
+                }
+
     # Try first to connect to HuggingFace with the token
     try:
         api = HfApi(token=query.token)
@@ -313,6 +329,21 @@ async def submit_wandb_token(query: WandBTokenRequest):
 
     # Define the file path where the token will be saved
     file_path = str(get_home_app_path()) + "/wandb.token"
+
+    if query.token == "":
+        # Delete the token file if the token is empty
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                return {
+                    "status": "success",
+                    "message": "The file wandb.token has been removed.",
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error removing WandB token: {str(e)}",
+                }
 
     if len(query.token) != 40:
         return {

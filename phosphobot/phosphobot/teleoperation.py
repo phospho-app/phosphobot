@@ -1,10 +1,10 @@
 import asyncio
-from copy import copy
 import json
+import time
+from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-import time
 from typing import Dict, Literal, Optional, Tuple, cast
 
 import numpy as np
@@ -119,6 +119,7 @@ class TeleopManager:
 
         self.is_initializing = True
         for i, robot in enumerate(await self.rcm.robots):
+            logger.debug(f"Initializing robot {i}: {robot.name}")
             if robot_id is not None and i != robot_id:
                 continue
             # For Agilex Piper, we need to connect after enabling torque
@@ -133,6 +134,7 @@ class TeleopManager:
             await asyncio.sleep(0.3)
 
         for i, robot in enumerate(await self.rcm.robots):
+            logger.debug(f"Setting initial position for robot {i}: {robot.name}")
             if robot_id is not None and i != robot_id:
                 continue
             if hasattr(robot, "forward_kinematics"):
@@ -140,6 +142,7 @@ class TeleopManager:
                 robot.initial_position = initial_position
                 robot.initial_orientation_rad = initial_orientation_rad
 
+        logger.debug("All robots initialized")
         self._robots = copy(await self.rcm.robots)
         self.is_initializing = False
 
@@ -152,7 +155,6 @@ class TeleopManager:
         """
         if robot.initial_position is None or robot.initial_orientation_rad is None:
             await self.move_init()
-        # Convert and execute command
         (
             target_pos,
             target_orient_deg,
@@ -359,70 +361,150 @@ teleop_manager = None
 udp_server = None
 
 
+@dataclass
+class PacketData:
+    data: bytes
+    addr: Tuple[str, int]
+    timestamp: float
+
+
 class _TeleopProtocol(asyncio.DatagramProtocol):
     def __init__(self, manager: TeleopManager):
         self.manager = manager
         self.transport: Optional[asyncio.DatagramTransport] = None
+
+        # Worker pool configuration
+        # We use a single worker because we want to process packets sequentially
+        # (they are robotics movements, not parallelizable)
+        self.worker_count = 1
+        self.packet_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)  # Bounded queue
+        self.workers: list[asyncio.Task] = []
+        self.running = False
+
+        # Pre-allocated objects for performance
+        self.error_responses = {
+            "rate_limited": json.dumps(
+                {
+                    "error": "rate_limited",
+                    "detail": f"Exceeded {self.manager.MAX_INSTRUCTIONS_PER_SEC} msgs/sec",
+                }
+            ).encode("utf-8"),
+            "invalid_encoding": json.dumps(
+                {"error": "invalid_encoding", "detail": "Invalid UTF-8 encoding"}
+            ).encode("utf-8"),
+            "queue_full": json.dumps(
+                {"error": "queue_full", "detail": "Server overloaded, try again"}
+            ).encode("utf-8"),
+        }
 
     def connection_made(self, transport: asyncio.BaseTransport):
         self.transport = cast(asyncio.DatagramTransport, transport)
         sockname = transport.get_extra_info("sockname")
         logger.info(f"UDP socket opened on {sockname}")
 
+        # Start worker pool
+        self.running = True
+        for i in range(self.worker_count):
+            worker = asyncio.create_task(self._worker(f"worker-{i}"))
+            self.workers.append(worker)
+
+    def connection_lost(self, exc):
+        # Cleanup workers
+        self.running = False
+        for worker in self.workers:
+            worker.cancel()
+
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        # fire-and-forget per-packet handling
-        asyncio.create_task(self._handle(data, addr))
-
-    async def _handle(self, data: bytes, addr: Tuple[str, int]):
-        if self.transport is None:
-            logger.error("Transport is None, cannot handle datagram")
-            return
-
+        # Fast path: immediate rate limiting check
         if not self.manager.allow_instruction():
-            err = {
-                "error": "rate_limited",
-                "detail": f"Exceeded {self.manager.MAX_INSTRUCTIONS_PER_SEC} msgs/sec",
-            }
-            self.transport.sendto(json.dumps(err).encode("utf-8"), addr)
+            if self.transport:
+                self.transport.sendto(self.error_responses["rate_limited"], addr)
             return
 
-        # 1) decode
+        # Try to queue packet (non-blocking)
+        try:
+            packet = PacketData(data, addr, time.time())
+            self.packet_queue.put_nowait(packet)
+        except asyncio.QueueFull:
+            # Queue is full, drop packet with error response
+            if self.transport:
+                self.transport.sendto(self.error_responses["queue_full"], addr)
+            logger.warning(f"Packet queue full, dropping packet from {addr}")
+
+    async def _worker(self, worker_name: str):
+        """Worker coroutine that processes packets from the queue"""
+        logger.info(f"Starting worker: {worker_name}")
+
+        while self.running:
+            try:
+                # Get packet with timeout to allow graceful shutdown
+                packet = await asyncio.wait_for(self.packet_queue.get(), timeout=1.0)
+                await self._process_packet(packet)
+                self.packet_queue.task_done()
+
+            except asyncio.TimeoutError:
+                # No packet received, continue loop
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.exception(f"Worker {worker_name} error: {e}")
+
+        logger.info(f"Worker {worker_name} stopped")
+
+    async def _process_packet(self, packet: PacketData):
+        """Process a single packet - optimized version of original _handle"""
+        if self.transport is None:
+            return
+
+        data, addr = packet.data, packet.addr
+
+        # Check packet age (drop stale packets)
+        if time.time() - packet.timestamp > 0.1:  # 100ms timeout
+            return
+
+        # Fast decode - most packets should be valid UTF-8
         try:
             text = data.decode("utf-8")
-        except UnicodeDecodeError as e:
-            err = {"error": "invalid_encoding", "detail": str(e)}
-            self.transport.sendto(json.dumps(err).encode(), addr)
-            logger.error(f"Decoding error from {addr}: {e}")
+        except UnicodeDecodeError:
+            self.transport.sendto(self.error_responses["invalid_encoding"], addr)
             return
 
-        # 2) parse JSON
+        # Parse JSON
         try:
             raw = json.loads(text)
         except json.JSONDecodeError as e:
-            err = {"error": "invalid_json", "detail": e.msg}
-            self.transport.sendto(json.dumps(err).encode(), addr)
-            logger.error(f"JSON parse error from {addr}: {e.msg}")
+            error_msg = json.dumps({"error": "invalid_json", "detail": e.msg}).encode(
+                "utf-8"
+            )
+            self.transport.sendto(error_msg, addr)
             return
 
-        # 3) validate schema
+        # Validate schema
         try:
             control = AppControlData.model_validate(raw)
         except ValidationError as e:
-            err = {"error": "validation_error", "detail": str(e)}
-            self.transport.sendto(json.dumps(err).encode(), addr)
-            logger.error(f"Schema validation failed from {addr}: {e}")
+            error_msg = json.dumps(
+                {"error": "validation_error", "detail": str(e)}
+            ).encode("utf-8")
+            self.transport.sendto(error_msg, addr)
             return
 
-        # 4) process and respond
+        # Process control data
         try:
             await self.manager.process_control_data(control)
+
+            # Send status updates
             updates = await self.manager.send_status_updates()
-            for u in updates:
-                self.transport.sendto(u.model_dump_json().encode(), addr)
+            for update in updates:
+                self.transport.sendto(update.model_dump_json().encode(), addr)
+
         except Exception as e:
-            err = {"error": "internal_server_error", "detail": str(e)}
-            self.transport.sendto(json.dumps(err).encode(), addr)
-            logger.exception("Error while processing control data")
+            error_msg = json.dumps(
+                {"error": "internal_server_error", "detail": str(e)}
+            ).encode("utf-8")
+            self.transport.sendto(error_msg, addr)
+            logger.exception("Error processing control data")
 
 
 class UDPServer:
