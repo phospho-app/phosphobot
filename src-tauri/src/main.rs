@@ -1,5 +1,5 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+// #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod state;
 
@@ -47,10 +47,6 @@ async fn start_phosphobot_server<'a>(
             "run",
             "--host=127.0.0.1", 
             "--port=8432",
-            "--simulation=headless",
-            "--simulate-cameras",
-            "--only-simulation",
-            "--no-telemetry",
             "--api-only"
         ])
         .spawn()
