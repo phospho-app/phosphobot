@@ -2,11 +2,8 @@ name: "publish_tauri"
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - release
-      - tauri
+  release:
+    types: [published]
 
 jobs:
   publish-tauri:
@@ -16,16 +13,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # for ARM Macs (M1 and above) 
-            args: '--target aarch64-apple-darwin'
-            arch: 'silicon'
-          - platform: 'ubuntu-22.04' # for Linux
-            args: ''
-          - platform: 'windows-latest' # for Windows
-            args: ''
+          - platform: "macos-latest" # for ARM Macs (M1 and above)
+            args: "--target aarch64-apple-darwin"
+            arch: "silicon"
+          - platform: "ubuntu-22.04" # for Linux
+            args: ""
+          - platform: "windows-latest" # for Windows
+            args: ""
 
     runs-on: ${{ matrix.platform }}
-    
+
     env:
       # macOS code signing
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -101,7 +98,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: |
             src-tauri/package-lock.json
             dashboard/package-lock.json
@@ -115,7 +112,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       # Rust setup
       - name: Install Rust Stable
@@ -126,7 +123,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: "./src-tauri -> target"
 
       # Install Python dependencies and build tools
       - name: Install Python dependencies
@@ -145,18 +142,18 @@ jobs:
         shell: bash
         run: |
           echo "🔍 Checking version synchronization across configuration files..."
-          
+
           # Extract versions from all three files
           TAURI_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
           PACKAGE_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)
           # More specific grep for Python version - look for exact pattern and take first match only
           PYTHON_VERSION=$(grep '^version = ' phosphobot/pyproject.toml | head -1 | cut -d'"' -f2)
-          
+
           echo "📋 Current versions:"
           echo "  Tauri config:    $TAURI_VERSION"
           echo "  Package.json:    $PACKAGE_VERSION"
           echo "  Python package:  $PYTHON_VERSION"
-          
+
           # Check if all versions match
           if [ "$TAURI_VERSION" = "$PACKAGE_VERSION" ] && [ "$PACKAGE_VERSION" = "$PYTHON_VERSION" ]; then
             echo "✅ All versions are synchronized: $TAURI_VERSION"
@@ -173,14 +170,14 @@ jobs:
             echo "See VERSION_MANAGEMENT.md for detailed instructions."
             exit 1
           fi
-          
+
           # Validate semantic versioning format
           if [[ ! $TAURI_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "❌ Invalid version format: $TAURI_VERSION"
             echo "Please use semantic versioning: MAJOR.MINOR.PATCH (e.g., 0.3.53)"
             exit 1
           fi
-          
+
           echo "✅ Version format is valid (semantic versioning)"
           echo "🚀 Ready to build version $TAURI_VERSION"
 
@@ -204,12 +201,12 @@ jobs:
         run: |
           cd src-tauri
           echo "Testing Python sidecar binary..."
-          
+
           # Install timeout on macOS if needed
           if [[ "$RUNNER_OS" == "macOS" ]] && ! command -v timeout >/dev/null 2>&1; then
             brew install coreutils
           fi
-          
+
           # Find the phosphobot binary
           if [ -f "binaries/phosphobot" ]; then
             BINARY_PATH="binaries/phosphobot"
@@ -220,34 +217,34 @@ jobs:
             ls -la binaries/
             exit 1
           fi
-          
+
           echo "✅ Found binary: $BINARY_PATH"
-          
+
           # Set timeout command based on platform
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             TIMEOUT_CMD="gtimeout"
           else
             TIMEOUT_CMD="timeout"
           fi
-          
+
           # Test help command (should be fast)
           echo "Testing --help command..."
           $TIMEOUT_CMD 90 ./$BINARY_PATH --help || {
             echo "❌ Help command failed or timed out"
             exit 1
           }
-          
+
           echo "✅ Help command works"
-          
+
           # Test version command
           echo "Testing --version command..."
           $TIMEOUT_CMD 90 ./$BINARY_PATH --version || {
             echo "❌ Version command failed or timed out"
             exit 1
           }
-          
+
           echo "✅ Version command works"
-          
+
           # Test that we can at least start the Python environment
           echo "Testing Python environment initialization..."
           $TIMEOUT_CMD 120 ./$BINARY_PATH run --help || {
@@ -255,7 +252,7 @@ jobs:
             echo "This might indicate missing dependencies or PyApp configuration issues"
             exit 1
           }
-          
+
           echo "✅ Python sidecar verification completed successfully!"
 
       # Debug: Check Tauri signing environment
@@ -291,27 +288,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: phosphobot-v__VERSION__
-          releaseName: 'Phosphobot Desktop v__VERSION__'
+          releaseName: "Phosphobot Desktop v__VERSION__"
           includeUpdaterJson: true # Explicitly enable latest.json generation
           releaseBody: |
             ## 🤖 Phosphobot Desktop v__VERSION__
-            
+
             The AI-ready robotics dev kit, with built-in remote control and VLA support.
-            
+
             ### 📦 Download for your platform:
-            
+
             #### Desktop Application:
             - **macOS**: Download the `.dmg` file (Apple Silicon)
             - **Windows**: Download the `.msi` installer or `.exe` setup
             - **Linux**: Download the `.deb` package or `.AppImage`
-            
+
             #### Python CLI (Standalone):
             - **macOS**: `phosphobot-macos-aarch64` (Apple Silicon standalone binary)
             - **Windows**: `phosphobot-windows-x86_64.exe` (Windows standalone binary)
             - **Linux**: `phosphobot-linux-x86_64` (Linux standalone binary)
-            
+
             The standalone Python CLI binaries can be used independently without installing the desktop app.
-            
+
             See the assets below to download and install this version.
           releaseDraft: true
           prerelease: false
@@ -324,7 +321,7 @@ jobs:
         shell: bash
         run: |
           cd src-tauri
-          
+
           # Determine platform-specific binary name and target name
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             BINARY_NAME="phosphobot"
@@ -342,24 +339,24 @@ jobs:
             echo "❌ Unknown runner OS: $RUNNER_OS"
             exit 1
           fi
-          
+
           # Check if binary exists
           if [ ! -f "binaries/$BINARY_NAME" ]; then
             echo "❌ Binary not found: binaries/$BINARY_NAME"
             ls -la binaries/
             exit 1
           fi
-          
+
           # Copy binary with platform-specific name
           cp "binaries/$BINARY_NAME" "$TARGET_NAME"
-          
+
           echo "📦 Uploading $TARGET_NAME to release..."
-          
+
           # Upload to GitHub release using GitHub CLI (use tag name, not release ID)
           gh release upload "phosphobot-v${{ steps.build.outputs.appVersion }}" "$TARGET_NAME" \
             --repo ${{ github.repository }} \
             --clobber
-          
+
           echo "✅ Successfully uploaded $TARGET_NAME"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -429,4 +426,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/phosphobot.rb
           git commit -m "Update Phosphobot cask to v$VERSION" || echo "No changes to commit"
-          git push origin main || echo "No changes to push" 
+          git push origin main || echo "No changes to push"
