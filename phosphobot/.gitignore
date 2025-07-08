@@ -26,3 +26,8 @@ main
 secrets.toml
 resources/tokens.toml
 resources/tokens.prod.toml
+
+# PyApp build
+build/
+dist/
+target/

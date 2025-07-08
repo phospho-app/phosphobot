@@ -12,7 +12,11 @@ const fetcherSWR = async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body?: any | null,
 ) => {
-  const response = await fetch(url, {
+  // Use same base URL logic as fetchWithBaseUrl
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const fullUrl = API_BASE_URL ? `${API_BASE_URL}${url}` : url;
+  
+  const response = await fetch(fullUrl, {
     method: method || "GET",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : null,
@@ -44,8 +48,12 @@ const fetchWithBaseUrl = async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body?: any | null,
 ) => {
-  const BASE_URL = `http://${window.location.hostname}:${window.location.port}`;
-  const url = `${BASE_URL}${endpoint}`;
+  // Determine the base URL:
+  // - If VITE_API_BASE_URL is set (Tauri with sidecar), use it
+  // - Otherwise use relative URLs (old Python method serving everything)
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const url = API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint;
+  
   const response = await fetch(url, {
     method: method || "GET",
     headers: { "Content-Type": "application/json" },

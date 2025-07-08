@@ -15,7 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fetcher } from "@/lib/utils";
+import { fetchWithBaseUrl } from "@/lib/utils";
 import { AdminTokenSettings, ServerStatus } from "@/types";
 import {
   AlertTriangle,
@@ -109,7 +109,7 @@ function AIModelsCard() {
 
   const { data: adminSettingsTokens, isLoading } = useSWR<AdminTokenSettings>(
     ["/admin/settings/tokens"],
-    ([url]) => fetcher(url, "POST"),
+    ([url]) => fetchWithBaseUrl(url, "POST"),
   );
 
   const handleControlByAI = () => {
@@ -233,7 +233,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { data: serverStatus, isLoading } = useSWR<ServerStatus>(
     ["/status"],
-    ([url]) => fetcher(url),
+    ([url]) => fetchWithBaseUrl(url),
     {
       refreshInterval: 5000,
     },

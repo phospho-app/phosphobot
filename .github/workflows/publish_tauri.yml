@@ -1,0 +1,429 @@
+name: "publish_tauri"
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest" # for ARM Macs (M1 and above)
+            args: "--target aarch64-apple-darwin"
+            arch: "silicon"
+          - platform: "ubuntu-22.04" # for Linux
+            args: ""
+          - platform: "windows-latest" # for Windows
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    env:
+      # macOS code signing
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      # Windows code signing
+      # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # Tauri updater signing (official environment variable names)
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # macOS Code Signing Setup
+      - name: Import Apple Developer Certificate (macOS)
+        id: import_certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+            security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security default-keychain -s build.keychain
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security set-keychain-settings -t 3600 -u build.keychain
+            security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+            security find-identity -v -p codesigning build.keychain
+            
+            CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
+            CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+            echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+            echo "Certificate imported: $CERT_ID"
+            rm -f certificate.p12
+          else
+            echo "No Apple certificate provided, skipping code signing"
+          fi
+
+      # Verify Certificate Import
+      - name: Verify Certificate (macOS)
+        if: matrix.platform == 'macos-latest' && steps.import_certificate.outputs.signing_identity
+        run: |
+          echo "✅ Certificate verification:"
+          echo "Signing Identity: ${{ steps.import_certificate.outputs.signing_identity }}"
+          security find-identity -v -p codesigning build.keychain
+
+      # Windows Code Signing Setup (DISABLED)
+      # - name: Setup Windows Certificate (Windows)
+      #   if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
+      #   run: |
+      #     echo "${{ secrets.WINDOWS_CERTIFICATE }}" | base64 --decode > certificate.p12
+      #     echo "WINDOWS_CERTIFICATE_FILE=$PWD/certificate.p12" >> $GITHUB_ENV
+      #   shell: bash
+
+      # Install system dependencies
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # Node.js setup
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: "npm"
+          cache-dependency-path: |
+            src-tauri/package-lock.json
+            dashboard/package-lock.json
+
+      # Python setup with UV
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # Rust setup
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      # Install Python dependencies and build tools
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          cd phosphobot
+          uv venv
+          uv sync
+          # Install hatch globally for box to use as build tool
+          uv tool install hatch
+          # Verify Box can access hatch
+          uvx --from box-packager box --help
+
+      # Verify version synchronization across all configuration files
+      - name: Check Version Synchronization
+        shell: bash
+        run: |
+          echo "🔍 Checking version synchronization across configuration files..."
+
+          # Extract versions from all three files
+          TAURI_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          PACKAGE_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/package.json | cut -d'"' -f4)
+          # More specific grep for Python version - look for exact pattern and take first match only
+          PYTHON_VERSION=$(grep '^version = ' phosphobot/pyproject.toml | head -1 | cut -d'"' -f2)
+
+          echo "📋 Current versions:"
+          echo "  Tauri config:    $TAURI_VERSION"
+          echo "  Package.json:    $PACKAGE_VERSION"
+          echo "  Python package:  $PYTHON_VERSION"
+
+          # Check if all versions match
+          if [ "$TAURI_VERSION" = "$PACKAGE_VERSION" ] && [ "$PACKAGE_VERSION" = "$PYTHON_VERSION" ]; then
+            echo "✅ All versions are synchronized: $TAURI_VERSION"
+          else
+            echo "❌ Version mismatch detected!"
+            echo ""
+            echo "To fix this issue:"
+            echo "1. Update all three files to have the same version number:"
+            echo "   - src-tauri/tauri.conf.json: \"version\": \"X.Y.Z\""
+            echo "   - src-tauri/package.json: \"version\": \"X.Y.Z\""
+            echo "   - phosphobot/pyproject.toml: version = \"X.Y.Z\""
+            echo "2. Commit the changes and push again"
+            echo ""
+            echo "See VERSION_MANAGEMENT.md for detailed instructions."
+            exit 1
+          fi
+
+          # Validate semantic versioning format
+          if [[ ! $TAURI_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format: $TAURI_VERSION"
+            echo "Please use semantic versioning: MAJOR.MINOR.PATCH (e.g., 0.3.53)"
+            exit 1
+          fi
+
+          echo "✅ Version format is valid (semantic versioning)"
+          echo "🚀 Ready to build version $TAURI_VERSION"
+
+      # Install Node.js dependencies
+      - name: Install frontend dependencies
+        run: |
+          cd src-tauri
+          npm install
+          npm run dashboard:install
+
+      # Build Python package (cross-platform)
+      - name: Build Python package
+        shell: bash
+        run: |
+          cd src-tauri
+          npm run python:package:build
+
+      # Test Python sidecar
+      - name: Test Python sidecar
+        shell: bash
+        run: |
+          cd src-tauri
+          echo "Testing Python sidecar binary..."
+
+          # Install timeout on macOS if needed
+          if [[ "$RUNNER_OS" == "macOS" ]] && ! command -v timeout >/dev/null 2>&1; then
+            brew install coreutils
+          fi
+
+          # Find the phosphobot binary
+          if [ -f "binaries/phosphobot" ]; then
+            BINARY_PATH="binaries/phosphobot"
+          elif [ -f "binaries/phosphobot.exe" ]; then
+            BINARY_PATH="binaries/phosphobot.exe"
+          else
+            echo "❌ No phosphobot binary found!"
+            ls -la binaries/
+            exit 1
+          fi
+
+          echo "✅ Found binary: $BINARY_PATH"
+
+          # Set timeout command based on platform
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            TIMEOUT_CMD="gtimeout"
+          else
+            TIMEOUT_CMD="timeout"
+          fi
+
+          # Test help command (should be fast)
+          echo "Testing --help command..."
+          $TIMEOUT_CMD 90 ./$BINARY_PATH --help || {
+            echo "❌ Help command failed or timed out"
+            exit 1
+          }
+
+          echo "✅ Help command works"
+
+          # Test version command
+          echo "Testing --version command..."
+          $TIMEOUT_CMD 90 ./$BINARY_PATH --version || {
+            echo "❌ Version command failed or timed out"
+            exit 1
+          }
+
+          echo "✅ Version command works"
+
+          # Test that we can at least start the Python environment
+          echo "Testing Python environment initialization..."
+          $TIMEOUT_CMD 120 ./$BINARY_PATH run --help || {
+            echo "❌ Python environment initialization failed or timed out"
+            echo "This might indicate missing dependencies or PyApp configuration issues"
+            exit 1
+          }
+
+          echo "✅ Python sidecar verification completed successfully!"
+
+      # Debug: Check Tauri signing environment
+      - name: Debug Tauri Signing Environment
+        shell: bash
+        run: |
+          echo "🔍 Debugging Tauri signing environment..."
+          echo "TAURI_SIGNING_PRIVATE_KEY: $([ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && echo "✅ Set (${#TAURI_SIGNING_PRIVATE_KEY} chars)" || echo "❌ Not set")"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $([ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && echo "✅ Set" || echo "❌ Not set")"
+          echo "Repository: ${{ github.repository }}"
+          echo "Updater artifacts enabled: $(grep -o '"createUpdaterArtifacts": true' src-tauri/tauri.conf.json || echo "❌ Not found")"
+          echo "Pubkey in config: $(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | head -c 50)..."
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Build Tauri app
+      - uses: tauri-apps/tauri-action@v0
+        id: build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing
+          ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.import_certificate.outputs.signing_identity }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # Windows signing (disabled)
+          # WINDOWS_CERTIFICATE_FILE: ${{ env.WINDOWS_CERTIFICATE_FILE }}
+          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # Tauri updater signing (official environment variable names)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: phosphobot-v__VERSION__
+          releaseName: "Phosphobot Desktop v__VERSION__"
+          includeUpdaterJson: true # Explicitly enable latest.json generation
+          releaseBody: |
+            ## 🤖 Phosphobot Desktop v__VERSION__
+
+            The AI-ready robotics dev kit, with built-in remote control and VLA support.
+
+            ### 📦 Download for your platform:
+
+            #### Desktop Application:
+            - **macOS**: Download the `.dmg` file (Apple Silicon)
+            - **Windows**: Download the `.msi` installer or `.exe` setup
+            - **Linux**: Download the `.deb` package or `.AppImage`
+
+            #### Python CLI (Standalone):
+            - **macOS**: `phosphobot-macos-aarch64` (Apple Silicon standalone binary)
+            - **Windows**: `phosphobot-windows-x86_64.exe` (Windows standalone binary)
+            - **Linux**: `phosphobot-linux-x86_64` (Linux standalone binary)
+
+            The standalone Python CLI binaries can be used independently without installing the desktop app.
+
+            See the assets below to download and install this version.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          projectPath: src-tauri
+
+      # Upload Python sidecar binaries as separate release assets
+      - name: Upload Python Sidecar Binary
+        if: steps.build.outputs.appVersion
+        shell: bash
+        run: |
+          cd src-tauri
+
+          # Determine platform-specific binary name and target name
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            BINARY_NAME="phosphobot"
+            TARGET_NAME="phosphobot-linux-x86_64"
+            CONTENT_TYPE="application/octet-stream"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            BINARY_NAME="phosphobot"
+            TARGET_NAME="phosphobot-macos-aarch64"
+            CONTENT_TYPE="application/octet-stream"
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            BINARY_NAME="phosphobot.exe"
+            TARGET_NAME="phosphobot-windows-x86_64.exe"
+            CONTENT_TYPE="application/vnd.microsoft.portable-executable"
+          else
+            echo "❌ Unknown runner OS: $RUNNER_OS"
+            exit 1
+          fi
+
+          # Check if binary exists
+          if [ ! -f "binaries/$BINARY_NAME" ]; then
+            echo "❌ Binary not found: binaries/$BINARY_NAME"
+            ls -la binaries/
+            exit 1
+          fi
+
+          # Copy binary with platform-specific name
+          cp "binaries/$BINARY_NAME" "$TARGET_NAME"
+
+          echo "📦 Uploading $TARGET_NAME to release..."
+
+          # Upload to GitHub release using GitHub CLI (use tag name, not release ID)
+          gh release upload "phosphobot-v${{ steps.build.outputs.appVersion }}" "$TARGET_NAME" \
+            --repo ${{ github.repository }} \
+            --clobber
+
+          echo "✅ Successfully uploaded $TARGET_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    outputs:
+      app_version: ${{ steps.build.outputs.appVersion }}
+
+  # Optional: Create Homebrew Cask for macOS distribution
+  publish-to-homebrew:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    if: github.repository == 'phospho-app/phosphobot'
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: phospho-app/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap-repo
+
+      - name: Download macOS Release Asset
+        run: |
+          mkdir dist
+          gh release download "phosphobot-v${{ needs.publish-tauri.outputs.app_version }}" \
+            --repo phospho-app/phosphobot \
+            --pattern "*aarch64.app.tar.gz" \
+            --dir dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute SHA256
+        id: shasum
+        run: |
+          FILE_PATH=$(find dist -name "*aarch64.app.tar.gz")
+          SHA=$(shasum -a 256 "$FILE_PATH" | awk '{print $1}')
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "file_name=$(basename "$FILE_PATH")" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew Cask
+        run: |
+          VERSION="${{ needs.publish-tauri.outputs.app_version }}"
+          DOWNLOAD_URL="https://github.com/phospho-app/phosphobot/releases/download/phosphobot-v${VERSION}/${{ steps.shasum.outputs.file_name }}"
+          CASK_PATH="tap-repo/Casks/phosphobot.rb"
+
+          echo "Generating Homebrew cask for Phosphobot v$VERSION..."
+          echo "Download URL: $DOWNLOAD_URL"
+
+          echo "cask \"phosphobot\" do" > "$CASK_PATH"
+          echo "  version \"$VERSION\"" >> "$CASK_PATH"
+          echo "  sha256 \"${{ steps.shasum.outputs.sha256 }}\"" >> "$CASK_PATH"
+          echo "" >> "$CASK_PATH"
+          echo "  url \"$DOWNLOAD_URL\"," >> "$CASK_PATH"
+          echo "      verified: \"github.com/phospho-app/phosphobot/\"" >> "$CASK_PATH"
+          echo "" >> "$CASK_PATH"
+          echo "  name \"Phosphobot\"" >> "$CASK_PATH"
+          echo "  desc \"AI-ready robotics dev kit with built-in remote control and VLA support\"" >> "$CASK_PATH"
+          echo "  homepage \"https://github.com/phospho-app/phosphobot\"" >> "$CASK_PATH"
+          echo "" >> "$CASK_PATH"
+          echo "  app \"Phosphobot.app\"" >> "$CASK_PATH"
+          echo "" >> "$CASK_PATH"
+          echo "  # System requirements" >> "$CASK_PATH"
+          echo "  depends_on macos: \">= :monterey\"" >> "$CASK_PATH"
+          echo "end" >> "$CASK_PATH"
+
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/phosphobot.rb
+          git commit -m "Update Phosphobot cask to v$VERSION" || echo "No changes to commit"
+          git push origin main || echo "No changes to push"

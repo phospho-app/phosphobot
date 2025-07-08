@@ -172,16 +172,72 @@ def get_resources_path() -> Path:
     Return the path of the resources directory.
     This is used to load bundled resources.
 
-    phosphobot/
-        phosphobot/
-
-            main.py
-            ...
-        resources/    <-- resources path
-        ...
-
+    In development: phosphobot/resources/
+    In installed package: uses importlib.resources or fallback locations
     """
-    return get_base_path() / "resources"
+    # First try: use importlib.resources (modern Python approach for package data)
+    try:
+        if sys.version_info >= (3, 9):
+            from importlib.resources import files
+
+            try:
+                # Try to get resources from the package
+                resource_path = files("phosphobot") / "resources"
+                if resource_path.is_dir():
+                    return Path(str(resource_path))
+            except (ImportError, ModuleNotFoundError):
+                pass
+        else:
+            # Fallback for Python < 3.9
+            import pkg_resources
+
+            try:
+                resource_path = Path(
+                    pkg_resources.resource_filename("phosphobot", "resources")
+                )
+                if resource_path.exists():
+                    return resource_path
+            except (
+                ImportError,
+                ModuleNotFoundError,
+                pkg_resources.DistributionNotFound,
+            ):
+                pass
+    except Exception as e:
+        logger.debug(f"Could not use importlib.resources: {e}")
+
+    # Second try: development layout (resources as sibling to phosphobot package)
+    dev_resources_path = get_base_path() / "resources"
+    if dev_resources_path.exists():
+        return dev_resources_path
+
+    # Third try: installed package layout (resources included in package)
+    package_resources_path = Path(__file__).parent / "resources"
+    if package_resources_path.exists():
+        return package_resources_path
+
+    # Fourth try: check if we're in a PyApp bundle (look relative to executable)
+    try:
+        if hasattr(sys, "_MEIPASS"):  # PyInstaller
+            bundle_resources_path = Path(sys._MEIPASS) / "phosphobot" / "resources"
+            if bundle_resources_path.exists():
+                return bundle_resources_path
+        elif hasattr(sys, "executable"):  # PyApp or other packagers
+            # Try relative to the executable location
+            exe_dir = Path(sys.executable).parent
+            bundle_resources_path = exe_dir / "phosphobot" / "resources"
+            if bundle_resources_path.exists():
+                return bundle_resources_path
+    except Exception:
+        pass
+
+    # Fallback: return the development path even if it doesn't exist
+    # This will raise appropriate errors downstream
+    logger.warning("Could not find resources directory. Tried:")
+    logger.warning("  importlib.resources")
+    logger.warning(f"  Development: {dev_resources_path}")
+    logger.warning(f"  Package: {package_resources_path}")
+    return dev_resources_path
 
 
 def login_to_hf(revalidate: bool = True) -> bool:
@@ -485,7 +541,7 @@ def create_video_file(
             # old MPEG-4 Part 2: no CRF, use qscale OR fixed bitrate
             # Lower qscale = better quality. 2–5 is a good range.
             encoder_opts = {"qscale": "2"}
-        # else: leave encoder_opts empty for codecs that don’t support these flags
+        # else: leave encoder_opts empty for codecs that don't support these flags
 
         stream = container.add_stream(
             codec_av,

@@ -34,6 +34,7 @@ export function HuggingFaceKeyInput() {
     }
 
     setIsLoading(true);
+
     fetchWithBaseUrl("/admin/huggingface", "POST", {
       token,
     }).then((response) => {

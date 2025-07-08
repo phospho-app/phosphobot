@@ -27,9 +27,6 @@ export function WandBKeyInput() {
     // Reset states
     setIsError(false);
     setIsSuccess(false);
-
-    setIsLoading(true);
-
     setIsLoading(true);
     fetchWithBaseUrl("/admin/wandb", "POST", {
       token,

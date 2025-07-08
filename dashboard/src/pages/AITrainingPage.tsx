@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalStore } from "@/lib/hooks";
-import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
+import { fetchWithBaseUrl } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
 import {
   Ban,
@@ -172,11 +172,11 @@ export default function AITrainingPage() {
   const selectedModelType = useGlobalStore((state) => state.selectedModelType);
   const { data: adminSettingsTokens } = useSWR<AdminTokenSettings>(
     ["/admin/settings/tokens"],
-    ([url]) => fetcher(url, "POST"),
+    ([url]) => fetchWithBaseUrl(url, "POST"),
   );
   const { data: datasetsList } = useSWR<DatasetListResponse>(
     ["/dataset/list"],
-    ([url]) => fetcher(url, "POST"),
+    ([url]) => fetchWithBaseUrl(url, "POST"),
   );
   const { data: datasetInfoResponse, isLoading: isDatasetInfoLoading } =
     useSWR<TrainingInfoResponse>(
@@ -184,7 +184,7 @@ export default function AITrainingPage() {
         ? ["/training/info", selectedDataset, selectedModelType]
         : null,
       ([url]) =>
-        fetcher(url, "POST", {
+        fetchWithBaseUrl(url, "POST", {
           model_id: selectedDataset,
           model_type: selectedModelType,
         }),

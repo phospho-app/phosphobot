@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import { AdminSettings, AdminTokenSettings } from "@/types";
 import { Camera, CircleCheck, Database, Key, Play } from "lucide-react";
@@ -53,6 +54,7 @@ export default function AdminPage() {
     value > 0 ? "" : "Frequency must be greater than 0";
   const validateVideoSize = (w: number, h: number) =>
     w > 0 && h > 0 ? "" : "Video dimensions must be positive numbers";
+
 
   // Auto-save on changes
   useEffect(() => {
