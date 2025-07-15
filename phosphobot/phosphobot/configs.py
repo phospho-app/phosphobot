@@ -52,6 +52,9 @@ class Configuration(BaseModel):
     # Enable crash reporting and usage telemetry
     TELEMETRY: bool = False
 
+    # Environment
+    ENV: Literal["prod", "dev"] = "prod"
+
     # How simulation should be run
     SIM_MODE: SimulationMode = SimulationMode.headless
     # Only simulation: Only use the simulation

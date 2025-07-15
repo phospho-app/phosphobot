@@ -275,6 +275,12 @@ def run(
             help="Enable telemetry. This is used for crash reporting and usage statistics."
         ),
     ] = True,
+    env: Annotated[
+        str,
+        typer.Option(
+            help="Set the environment. Default is 'prod'. Use 'dev' for development mode.",
+        ),
+    ] = "prod",
 ):
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
@@ -289,6 +295,7 @@ def run(
     config.PROFILE = profile
     config.TELEMETRY = telemetry
     config.ENABLE_CAN = can
+    config.ENV = env
 
     # Start the FastAPI app using uvicorn with port retry logic
     ports = [port]

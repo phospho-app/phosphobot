@@ -180,3 +180,4 @@ wandb/
 config.yaml
 node_modules
 .testenv
+phosphobot/resources/tokens_dev.toml

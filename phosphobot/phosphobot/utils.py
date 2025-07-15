@@ -28,8 +28,7 @@ from fastapi import HTTPException
 from huggingface_hub import HfApi, login
 from loguru import logger
 from pydantic import BaseModel, BeforeValidator, PlainSerializer
-
-
+    
 from phosphobot.types import VideoCodecs
 
 # Disable pyav logs
@@ -346,9 +345,14 @@ def get_tokens() -> Tokens:
     """
     Load the tokens.toml file
     """
-    tokens_toml_path = get_resources_path() / "tokens.toml"
+    from phosphobot.configs import config
+    if config.ENV == "prod":
+        tokens_toml_path = get_resources_path() / "tokens.toml"
+    else:
+        tokens_toml_path = get_resources_path() / "tokens_dev.toml"
+
     if not tokens_toml_path.exists():
-        return Tokens()
+            return Tokens()
     # Load with toml
     tokens = toml.load(tokens_toml_path)
     return Tokens(**tokens)
