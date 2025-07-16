@@ -510,7 +510,7 @@ class Gr00tN1(ActionModel):
                 # If action_size is 1 or 6, assume the last column is the gripper
                 if action_size in [1, 6]:
                     new_action[:, -1] = np.where(
-                        new_action[:, -1] < 0.35, 0.0, new_action[:, -1]
+                        new_action[:, -1] < 0.1, 0.0, new_action[:, -1]
                     )
 
                 action_parts.append(new_action)
