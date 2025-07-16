@@ -1,8 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import CalibrationSequencePage from "@/pages/CalibrationSequencePage";
-import JointControlPage from "@/pages/JointControlPage";
+import { CalibrationSequence } from "@/pages/calibration/calibration-sequence";
+import { JointControl } from "@/pages/calibration/joint-control";
 
-export default function CalibrationPage() {
+export function CalibrationPage() {
   return (
     <Tabs defaultValue="calibrate">
       <TabsList className="grid w-full grid-cols-2">
@@ -10,10 +10,10 @@ export default function CalibrationPage() {
         <TabsTrigger value="joint-control">Joints control</TabsTrigger>
       </TabsList>
       <TabsContent value="calibrate">
-        <CalibrationSequencePage />
+        <CalibrationSequence />
       </TabsContent>
       <TabsContent value="joint-control">
-        <JointControlPage />
+        <JointControl />
       </TabsContent>
     </Tabs>
   );

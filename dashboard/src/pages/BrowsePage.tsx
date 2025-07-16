@@ -290,7 +290,7 @@ const MergeDialog: React.FC<MergeDialogProps> = ({
   );
 };
 
-export default function FileBrowser() {
+export function BrowsePage() {
   const params = useParams();
   const [searchParams] = useSearchParams();
   const path = params.path || searchParams.get("path") || "";

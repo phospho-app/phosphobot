@@ -45,7 +45,7 @@ type ModelVideoKeys = {
   video_keys: string[];
 };
 
-export default function AIControlPage() {
+export function AIControlPage() {
   const [prompt, setPrompt] = useState("");
   const modelId = useGlobalStore((state) => state.modelId);
   const setModelId = useGlobalStore((state) => state.setModelId);

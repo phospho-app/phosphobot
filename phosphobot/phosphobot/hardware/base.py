@@ -9,7 +9,7 @@ from fastapi import HTTPException
 import numpy as np
 from loguru import logger
 from phosphobot.configs import config as cfg
-from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo
+from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo, Temperature
 from phosphobot.models.lerobot_dataset import FeatureDetails
 from phosphobot.hardware import get_sim
 from scipy.spatial.transform import Rotation as R  # type: ignore
@@ -126,6 +126,13 @@ class BaseManipulator(BaseRobot):
         raise: Exception if the routine has not been implemented
         """
         raise NotImplementedError("The robot enable torque must be implemented.")
+
+    def read_motor_temperature(self, servo_id: int) -> tuple[float,float] | None:
+        """
+        Read the temperature of a motor
+        raise: Exception if the routine has not been implemented
+        """
+        raise NotImplementedError("The robot read motor temeprature must be implemented.")
 
     @abstractmethod
     def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
@@ -1143,7 +1150,31 @@ class BaseManipulator(BaseRobot):
 
         # If the robot is not connected, error raised
         return None
+    
+    def current_temperature(self) -> List[Temperature] | None:
+        """
+        Read the current and maximum temperature of the joints of the robot.
+        Returns:
+            List[Temperature] | None: A list of Temperature objects, one for each joint,
+                                    or None if the robot is not connected.
+        """
+        if self.is_connected:
+            temperatures = []
+            for servo_id in self.SERVO_IDS:
+                temps = self.read_motor_temperature(servo_id)
+                if temps is not None:
+                    # temps is a tuple: (current, max)
+                    temperature = Temperature(current=temps[0], max=temps[1])
+                    temperatures.append(temperature)
+                else:
+                    temperature = Temperature(current=None, max=None)  
+                    temperatures.append(temperature)
+            return temperatures
+        
+        # If the robot is not connected, return None
+        return None
 
+    
     def is_powered_on(self) -> bool:
         """
         Return True if all voltage readings are above 0.1V and successful

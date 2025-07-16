@@ -7,7 +7,7 @@ import { RotateCw, Video } from "lucide-react";
 import { useState } from "react";
 import useSWR from "swr";
 
-export default function ViewVideo({ labelText }: { labelText?: string }) {
+export function ViewVideoPage({ labelText }: { labelText?: string }) {
   if (!labelText) labelText = "Camera Stream";
   const [isRefreshing, setIsRefreshing] = useState(false);
 

@@ -1,18 +1,18 @@
-import { AuthForm } from "@/components/auth/AuthForm";
-import { ConfirmEmail } from "@/components/auth/ConfirmEmail";
-import { ForgotPassword } from "@/components/auth/ForgotPassword";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { ResetPassword } from "@/components/auth/ResetPassword";
 import { Layout } from "@/components/layout/layout";
-import AIControlPage from "@/pages/AIControlPage";
-import AITrainingPage from "@/pages/AITrainingPage";
-import AdminPage from "@/pages/AdminSettingsPage";
-import BrowsePage from "@/pages/BrowsePage";
-import CalibrationPage from "@/pages/CalibrationPage";
-import ControlPage from "@/pages/ControlPage";
-import DashboardPage from "@/pages/DashboardPage";
-import NetworkPage from "@/pages/NetworkPage";
-import ViewVideoPage from "@/pages/ViewVideoPage";
+import { AIControlPage } from "@/pages/AIControlPage";
+import { AITrainingPage } from "@/pages/AITrainingPage";
+import { AdminPage } from "@/pages/AdminSettingsPage";
+import { BrowsePage } from "@/pages/BrowsePage";
+import { DashboardPage } from "@/pages/DashboardPage";
+import { NetworkPage } from "@/pages/NetworkPage";
+import { ViewVideoPage } from "@/pages/ViewVideoPage";
+import { AuthForm } from "@/pages/auth/AuthForm";
+import { ConfirmEmail } from "@/pages/auth/ConfirmEmail";
+import { ForgotPassword } from "@/pages/auth/ForgotPassword";
+import { ProtectedRoute } from "@/pages/auth/ProtectedRoute";
+import { ResetPassword } from "@/pages/auth/ResetPassword";
+import { CalibrationPage } from "@/pages/calibration/CalibrationPage";
+import { ControlPage } from "@/pages/control/ControlPage";
 import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 
 function App() {

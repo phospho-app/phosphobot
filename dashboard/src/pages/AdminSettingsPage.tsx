@@ -25,7 +25,7 @@ import { Camera, CircleCheck, Database, Key, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
-export default function AdminPage() {
+export function AdminPage() {
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});

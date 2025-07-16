@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, CheckCircle, Loader2, Wifi, WifiOff } from "lucide-react";
 import { useState } from "react";
 
-export default function NetworkPage() {
+export function NetworkPage() {
   const [message, setMessage] = useState({ text: "", type: "" });
   const [ssid, setSsid] = useState("");
   const [password, setPassword] = useState("");

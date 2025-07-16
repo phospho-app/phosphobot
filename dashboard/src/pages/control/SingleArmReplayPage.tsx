@@ -7,7 +7,7 @@ import { ServerStatus } from "@/types";
 import { useState } from "react";
 import useSWR from "swr";
 
-export default function LeaderArmPage() {
+export function SingleArmReplay() {
   const [gravityControl, enableGravityControl] = useState(false);
 
   const { data: serverStatus } = useSWR<ServerStatus>(["/status"], ([url]) =>

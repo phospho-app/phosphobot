@@ -348,7 +348,7 @@ function ControlButton({
   );
 }
 
-export default function GamepadControlPage() {
+export function GamepadControl() {
   const { data: serverStatus, error: serverError } = useSWR<ServerStatus>(
     ["/status"],
     fetcher,

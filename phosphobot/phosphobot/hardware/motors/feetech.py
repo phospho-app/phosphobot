@@ -19,6 +19,11 @@ import logging
 import math
 import time
 from copy import deepcopy
+import threading
+import queue
+import time
+import asyncio
+from uuid import uuid4
 
 import numpy as np
 import tqdm
@@ -319,41 +324,109 @@ class FeetechMotorsBus:
 
         self.track_positions = {}
 
+        # Adding for port already in use error
+
+        self.task_queue = queue.Queue()
+        self.worker_thread = None
+        self._stop_event = threading.Event()
+
+
+    def _worker(self):
+        """The single worker thread that processes all requests in FIFO order."""
+        # The worker needs its own reference to the SDK
+        if self.mock:
+            import tests.mock_scservo_sdk as scs
+        else:
+            import scservo_sdk as scs
+
+        while not self._stop_event.is_set():
+            try:
+                task_id, action, args, kwargs, result_queue = self.task_queue.get(timeout=0.001)
+
+                result = None
+                error = None
+
+                try:
+                    # --- Task Dispatcher ---
+                    if action == 'connect':
+                        self._perform_connect(scs)
+                    elif action == 'disconnect':
+                        self._perform_disconnect()
+                    elif action == 'read':
+                        result = self._perform_read(*args, **kwargs)
+                    elif action == 'write':
+                        self._perform_write(*args, **kwargs)
+                    elif action == 'read_with_motor_ids':
+                        result = self._perform_read_with_motor_ids(*args, **kwargs)
+                    elif action == 'write_with_motor_ids':
+                        self._perform_write_with_motor_ids(*args, **kwargs)
+                    elif action == 'set_bus_baudrate':
+                        self._perform_set_bus_baudrate(*args, **kwargs)
+
+                except Exception as e:
+                    error = e
+
+                result_queue.put((result, error))
+
+            except queue.Empty:
+                continue
+
+    def _submit_task_and_wait(self, action, args=(), kwargs={}):
+        """Helper function to submit a task and block until a result is available."""
+        if self._stop_event.is_set() or not self.worker_thread.is_alive():
+             raise ConnectionError("Worker thread is not running.")
+
+        task_id = uuid4()
+        result_queue = queue.Queue(maxsize=1)  # Per-task result channel
+        task = (task_id, action, args, kwargs, result_queue)
+        self.task_queue.put(task)
+
+        # Block and wait for the result
+        result, error = result_queue.get()
+        if error:
+            raise error
+        return result
+
+    # --- Public-Facing API ---
+    # These methods just submit tasks to the queue.
+
     def connect(self):
         if self.is_connected:
-            raise RobotDeviceAlreadyConnectedError(
-                f"FeetechMotorsBus({self.port}) is already connected. Do not call `motors_bus.connect()` twice."
-            )
+            raise RobotDeviceAlreadyConnectedError(...)
 
-        if self.mock:
-            import tests.mock_scservo_sdk as scs
-        else:
-            import scservo_sdk as scs
-
-        self.port_handler = scs.PortHandler(self.port)
-        self.packet_handler = scs.PacketHandler(PROTOCOL_VERSION)
-
-        if not self.port_handler.openPort():
-            raise OSError(f"Failed to open port '{self.port}'.")
-
-        # Allow to read and write
+        self._stop_event.clear()
+        self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self.worker_thread.start()
+        # The 'connect' task initializes the port handler inside the worker
+        self._submit_task_and_wait('connect')
         self.is_connected = True
 
-        self.port_handler.setPacketTimeoutMillis(TIMEOUT_MS)
+    def disconnect(self):
+        if not self.is_connected:
+            raise RobotDeviceNotConnectedError(...)
 
-    def reconnect(self):
-        if self.mock:
-            import tests.mock_scservo_sdk as scs
-        else:
-            import scservo_sdk as scs
+        # Signal the worker to stop processing new tasks and shut down
+        self._submit_task_and_wait('disconnect')
+        self._stop_event.set()
+        self.worker_thread.join()
+        self.is_connected = False
 
-        self.port_handler = scs.PortHandler(self.port)
-        self.packet_handler = scs.PacketHandler(PROTOCOL_VERSION)
+    def read(self, data_name, motor_names=None):
+        return self._submit_task_and_wait('read', args=(data_name, motor_names))
 
-        if not self.port_handler.openPort():
-            raise OSError(f"Failed to open port '{self.port}'.")
+    def write(self, data_name, values, motor_names=None):
+        return self._submit_task_and_wait('write', args=(data_name, values, motor_names))
 
-        self.is_connected = True
+    def read_with_motor_ids(self, motor_models, motor_ids, data_name, **kwargs):
+        args = (motor_models, motor_ids, data_name)
+        return self._submit_task_and_wait('read_with_motor_ids', args=args, kwargs=kwargs)
+
+    def write_with_motor_ids(self, motor_models, motor_ids, data_name, values, **kwargs):
+        args = (motor_models, motor_ids, data_name, values)
+        return self._submit_task_and_wait('write_with_motor_ids', args=args, kwargs=kwargs)
+
+    def set_bus_baudrate(self, baudrate):
+        return self._submit_task_and_wait('set_bus_baudrate', args=(baudrate,))
 
     def are_motors_configured(self):
         # Only check the motor indices and not baudrate, since if the motor baudrates are incorrect,
@@ -386,16 +459,6 @@ class FeetechMotorsBus:
 
         return indices
 
-    def set_bus_baudrate(self, baudrate):
-        present_bus_baudrate = self.port_handler.getBaudRate()
-        if present_bus_baudrate != baudrate:
-            logger.info(
-                f"Setting bus baud rate to {baudrate}. Previously {present_bus_baudrate}."
-            )
-            self.port_handler.setBaudRate(baudrate)
-
-            if self.port_handler.getBaudRate() != baudrate:
-                raise OSError("Failed to write bus baud rate.")
 
     @property
     def motor_names(self) -> list[str]:
@@ -698,7 +761,23 @@ class FeetechMotorsBus:
 
         return values
 
-    def read_with_motor_ids(
+    # --- Private Implementation Methods (Worker-Thread Only) ---
+    # These contain the actual hardware logic and are NOT called directly.
+
+    def _perform_connect(self, scs):
+        self.port_handler = scs.PortHandler(self.port)
+        self.packet_handler = scs.PacketHandler(PROTOCOL_VERSION)
+        if not self.port_handler.openPort():
+            raise OSError(f"Failed to open port '{self.port}'.")
+        self.port_handler.setPacketTimeoutMillis(TIMEOUT_MS)
+
+    def _perform_disconnect(self):
+        if self.port_handler:
+            self.port_handler.closePort()
+        self.port_handler = None
+        self.packet_handler = None
+
+    def _perform_read_with_motor_ids(
         self, motor_models, motor_ids, data_name, num_retry=NUM_READ_RETRY
     ):
         if self.mock:
@@ -738,7 +817,7 @@ class FeetechMotorsBus:
         else:
             return values[0]
 
-    def read(self, data_name, motor_names: str | list[str] | None = None):
+    def _perform_read(self, data_name, motor_names: str | list[str] | None = None):
         if self.mock:
             import tests.mock_scservo_sdk as scs
         else:
@@ -816,7 +895,7 @@ class FeetechMotorsBus:
 
         return values
 
-    def write_with_motor_ids(
+    def _perform_write_with_motor_ids(
         self, motor_models, motor_ids, data_name, values, num_retry=NUM_WRITE_RETRY
     ):
         if self.mock:
@@ -847,8 +926,7 @@ class FeetechMotorsBus:
                 f"{self.packet_handler.getTxRxResult(comm)}"
             )
 
-    def write(
-        self,
+    def _perform_write(self,
         data_name,
         values: int | float | np.ndarray,
         motor_names: str | list[str] | None = None,
@@ -923,20 +1001,18 @@ class FeetechMotorsBus:
         ts_utc_name = get_log_name("timestamp_utc", "write", data_name, motor_names)
         self.logs[ts_utc_name] = capture_timestamp_utc()
 
-    def disconnect(self):
-        if not self.is_connected:
-            raise RobotDeviceNotConnectedError(
-                f"FeetechMotorsBus({self.port}) is not connected. Try running `motors_bus.connect()` first."
+    def _perform_set_bus_baudrate(self, baudrate):
+
+        present_bus_baudrate = self.port_handler.getBaudRate()
+        if present_bus_baudrate != baudrate:
+            logger.info(
+                f"Setting bus baud rate to {baudrate}. Previously {present_bus_baudrate}."
             )
+            self.port_handler.setBaudRate(baudrate)
 
-        if self.port_handler is not None:
-            self.port_handler.closePort()
-            self.port_handler = None
+            if self.port_handler.getBaudRate() != baudrate:
+                raise OSError("Failed to write bus baud rate.")
 
-        self.packet_handler = None
-        self.group_readers = {}
-        self.group_writers = {}
-        self.is_connected = False
 
     def __del__(self):
         if getattr(self, "is_connected", False):

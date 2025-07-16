@@ -46,6 +46,7 @@ from phosphobot.models import (
     TorqueReadResponse,
     UDPServerInformationResponse,
     VoltageReadResponse,
+    TemperatureReadResponse
 )
 from phosphobot.robot import (
     RemotePhosphobot,
@@ -545,6 +546,32 @@ async def read_voltage(
         current_voltage=voltage.tolist() if voltage is not None else None,
     )
 
+@router.post(
+    "/temperature/read",
+    response_model=TemperatureReadResponse,
+    summary="Read Temperature",
+    description="Read the current Temperature and maximum Temperature of the robot's motors.",
+)
+async def read_temperature(
+    robot_id: int = 0,
+    rcm: RobotConnectionManager = Depends(get_rcm),
+):
+    
+    """
+    Read temperature of the robot.
+    """
+    robot = await rcm.get_robot(robot_id)
+    if not hasattr(robot, "current_temperature"):
+        raise HTTPException(
+            status_code=400,
+            detail="Robot does not support reading temperature",
+        )
+    
+    temperature = robot.current_temperature()
+
+    return TemperatureReadResponse(
+        current_max_Temperature=temperature,
+    )
 
 @router.post(
     "/torque/read",

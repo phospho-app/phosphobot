@@ -158,7 +158,7 @@ interface TrainingInfoResponse {
   training_body: Record<string, unknown>;
 }
 
-export default function AITrainingPage() {
+export function AITrainingPage() {
   const selectedDataset = useGlobalStore((state) => state.selectedDataset);
   const setSelectedDataset = useGlobalStore(
     (state) => state.setSelectedDataset,

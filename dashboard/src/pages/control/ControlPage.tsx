@@ -1,4 +1,4 @@
-import PhosphoProCallout from "@/components/callout/phospho-pro";
+import { PhosphoProCallout } from "@/components/callout/phospho-pro";
 import { Recorder } from "@/components/common/recorder";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useGlobalStore } from "@/lib/hooks";
+import { ViewVideoPage } from "@/pages/ViewVideoPage";
 import {
   BicepsFlexed,
   Gamepad2,
@@ -18,13 +19,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import GamepadControlPage from "./GamepadControlPage";
-import KeyboardControlPage from "./KeyboardControlPage";
-import LeaderArmPage from "./LeaderArmControlPage";
-import ReplayPage from "./SingleArmReplayPage";
-import ViewVideo from "./ViewVideoPage";
+import { GamepadControl } from "./GamepadControlPage";
+import { KeyboardControl } from "./KeyboardControlPage";
+import { LeaderArmControl } from "./LeaderArmControlPage";
+import { SingleArmReplay } from "./SingleArmReplayPage";
 
-export default function ControlPage() {
+export function ControlPage() {
   const showCamera = useGlobalStore((state) => state.showCamera);
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
   const [activeTab, setActiveTab] = useState("keyboard");
@@ -100,18 +100,18 @@ export default function ControlPage() {
           </div>
           <Recorder showCamera={showCamera} setShowCamera={setShowCamera} />
         </div>
-        {showCamera && <ViewVideo />}
+        {showCamera && <ViewVideoPage />}
         <TabsContent value="keyboard">
-          <KeyboardControlPage />
+          <KeyboardControl />
         </TabsContent>
         <TabsContent value="gamepad">
-          <GamepadControlPage />
+          <GamepadControl />
         </TabsContent>
         <TabsContent value="leader">
-          <LeaderArmPage />
+          <LeaderArmControl />
         </TabsContent>
         <TabsContent value="single">
-          <ReplayPage />
+          <SingleArmReplay />
         </TabsContent>
         <TabsContent value="VR">
           <div className="space-y-4">

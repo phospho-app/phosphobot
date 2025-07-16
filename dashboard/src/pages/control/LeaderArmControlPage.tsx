@@ -53,7 +53,7 @@ interface RobotPair {
   leader_serial_id: string;
 }
 
-export default function LeaderArmPage() {
+export function LeaderArmControl() {
   // const leaderArmSerialIds = useGlobalStore(
   //   (state) => state.leaderArmSerialIds,
   // );

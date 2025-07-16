@@ -22,9 +22,19 @@
 
 ## Getting started with phosphobot
 
-### 1. Get a SO-100 robot
+### 1. Get a robot
 
-Purchase your Phospho starter pack at [robots.phospho.ai](https://robots.phospho.ai) or build your own robot following the instructions in [the SO-100 repo](https://github.com/TheRobotStudio/SO-ARM100).
+Purchase your phospho starter pack at [robots.phospho.ai](https://robots.phospho.ai), or use one of the supported robots:
+
+- [SO-100](https://github.com/TheRobotStudio/SO-ARM100)
+- [SO-101](https://github.com/TheRobotStudio/SO-ARM100)
+- [Koch v1.1](https://github.com/jess-moss/koch-v1-1) (beta)
+- WX-250 by Trossen Robotics (beta)
+- [AgileX Piper](https://global.agilex.ai/products/piper) (Linux-only, beta)
+- [Unitree Go2 Air, Pro, Edu](https://shop.unitree.com/en-fr/products/unitree-go2) (beta)
+- [LeCabot](https://github.com/phospho-app/lecabot) (beta)
+
+See this [README](phosphobot/README.md) for more details on how to add support for a new robot.
 
 ### 2. Install the phosphobot server
 
@@ -41,25 +51,26 @@ phosphobot run
 
 This will:
 
-- on mac: use brew to install phosphobot
-- on linux: install phosphobot through apt
-- on windows: install a .exe
+- on Mac: use brew to install phosphobot
+- on Linux: use apt to install phosphobot
+- on Windows: install a .exe
 
 ### 3. Make your robot move for the first time!
 
 Go to the webapp at `YOUR_SERVER_ADDRESS:YOUR_SERVER_PORT` (default is `localhost:80`) and click control.
 
-You will be able to control your robot with:
+You'll be able to control your robot with:
 
-- the keyboard
+- a keyboard
+- a gamepad
 - a leader arm
-- a Meta Quest if you have the phospho teleop app
+- a Meta Quest
 
-> _Note: port 80 might already be in use, if that's the case, the server will spin up on localhost:8080_
+> _Note: port 80 might already be in use, if that's the case, the server will spin up on localhost:8020_
 
 ### 4. Record a dataset
 
-Record a 40 episodes dataset of the task you want the robot to learn.
+Record a 50 episodes dataset of the task you want the robot to learn.
 
 Check out the [docs](https://docs.phospho.ai/basic-usage/dataset-recording) for more details.
 
@@ -70,7 +81,7 @@ To train an action model on the dataset you recorded, you can:
 - train a model directly from the phosphobot webapp (see [this tutorial](https://docs.phospho.ai/basic-usage/training))
 - use your own machine (see [this tutorial](tutorials/00_finetune_gr00t_vla.md) to finetune gr00t n1)
 
-In both cases, you will have a trained model exported to huggingface.
+In both cases, you will have a trained model exported to Huggingface.
 
 To learn more about training action models for robotics, check out the [docs](https://docs.phospho.ai/basic-usage/training).
 
@@ -85,33 +96,15 @@ Learn more [in the docs](https://docs.phospho.ai/basic-usage/inference).
 
 Congrats! You just trained and used your first action model on a real robot.
 
-## Examples
-
-The `examples/` directory is the quickest way to see the toolkit in action. Check it out!
-Proud of what you build? Share it with the community by opening a PR to add it to the `examples/` directory.
-
 ## Advanced Usage
 
-You can directly call the phosphobot server from your own code, using the HTTP API and websocket API.
+You can directly call the phosphobot server from your own code, using the API.
 
-Go to the interactive docs of the API to use it interactively and learn more about it.
-It is available at `YOUR_SERVER_ADDRESS:YOUR_SERVER_PORT/docs`. By default, it is available at `localhost:80/docs`.
+Go to the interactive docs of the API to use it interactively and learn more.
+
+It is available at `YOUR_SERVER_ADDRESS:YOUR_SERVER_PORT/docs` (default: `localhost:80/docs`)
 
 We release new versions very often, so make sure to check the API docs for the latest features and changes.
-
-## Supported Robots
-
-We currently support the following robots:
-
-- [SO-100](https://github.com/TheRobotStudio/SO-ARM100)
-- [SO-101](https://github.com/TheRobotStudio/SO-ARM100)
-- [Koch v1.1](https://github.com/jess-moss/koch-v1-1) (beta)
-- WX-250 by Trossen Robotics (beta)
-- [AgileX Piper](https://global.agilex.ai/products/piper) (Linux-only, beta)
-- [Unitree Go2 Air, Pro, Edu](https://shop.unitree.com/en-fr/products/unitree-go2) (beta)
-- [LeCabot](https://github.com/phospho-app/lecabot) (beta)
-
-See this [README](phosphobot/README.md) for more details on how to add support for a new robots or open an issue.
 
 ## Join the Community
 
@@ -146,13 +139,9 @@ cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless
 curl -X 'GET' 'http://localhost/status' -H 'accept: application/json'
 ```
 
-> _Note: some features, such as connection to the phospho cloud, AI training, and AI control, are not available when installing from source._
-
 ## Contributing
 
-We welcome contributions!
-
-Also checkout our [bounty program](https://docs.google.com/spreadsheets/d/1NKyKoYbNcCMQpTzxbNJeoKWucPzJ5ULJkuiop4Av8ZQ/edit?gid=0#gid=0).
+We welcome contributions! Read our [contribution guide](./CONTRIBUTING.md). Also checkout our [bounty program](https://docs.google.com/spreadsheets/d/1NKyKoYbNcCMQpTzxbNJeoKWucPzJ5ULJkuiop4Av8ZQ/edit?gid=0#gid=0).
 
 Here are some of the ways you can contribute:
 

@@ -24,7 +24,7 @@ const POSITION_LIMIT = Math.PI;
 // Example torque limits (adjust as needed)
 const TORQUE_LIMIT = 500; // replace with actual joint torque limit
 
-export default function JointControl() {
+export function JointControl() {
   const NUM_JOINTS = 6;
   const NUM_POINTS = 30;
 

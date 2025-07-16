@@ -36,7 +36,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
-export default function RobotControllerPage() {
+export function KeyboardControl() {
   const { data: serverStatus, error: serverError } = useSWR<ServerStatus>(
     ["/status"],
     fetcher,
