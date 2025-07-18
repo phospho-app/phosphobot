@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     # Initialize telemetry
     init_telemetry()
     udp_server = get_udp_server()
-    # Initialize pybullet simulation
+    # Initialize mujoco simulation
     sim = get_sim()
     # Initialize rcm
     rcm = get_rcm()

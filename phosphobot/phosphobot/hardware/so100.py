@@ -424,7 +424,7 @@ class SO100Hardware(BaseManipulator):
 
         self.disable_torque()
 
-        # TODO: force pybullet to appear in headless to give the user instructions
+        # TODO: force MuJoCo to appear in headless to give the user instructions
         sim_helper_text = ""
         if config.SIM_MODE == SimulationMode.gui:
             sim_helper_text = "For reference, look at the simulation."
@@ -575,15 +575,12 @@ class SO100Hardware(BaseManipulator):
         while control_signal.is_in_loop():
             start_time = time.time()
 
-            # Get leader's current joint positions
             pos_rad = self.read_joints_position(unit="rad")
 
-            # Update PyBullet simulation for gravity calculation
             for i, idx in enumerate(joint_indices):
                 self.sim.set_joint_state(self.p_robot_id, idx, pos_rad[i])
             self.sim.step()
 
-            # Calculate gravity compensation torque
             positions = list(pos_rad)
             velocities = [0.0] * num_joints
             accelerations = [0.0] * num_joints

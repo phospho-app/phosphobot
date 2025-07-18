@@ -1,5 +1,5 @@
 from . import motors
-from .sim import PyBulletSimulation, get_sim
+from .sim import MuJoCoSimulation, get_sim
 from .base import BaseManipulator, BaseMobileRobot, BaseRobot
 from .go2 import UnitreeGo2
 from .koch11 import KochHardware

@@ -1,0 +1,13 @@
+[project]
+name = "mujoco-simulation"
+version = "0.1.0"
+description = "MuJoCo simulation server for phosphobot"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "mujoco>=3.0.0",
+    "numpy>=1.20.0"
+]
+
+[project.optional-dependencies]
+viewer = ["mujoco-python-viewer>=1.0.0"] 

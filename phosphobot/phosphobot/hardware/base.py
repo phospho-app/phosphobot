@@ -363,7 +363,7 @@ class BaseManipulator(BaseRobot):
                 current_gripper_torque = np.int32(reading_gripper_torque)
             return current_gripper_torque
 
-        # If the robot is not connected, we use the pybullet simulation
+        # If the robot is not connected, we use the mujoco simulation
         # Joint torque is in the 4th element of the joint state tuple
         current_gripper_torque = self.sim.get_joint_state(
             robot_id=self.p_robot_id,
@@ -673,7 +673,7 @@ class BaseManipulator(BaseRobot):
             source_unit = "motor_units"
             output_position = current_position
         else:
-            # If the robot is not connected, we use the pybullet simulation
+            # If the robot is not connected, we use the mujoco simulation
             # Retrieve joint angles using getJointStates
             if joints_ids is None:
                 joints_ids = list(range(self.num_actuated_joints))
@@ -1227,7 +1227,7 @@ class BaseManipulator(BaseRobot):
                     logger.warning("None torque value for joint ", servo_id)
             return current_torque
 
-        # If the robot is not connected, we use the pybullet simulation
+        # If the robot is not connected, we use the mujoco simulation
         # Retrieve joint angles using getJointStates
         for idx, joint_id in enumerate(self.actuated_joints):
             # Joint torque is in the 4th element of the joint state tuple

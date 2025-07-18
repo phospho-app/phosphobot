@@ -148,7 +148,6 @@ async def leader_follower_loop(
                     "Gravity compensation is only supported for SO100Hardware."
                 )
                 # Calculate gravity compensation torque
-                # Update PyBullet simulation for gravity calculation
                 for i, idx in enumerate(joint_indices):
                     sim.set_joint_state(leader.p_robot_id, idx, pos_rad[i])
 
