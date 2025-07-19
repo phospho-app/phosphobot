@@ -126,16 +126,45 @@ async def start_recording_episode(
             if is_github_actions() and number_of_connected_cameras == 0:
                 number_of_connected_cameras += 2
 
-            # Our robots are 6 DOF, so we divide the number of actions by 6
-            number_of_robots_in_dataset = info_model.features.action.shape[0] // 6
+            # get expected action shape based on connected robots
+            expected_action_shape = 0
+            for robot in robots_to_record:
+                try:
+                    robot_info = robot.get_info_for_dataset()
+                    expected_action_shape += robot_info.action.shape[0]
+                except Exception as e:
+                    logger.warning(f"Could not get dataset info for robot {robot.name}: {e}")
+                    from phosphobot.hardware.base import BaseManipulator, BaseMobileRobot
+                    
+                    if isinstance(robot, BaseManipulator) and hasattr(robot, 'SERVO_IDS'):
+                        # manipulator robots with known SERVO_IDS
+                        expected_action_shape += len(robot.SERVO_IDS)
+                    elif isinstance(robot, BaseMobileRobot):
+                        # mobile robots (UnitreeGo2, LeKiwi) use 6D
+                        expected_action_shape += 6
+                    elif hasattr(robot, 'name') and robot.name == 'phosphobot':
+                        # RemotePhosphobot - try to get actual DOF, fallback to 6
+                        try:
+                            if hasattr(robot, 'actuated_joints'):
+                                expected_action_shape += len(robot.actuated_joints)
+                            else:
+                                expected_action_shape += 6
+                        except Exception:
+                            expected_action_shape += 6
+                    else:
+                        # unknown robot type - conservative fallback
+                        logger.warning(f"Unknown robot type {robot.__class__.__name__}, assuming 6 DOF")
+                        expected_action_shape += 6
+                        
+            dataset_action_shape = info_model.features.action.shape[0]
 
             if number_of_connected_cameras != number_of_cameras_in_dataset:
                 raise KeyError(
                     f"Dataset {dataset_name} has {number_of_cameras_in_dataset} cameras but you have {number_of_connected_cameras} connected. Create a new dataset by changing the dataset name in Admin Settings."
                 )
-            if number_of_connected_robots != number_of_robots_in_dataset:
+            if expected_action_shape != dataset_action_shape:
                 raise KeyError(
-                    f"Dataset {dataset_name} has {number_of_robots_in_dataset} robots but you have {number_of_connected_robots} connected. Create a new dataset by changing the dataset name in Admin Settings."
+                    f"Dataset {dataset_name} expects action shape {dataset_action_shape} but current robots provide {expected_action_shape}. Create a new dataset by changing the dataset name in Admin Settings."
                 )
         except ValueError:
             # This means the dataset does not exist yet

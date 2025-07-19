@@ -39,6 +39,7 @@ class LeKiwi(BaseMobileRobot):
 
         # Track movement instructions
         self.movement_queue: Deque[MovementCommand] = deque(maxlen=max_history_len)
+        self.last_movement_command = np.zeros(6)  # [x, y, z, roll, pitch, yaw]
 
     @property
     def is_connected(self) -> bool:
@@ -100,14 +101,15 @@ class LeKiwi(BaseMobileRobot):
         Get the observation of the robot.
 
         Returns:
-            - state: Last movement command position [x, y, z] and orientation [roll, pitch, yaw]
-            - joints_position: Empty array as we're not tracking joint positions
+            - state: Current robot position [x, y, z] and orientation [roll, pitch, yaw]
+            - joints_position: Last movement command as action data [x, y, z, roll, pitch, yaw]
         """
-        # Return the last movement command as observation
+        # Return the current state as observation
         # Combine position and orientation into a 6D state vector
         state = np.concatenate([self.current_position, self.current_orientation])
-        # Return empty array for joints since we're not tracking them
-        joints_position = np.array([])
+        
+        # Return last movement command as action data (what we did to get to this state)
+        joints_position = self.last_movement_command.copy()
 
         return state, joints_position
 
@@ -121,9 +123,26 @@ class LeKiwi(BaseMobileRobot):
 
     def get_info_for_dataset(self):
         """
-        Not implemented
+        Get information about the mobile robot for dataset creation.
+
+        Returns:
+            BaseRobotInfo: Information about the robot including action and observation state shapes
         """
-        raise NotImplementedError
+        from phosphobot.models.lerobot_dataset import BaseRobotInfo, FeatureDetails
+        
+        return BaseRobotInfo(
+            robot_type=self.name,
+            action=FeatureDetails(
+                dtype="float32",
+                shape=[6],  # [x, y, z, roll, pitch, yaw] - movement commands
+                names=["pos_x", "pos_y", "pos_z", "orient_roll", "orient_pitch", "orient_yaw"],
+            ),
+            observation_state=FeatureDetails(
+                dtype="float32",
+                shape=[6],  # [x, y, z, roll, pitch, yaw] - current state
+                names=["pos_x", "pos_y", "pos_z", "orient_roll", "orient_pitch", "orient_yaw"],
+            ),
+        )
 
     async def move_robot_absolute(
         self,
@@ -165,6 +184,12 @@ class LeKiwi(BaseMobileRobot):
         self.current_position = target_position
         if target_orientation_rad is not None:
             self.current_orientation = target_orientation_rad
+            
+        # Track last movement command for recording
+        self.last_movement_command = np.concatenate([
+            target_position,
+            target_orientation_rad if target_orientation_rad is not None else np.zeros(3)
+        ])
 
         # Send the command to the robot
         message = {"raw_velocity": wheel_commands, "arm_positions": []}

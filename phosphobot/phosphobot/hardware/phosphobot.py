@@ -1,6 +1,7 @@
 import asyncio
 import httpx
 import numpy as np
+import threading
 
 from phosphobot.hardware.base import BaseRobot
 from loguru import logger
@@ -34,6 +35,10 @@ class RemotePhosphobot(BaseRobot):
         self.initial_position: np.ndarray | None = None
         self.initial_orientation_rad: np.ndarray | None = None
         self.device_name = f"{self.ip}:{self.port}"
+        
+        # Cache for actuated joints to avoid repeated network calls
+        self._cached_actuated_joints: list[int] | None = None
+        self._joints_cache_lock = threading.Lock() 
 
     @property
     def is_connected(self) -> bool:
@@ -83,6 +88,8 @@ class RemotePhosphobot(BaseRobot):
             else:
                 asyncio.run(self.async_client.aclose())
             self.is_connected = False
+            # if disconnected, clear the cache 
+            self._cached_actuated_joints = None
             logger.info("Disconnected from remote phosphobot")
         except Exception as e:
             logger.warning(f"Failed to disconnect from remote phosphobot: {e}")
@@ -133,9 +140,56 @@ class RemotePhosphobot(BaseRobot):
 
     def get_info_for_dataset(self):
         """
-        Not implemented
+        Get information about the remote robot for dataset creation.
+        Assume dof = 6 by default. 
+        
+        Returns:
+            BaseRobotInfo: Information about the robot including action and observation state shapes
         """
-        raise NotImplementedError
+        from phosphobot.models.lerobot_dataset import BaseRobotInfo, FeatureDetails
+        
+        actual_dof = 6  # Default fallback
+        
+        if not self.is_connected:
+            logger.warning("RemotePhosphobot: Robot is not connected. Using default 6 DOF.")
+        else:
+            try:
+                joints_response = self.client.post(
+                    "/joints/read", 
+                    json={"unit": "rad"}, 
+                    params={"robot_id": self.robot_id}
+                )
+                joints_response.raise_for_status()  
+                joints_data = joints_response.json()
+                
+                if "angles" in joints_data and isinstance(joints_data["angles"], list):
+                    if len(joints_data["angles"]) > 0:
+                        actual_dof = len(joints_data["angles"])
+                        logger.info(f"RemotePhosphobot: Detected {actual_dof} DOF from remote robot")
+                    else:
+                        logger.warning("RemotePhosphobot: Remote robot returned empty joints array. Using default 6 DOF.")
+                else:
+                    logger.warning("RemotePhosphobot: Invalid response format from remote robot. Using default 6 DOF.")
+                    
+            except Exception as e:
+                logger.warning(f"RemotePhosphobot: Could not query remote robot DOF: {e}. Using default 6 DOF.")
+        
+        # Generate joint names based on actual DOF count
+        joint_names = [f"joint_{i+1}" for i in range(actual_dof)]
+        
+        return BaseRobotInfo(
+            robot_type=self.name,
+            action=FeatureDetails(
+                dtype="float32",
+                shape=[actual_dof], 
+                names=joint_names,
+            ),
+            observation_state=FeatureDetails(
+                dtype="float32",
+                shape=[actual_dof], 
+                names=joint_names,
+            ),
+        )
 
     async def move_robot_absolute(
         self,
@@ -400,15 +454,29 @@ class RemotePhosphobot(BaseRobot):
         """
         if not self.is_connected:
             logger.warning("Robot is not connected")
-            return np.zeros(6)
+            dof_count = len(self.actuated_joints)
+            return np.zeros(dof_count)
 
-        response = self.client.post(
-            "/joints/read",
-            json={"unit": unit},
-            params={"robot_id": self.robot_id},
-        )
-        joints = response.json()
-        return np.array(joints["angles"])
+        try:
+            response = self.client.post(
+                "/joints/read",
+                json={"unit": unit},
+                params={"robot_id": self.robot_id},
+            )
+            response.raise_for_status()
+            joints_data = response.json()
+            
+            if "angles" in joints_data and isinstance(joints_data["angles"], list):
+                return np.array(joints_data["angles"])
+            else:
+                logger.warning("RemotePhosphobot: Invalid response format when reading joint positions")
+                dof_count = len(self.actuated_joints)
+                return np.zeros(dof_count)
+                
+        except Exception as e:
+            logger.warning(f"RemotePhosphobot: Failed to read joint positions: {e}")
+            dof_count = len(self.actuated_joints)
+            return np.zeros(dof_count)
 
     @property
     def actuated_joints(self) -> list[int]:
@@ -418,8 +486,43 @@ class RemotePhosphobot(BaseRobot):
         Returns:
             list[int]: List of actuated joint IDs
         """
-        # TODO: Make this dynamic based on the connected robot configuration
-        return [1, 2, 3, 4, 5, 6]
+        with self._joints_cache_lock:
+            if self._cached_actuated_joints is not None:
+                return self._cached_actuated_joints
+            
+            # Default fallback
+            default_joints = [1, 2, 3, 4, 5, 6]
+            
+            if not self.is_connected:
+                logger.warning("RemotePhosphobot: Robot is not connected. Using default joints [1,2,3,4,5,6].")
+                self._cached_actuated_joints = default_joints
+                return self._cached_actuated_joints
+            
+            try:
+                joints_response = self.client.post(
+                    "/joints/read", 
+                    json={"unit": "rad"}, 
+                    params={"robot_id": self.robot_id}
+                )
+                joints_response.raise_for_status()  
+                joints_data = joints_response.json()
+                
+                if "angles" in joints_data and isinstance(joints_data["angles"], list):
+                    if len(joints_data["angles"]) > 0:
+                        actual_dof = len(joints_data["angles"])
+                        self._cached_actuated_joints = list(range(1, actual_dof + 1))
+                        logger.info(f"RemotePhosphobot: Detected {actual_dof} joints: {self._cached_actuated_joints}")
+                        return self._cached_actuated_joints
+                    else:
+                        logger.warning("RemotePhosphobot: Remote robot returned empty joints array. Using default joints.")
+                else:
+                    logger.warning("RemotePhosphobot: Invalid response format from remote robot. Using default joints.")
+                    
+            except Exception as e:
+                logger.warning(f"RemotePhosphobot: Could not query remote robot joints: {e}. Using default joints.")
+            
+            self._cached_actuated_joints = default_joints
+            return self._cached_actuated_joints
 
     def _set_pid_gains_motors(
         self, servo_id: int, p_gain: int, i_gain: int, d_gain: int
