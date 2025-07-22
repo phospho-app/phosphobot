@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Serif } from "next/font/google";
 import "./globals.css";
+import AuthProviderWrapper from "@/components/auth-provider";
 
 const instrumentSerif = Instrument_Serif({
     weight: ['400'],
@@ -27,7 +28,9 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className={instrumentSerif.variable}>
-            <body className="antialiased bg-gray-50">{children}</body>
+            <body className="antialiased bg-gray-50">
+                <AuthProviderWrapper>{children}</AuthProviderWrapper>
+            </body>
         </html>
     );
 }
