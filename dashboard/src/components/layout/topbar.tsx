@@ -167,11 +167,10 @@ export function AccountTopBar() {
           </Avatar>
           {/* Badge overlay */}
           <div
-            className={`absolute -bottom-2 -right-3 px-1 py-0.5 font-extrabold rounded-sm outline-[0.5px] outline-white font- ${
-              proUser
+            className={`absolute -bottom-2 -right-3 px-1 py-0.5 font-extrabold rounded-sm outline-[0.5px] outline-white font- ${proUser
                 ? "bg-black text-green-500 text-[10px]"
                 : "bg-gray-200 text-black text-[10px]"
-            }`}
+              }`}
           >
             {proUser ? "PRO" : "FREE"}
           </div>

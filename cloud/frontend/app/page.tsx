@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@phosphobot/shared-auth';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/sections/header';
 import HeroSection from '@/components/sections/hero';
@@ -17,28 +17,18 @@ function HomeContent() {
     const router = useRouter();
     const urlEmail = searchParams.get('user_email') || null;
     const [userEmail, setUserEmail] = useState<string | null>(urlEmail);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const { session, logout } = useAuth();
 
     useEffect(() => {
-        const checkUser = async () => {
-            const supabase = createClient();
-            const { data: { user } } = await supabase.auth.getUser();
-
-            // If user is logged in, use their email, otherwise keep URL parameter
-            if (user?.email) {
-                setUserEmail(user.email);
-                setIsAuthenticated(true);
-            }
-        };
-
-        checkUser();
-    }, []);
+        // If user is logged in, use their email, otherwise keep URL parameter
+        if (session?.user?.email) {
+            setUserEmail(session.user.email);
+        }
+    }, [session]);
 
     const handleLogout = async () => {
-        const supabase = createClient();
-        await supabase.auth.signOut();
+        await logout();
         setUserEmail(urlEmail);
-        setIsAuthenticated(false);
         router.refresh();
     };
 
@@ -68,7 +58,7 @@ function HomeContent() {
                 </section>
                 <section className="mb-4">
                     <div className="flex justify-center">
-                        {isAuthenticated ? (
+                        {session ? (
                             <button
                                 onClick={handleLogout}
                                 className="text-gray-500 hover:text-gray-700 text-sm underline transition-colors"

@@ -1,0 +1,1 @@
+{"version":3,"file":"AuthForm.d.ts","sourceRoot":"","sources":["../../src/components/AuthForm.tsx"],"names":[],"mappings":"AAGA,MAAM,WAAW,aAAa;IAC1B,IAAI,CAAC,EAAE,QAAQ,GAAG,QAAQ,CAAC;IAC3B,SAAS,CAAC,EAAE,MAAM,IAAI,CAAC;IACvB,SAAS,CAAC,EAAE,MAAM,CAAC;CACtB;AAED,wBAAgB,QAAQ,CAAC,EAAE,IAAe,EAAE,SAAS,EAAE,SAAc,EAAE,EAAE,aAAa,2CA0DrF"}

@@ -1,16 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { Button } from "./ui/button";
-import { createClient } from "@/lib/supabase/server";
+import { useAuth } from "@phosphobot/shared-auth";
 import { LogoutButton } from "./logout-button";
 
-export async function AuthButton() {
-  const supabase = await createClient();
+export function AuthButton() {
+  const { session } = useAuth();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  return user ? (
+  return session ? (
     <div className="flex items-center gap-4">
       <LogoutButton />
     </div>

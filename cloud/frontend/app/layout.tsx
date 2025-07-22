@@ -20,6 +20,8 @@ export const metadata: Metadata = {
     description: "the AI robotics company",
 };
 
+import { Providers } from './providers';
+
 export default function RootLayout({
     children,
 }: Readonly<{
@@ -27,7 +29,11 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className={instrumentSerif.variable}>
-            <body className="antialiased bg-gray-50">{children}</body>
+            <body className="antialiased bg-gray-50">
+                <Providers>
+                    {children}
+                </Providers>
+            </body>
         </html>
     );
 }
