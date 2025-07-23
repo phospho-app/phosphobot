@@ -1,5 +1,4 @@
 import asyncio
-import time
 import subprocess
 from typing import Any, List, Literal, Optional, Union
 
@@ -201,8 +200,8 @@ class PiperHardware(BaseManipulator):
             servos_offsets=[0] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
             servos_calibration_position=[0] * len(self.SERVO_IDS),
-            gripping_threshold=0,
-            non_gripping_threshold=0,
+            gripping_threshold=100,
+            non_gripping_threshold=100,
         )
 
     def enable_torque(self):
