@@ -141,55 +141,55 @@ class RemotePhosphobot(BaseRobot):
     def get_info_for_dataset(self):
         """
         Get information about the remote robot for dataset creation.
-        Assume dof = 6 by default. 
         
         Returns:
             BaseRobotInfo: Information about the robot including action and observation state shapes
         """
         from phosphobot.models.lerobot_dataset import BaseRobotInfo, FeatureDetails
         
-        actual_dof = 6  # Default fallback
-        
         if not self.is_connected:
             logger.warning("RemotePhosphobot: Robot is not connected. Using default 6 DOF.")
-        else:
-            try:
-                joints_response = self.client.post(
-                    "/joints/read", 
-                    json={"unit": "rad"}, 
-                    params={"robot_id": self.robot_id}
-                )
-                joints_response.raise_for_status()  
-                joints_data = joints_response.json()
-                
-                if "angles" in joints_data and isinstance(joints_data["angles"], list):
-                    if len(joints_data["angles"]) > 0:
-                        actual_dof = len(joints_data["angles"])
-                        logger.info(f"RemotePhosphobot: Detected {actual_dof} DOF from remote robot")
-                    else:
-                        logger.warning("RemotePhosphobot: Remote robot returned empty joints array. Using default 6 DOF.")
-                else:
-                    logger.warning("RemotePhosphobot: Invalid response format from remote robot. Using default 6 DOF.")
-                    
-            except Exception as e:
-                logger.warning(f"RemotePhosphobot: Could not query remote robot DOF: {e}. Using default 6 DOF.")
+            joint_names = [f"joint_{i+1}" for i in range(6)]
+            return BaseRobotInfo(
+                robot_type=self.name,
+                action=FeatureDetails(
+                    dtype="float32",
+                    shape=[6], 
+                    names=joint_names,
+                ),
+                observation_state=FeatureDetails(
+                    dtype="float32",
+                    shape=[6], 
+                    names=joint_names,
+                ),
+            )
         
-        # Generate joint names based on actual DOF count
-        joint_names = [f"joint_{i+1}" for i in range(actual_dof)]
-        
-        return BaseRobotInfo(
-            robot_type=self.name,
-            action=FeatureDetails(
-                dtype="float32",
-                shape=[actual_dof], 
-                names=joint_names,
-            ),
-            observation_state=FeatureDetails(
-                dtype="float32",
-                shape=[actual_dof], 
-                names=joint_names,
-            ),
-        )
+        try:
+            response = self.client.post(
+                "/robot/info", 
+                params={"robot_id": self.robot_id}
+            )
+            response.raise_for_status()
+            robot_info_data = response.json()
+            
+            return BaseRobotInfo.model_validate(robot_info_data)
+            
+        except Exception as e:
+            logger.warning(f"RemotePhosphobot: Could not get robot info from endpoint: {e}. Using default 6 DOF.")
+            joint_names = [f"joint_{i+1}" for i in range(6)]
+            return BaseRobotInfo(
+                robot_type=self.name,
+                action=FeatureDetails(
+                    dtype="float32",
+                    shape=[6], 
+                    names=joint_names,
+                ),
+                observation_state=FeatureDetails(
+                    dtype="float32",
+                    shape=[6], 
+                    names=joint_names,
+                ),
+            )
 
     async def move_robot_absolute(
         self,
