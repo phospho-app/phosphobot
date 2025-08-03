@@ -47,7 +47,6 @@ from phosphobot.models import (
     UDPServerInformationResponse,
     VoltageReadResponse,
 )
-from phosphobot.models.lerobot_dataset import BaseRobotInfo
 from phosphobot.robot import (
     RemotePhosphobot,
     RobotConnectionManager,
@@ -471,38 +470,6 @@ async def move_sleep(
     robot = await rcm.get_robot(robot_id)
     await robot.move_to_sleep()
     return StatusResponse()
-
-
-@router.post(
-    "/robot/info",
-    response_model=BaseRobotInfo,
-    summary="Get robot dataset info",
-    description="Get the robot info in dataset creation",
-)
-async def get_robot_info(
-    robot_id: int = 0,
-    rcm: RobotConnectionManager = Depends(get_rcm),
-) -> BaseRobotInfo:
-    """
-    Get robot information for dataset creation.
-    Returns the BaseRobotInfo containing action and observation shapes.
-    """
-    try:
-        robot = await rcm.get_robot(robot_id)
-        robot_info = robot.get_info_for_dataset()
-        return robot_info
-    except IndexError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Robot with ID {robot_id} not found. Available robots: {len(await rcm.robots)}",
-        )
-    except Exception as e:
-        logger.error(f"Failed to get robot info for robot {robot_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get robot dataset info: {str(e)}",
-        )
-
 
 @router.post(
     "/end-effector/read",
