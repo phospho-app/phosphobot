@@ -61,7 +61,7 @@ export default function AIControlPage() {
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
   const cameraKeysMapping = useGlobalStore((state) => state.cameraKeysMapping);
 
-  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX"];
+  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX", "smolvla"];
   const selectedModelType = useGlobalStore((state) => state.selectedModelType);
   const setSelectedModelType = useGlobalStore(
     (state) => state.setSelectedModelType,
@@ -352,6 +352,7 @@ export default function AIControlPage() {
               <ToggleGroupItem value="ACT_BBOX">BB-ACT</ToggleGroupItem>
               <ToggleGroupItem value="gr00t">gr00t</ToggleGroupItem>
               <ToggleGroupItem value="ACT">ACT</ToggleGroupItem>
+              <ToggleGroupItem value="smolvla">SmolVLA</ToggleGroupItem>
             </ToggleGroup>
           </div>
 

@@ -408,7 +408,7 @@ export default function AITrainingPage() {
                     defaultValue={selectedModelType}
                     onValueChange={(value) =>
                       setSelectedModelType(
-                        value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
+                        value as "gr00t" | "ACT" | "ACT_BBOX" | "smolvla" | "custom",
                       )
                     }
                   >
@@ -421,6 +421,7 @@ export default function AITrainingPage() {
                       </SelectItem>
                       <SelectItem value="ACT">ACT</SelectItem>
                       <SelectItem value="gr00t">gr00t</SelectItem>
+                      <SelectItem value="smolvla">SmolVLA</SelectItem>
                       <SelectItem value="custom">Custom</SelectItem>
                     </SelectContent>
                   </Select>

@@ -45,9 +45,9 @@ interface GlobalStore {
   setCameraKeysMapping: (mapping: Record<string, number> | null) => void;
   modelId: string;
   setModelId: (modelId: string) => void;
-  selectedModelType: "ACT" | "ACT_BBOX" | "gr00t" | "custom";
+  selectedModelType: "ACT" | "ACT_BBOX" | "gr00t" | "smolvla" | "custom";
   setSelectedModelType: (
-    modelType: "ACT" | "ACT_BBOX" | "gr00t" | "custom",
+    modelType: "ACT" | "ACT_BBOX" | "gr00t" | "smolvla" | "custom",
   ) => void;
   selectedDataset: string;
   setSelectedDataset: (dataset: string) => void;
