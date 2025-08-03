@@ -146,7 +146,7 @@ export const CameraStreamCard = ({
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             onClick={toggleQuality}
           >
             Preview:{" "}

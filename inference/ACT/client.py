@@ -33,6 +33,6 @@ while True:
     # Execute actions at 30Hz
     for action in actions:
         httpx.post(
-            f"{PHOSPHOBOT_API_URL}/joints/write", json={"angles": action.tolist()}
+            f"{PHOSPHOBOT_API_URL}/joints/write", json={"angles": action[0].tolist()}
         )
         time.sleep(1 / 30)

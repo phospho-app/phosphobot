@@ -257,6 +257,12 @@ def run(
             help="Enable the cameras. If False, no camera will be detected. Useful in case of conflicts.",
         ),
     ] = True,
+    max_opencv_index: Annotated[
+        int,
+        typer.Option(
+            help="Maximum OpenCV index to search for cameras. Default is 10.",
+        ),
+    ] = 10,
     reload: Annotated[
         bool,
         typer.Option(
@@ -269,11 +275,17 @@ def run(
             help="(dev) Enable performance profiling. This generates profile.html."
         ),
     ] = False,
+    crash_telemetry: Annotated[
+        bool,
+        typer.Option(help="Disable crash reporting."),
+    ] = True,
+    usage_telemetry: Annotated[
+        bool,
+        typer.Option(help="Disable usage analytics."),
+    ] = True,
     telemetry: Annotated[
         bool,
-        typer.Option(
-            help="Enable telemetry. This is used for crash reporting and usage statistics."
-        ),
+        typer.Option(help="Disable all telemetry (Crash and Usage)."),
     ] = True,
 ):
     """
@@ -287,8 +299,14 @@ def run(
     config.ENABLE_CAMERAS = cameras
     config.PORT = port
     config.PROFILE = profile
-    config.TELEMETRY = telemetry
+    config.CRASH_TELEMETRY = crash_telemetry  # Enable crash telemetry by default
+    config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
     config.ENABLE_CAN = can
+    config.MAX_OPENCV_INDEX = max_opencv_index
+
+    if not telemetry:
+        config.CRASH_TELEMETRY = False
+        config.USAGE_TELEMETRY = False
 
     # Start the FastAPI app using uvicorn with port retry logic
     ports = [port]

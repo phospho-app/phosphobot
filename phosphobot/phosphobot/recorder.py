@@ -22,6 +22,7 @@ from phosphobot.models import (
 from phosphobot.robot import RobotConnectionManager, get_rcm
 from phosphobot.types import VideoCodecs
 from phosphobot.utils import background_task_log_exceptions, get_home_app_path
+from phosphobot.rerun_visualizer import RerunVisualizer
 
 recorder = None  # Global variable to store the recorder instance
 
@@ -52,6 +53,7 @@ class Recorder:
     def __init__(self, robots: list[BaseRobot], cameras: AllCameras):
         self.robots = robots
         self.cameras = cameras
+        self.rerun_visualizer = RerunVisualizer()
 
     async def start(
         self,
@@ -66,6 +68,7 @@ class Recorder:
         cameras_ids_to_record: list[int] | None,
         use_push_to_hf: bool = True,  # Stored for save_episode to decide
         branch_path: str | None = None,  # Stored for push_to_hub if initiated from here
+        enable_rerun: bool = False,  # Enable real-time Rerun visualization
     ) -> None:
         if target_size is None:
             target_size = (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1])
@@ -120,11 +123,16 @@ class Recorder:
                 freq=freq,
                 target_size=target_size,
                 instruction=instruction,
-                secondary_camera_key_names=self.cameras.get_secondary_camera_key_names(),
+                all_camera_key_names=self.cameras.get_all_camera_key_names(),
             )
         else:
             logger.error(f"Unknown episode format: {self.episode_format}")
             raise ValueError(f"Unknown episode format: {self.episode_format}")
+
+        if enable_rerun and self.rerun_visualizer:
+            self.rerun_visualizer.enabled = True
+            episode_index = self.episode.episode_index if self.episode else 0
+            self.rerun_visualizer.initialize(dataset_name, episode_index)
 
         self.is_recording = True
         self.start_ts = time.perf_counter()
@@ -340,6 +348,14 @@ class Recorder:
                 metadata={"created_at": loop_iteration_start_time},
             )
 
+            if self.rerun_visualizer and self.rerun_visualizer.enabled:
+                self.rerun_visualizer.log_step(
+                    step=step,
+                    robots=self.robots,
+                    cameras=self.cameras,
+                    step_index=step_count,
+                )
+
             if step_count % 20 == 0:  # Log every 20 steps
                 logger.debug(
                     f"Recording: Processing Step {step_count} for episode {self.episode.episode_index if self.episode else 'N/A'}"
@@ -358,6 +374,9 @@ class Recorder:
             time_to_wait = max((1 / self.freq) - elapsed_this_iteration, 0)
             await asyncio.sleep(time_to_wait)
             step_count += 1
+
+        if self.rerun_visualizer and self.rerun_visualizer.enabled:
+            self.rerun_visualizer.finalize()
 
         logger.info(
             f"Recording loop for episode {self.episode.episode_index if self.episode else 'N/A'} has gracefully exited."

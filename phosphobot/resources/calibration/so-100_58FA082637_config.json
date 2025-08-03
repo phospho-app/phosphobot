@@ -1,62 +1,41 @@
 {
-    "name": "so-100",
-    "servos_voltage": 12.0,
-    "servos_offsets": [
-        1092.0,
-        2929.0,
-        1247.0,
-        1856.0,
-        3695.0,
-        1122.0
-    ],
-    "servos_calibration_position": [
-        -25.0,
-        3927.0,
-        222.0,
-        824.0,
-        4712.0,
-        2238.0
-    ],
-    "servos_offsets_signs": [
-        -1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
-    ],
-    "pid_gains": [
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.1,
-            "d_gain": 15.0
-        },
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.1,
-            "d_gain": 15.0
-        },
-        {
-            "p_gain": 10.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 15.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 10.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        }
-    ],
-    "gripping_threshold": 150,
-    "non_gripping_threshold": 10
+  "name": "so-100",
+  "servos_voltage": 12.0,
+  "servos_offsets": [1092.0, 2929.0, 1247.0, 1856.0, 3695.0, 1122.0],
+  "servos_calibration_position": [-25.0, 3927.0, 222.0, 824.0, 4712.0, 2238.0],
+  "servos_offsets_signs": [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+  "pid_gains": [
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.1,
+      "d_gain": 15.0
+    },
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.1,
+      "d_gain": 15.0
+    },
+    {
+      "p_gain": 10.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 15.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 10.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    }
+  ],
+  "gripping_threshold": 80,
+  "non_gripping_threshold": 10
 }

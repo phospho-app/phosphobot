@@ -15,6 +15,7 @@ interface AuthContextType {
   login: (email: string, password: string, session?: Session) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  verifyEmailCode: (email: string, token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -85,6 +86,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   };
 
+  const verifyEmailCode = async (
+    email: string,
+    token: string,
+  ): Promise<void> => {
+    const data = await fetchWithBaseUrl("/auth/verify-email-token", "POST", {
+      email,
+      token,
+    });
+    console.log("Email verification response:", data);
+    if (data.session) {
+      localStorage.setItem("session", JSON.stringify(data.session));
+      setSession(data.session);
+    } else {
+      throw new Error("Invalid verification code");
+    }
+  };
+
   const validateSession = async () => {
     try {
       const response: { authenticated: boolean; session: Session } =
@@ -106,7 +124,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, isLoading, proUser, login, signup, logout }}
+      value={{
+        session,
+        isLoading,
+        proUser,
+        login,
+        signup,
+        logout,
+        verifyEmailCode,
+      }}
     >
       {children}
     </AuthContext.Provider>

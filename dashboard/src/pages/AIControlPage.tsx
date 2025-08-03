@@ -3,7 +3,6 @@ import { AutoComplete, type Option } from "@/components/common/autocomplete";
 import CameraKeyMapper from "@/components/common/camera-mapping-selector";
 import CameraSelector from "@/components/common/camera-selector";
 import { SpeedSelect } from "@/components/common/speed-select";
-import supabase from "@/components/common/supabase-db";
 import Feedback from "@/components/custom/Feedback";
 import {
   Accordion,
@@ -16,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
@@ -23,7 +29,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAuth } from "@/context/AuthContext";
 import { useGlobalStore } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AIStatusResponse, ServerStatus, TrainingConfig } from "@/types";
@@ -32,6 +37,7 @@ import {
   CameraOff,
   ExternalLink,
   HelpCircle,
+  LoaderCircle,
   Pause,
   Play,
   Square,
@@ -41,19 +47,22 @@ import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import useSWR from "swr";
 
-type ModelVideoKeys = {
+type ModelConfiguration = {
   video_keys: string[];
+  checkpoints: string[];
 };
 
-export default function AIControlPage() {
+export function AIControlPage() {
   const [prompt, setPrompt] = useState("");
   const modelId = useGlobalStore((state) => state.modelId);
   const setModelId = useGlobalStore((state) => state.setModelId);
 
   const [showCassette, setShowCassette] = useState(false);
   const [speed, setSpeed] = useState(1.0);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<number | null>(
+    null,
+  );
   const location = useLocation();
-  const { session } = useAuth();
   const leaderArmSerialIds = useGlobalStore(
     (state) => state.leaderArmSerialIds,
   );
@@ -71,8 +80,8 @@ export default function AIControlPage() {
     (state) => state.setSelectedCameraId,
   );
 
-  const { data: modelVideoKeys } = useSWR<ModelVideoKeys>(
-    modelId ? ["/model/video-keys", modelId, selectedModelType] : null,
+  const { data: modelConfiguration } = useSWR<ModelConfiguration>(
+    modelId ? ["/model/configuration", modelId, selectedModelType] : null,
     ([url]) =>
       fetcher(url, "POST", {
         model_id: modelId,
@@ -84,20 +93,12 @@ export default function AIControlPage() {
     ([endpoint]) => fetcher(endpoint, "POST"),
   );
 
-  supabase.auth.setSession({
-    access_token: session?.access_token || "",
-    refresh_token: session?.refresh_token || "",
-  });
-
   const { data: serverStatus, mutate: mutateServerStatus } =
     useSWR<ServerStatus>(["/status"], fetcher);
   const { data: aiStatus, mutate: mutateAIStatus } = useSWR<AIStatusResponse>(
-    session ? ["/ai-control/status"] : null,
-    ([arg]) =>
-      fetcher(arg, "POST", { user_id: session?.user_id }).then((data) => {
-        console.log("AI status data:", data);
-        return data;
-      }),
+    ["/ai-control/status"],
+    ([arg]) => fetcher(arg, "POST"),
+    { refreshInterval: 1000 },
   );
 
   useEffect(() => {
@@ -121,78 +122,9 @@ export default function AIControlPage() {
   }, [serverStatus]);
 
   useEffect(() => {
-    if (aiStatus === undefined) return;
-    if (!aiStatus.id || !session) {
-      if (!session) {
-        toast.error("Please log in to access AI control sessions");
-      }
-      return;
-    }
-
-    console.log("Subscribing to AI control session:", aiStatus.id);
-
-    const subscription = supabase
-      .channel(`ai_control_sessions:${aiStatus.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "ai_control_sessions",
-          filter: `id=eq.${aiStatus.id}`,
-        },
-        (payload) => {
-          if (payload.new && "status" in payload.new) {
-            const newStatus = payload.new.status;
-            if (
-              newStatus === null ||
-              newStatus === "" ||
-              newStatus === undefined
-            ) {
-              console.log("New status : ", newStatus);
-              return;
-            }
-
-            console.log("AI control status updated:", newStatus);
-            mutateAIStatus({
-              ...aiStatus,
-              status: newStatus,
-            });
-          }
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          supabase
-            .from("ai_control_sessions")
-            .select("status, user_id")
-            .eq("id", aiStatus.id)
-            .maybeSingle()
-            .then(({ data, error }) => {
-              if (error) {
-                console.error("Error fetching AI control status:", error);
-                mutateAIStatus({
-                  ...aiStatus,
-                  status: "stopped",
-                });
-              } else if (data) {
-                if (data.user_id !== session.user_id) {
-                  toast.error("Access denied: Session belongs to another user");
-                }
-                console.log("AI control status:", data.status);
-                mutateAIStatus({
-                  ...aiStatus,
-                  status: data.status,
-                });
-              }
-            });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
-  }, [aiStatus?.id, session, aiStatus, mutateAIStatus]);
+    setModelId("");
+    setSelectedCheckpoint(null);
+  }, [selectedModelType, setModelId, setSelectedCheckpoint]);
 
   const startControlByAI = async () => {
     if (
@@ -221,125 +153,87 @@ export default function AIControlPage() {
     setShowCassette(true);
     const robot_serials_to_ignore = leaderArmSerialIds ?? null;
 
-    try {
-      const response = await fetchWithBaseUrl("/ai-control/start", "POST", {
-        prompt,
-        model_id: modelId,
-        speed,
-        robot_serials_to_ignore,
-        cameras_keys_mapping: cameraKeysMapping,
-        model_type: selectedModelType,
-        selected_camera_id: selectedCameraId,
-      });
+    const response = await fetchWithBaseUrl("/ai-control/start", "POST", {
+      prompt,
+      model_id: modelId,
+      speed,
+      robot_serials_to_ignore,
+      cameras_keys_mapping: cameraKeysMapping,
+      model_type: selectedModelType,
+      selected_camera_id: selectedCameraId,
+      checkpoint: selectedCheckpoint,
+    });
 
-      if (!response) {
-        setShowCassette(false);
-        mutateAIStatus({
-          ...aiStatus,
-          status: "stopped",
-        });
-        return;
-      }
+    if (!response) {
+      setShowCassette(false);
+      mutateAIStatus();
+      // Call the /ai-control/stop endpoint to reset the AI control status
+      await fetchWithBaseUrl("/ai-control/stop", "POST");
+      return;
+    }
 
-      if (response.status === "error") {
-        // We receive an error message if the control loop is already running
-        setShowCassette(true);
-        mutateAIStatus({
-          ...aiStatus,
-          id: response.ai_control_signal_id,
-          status: response.ai_control_signal_status,
-        });
-        return;
-      }
-
+    if (response.status === "error") {
+      // We receive an error message if the control loop is already running
+      setShowCassette(true);
       mutateAIStatus({
         ...aiStatus,
         id: response.ai_control_signal_id,
         status: response.ai_control_signal_status,
       });
-      console.log("AI control started successfully with id:", aiStatus?.id);
-      mutateServerStatus();
-      toast.success("Halfway there, we have started a GPU...");
-      setTimeout(() => {
-        toast.success("We are fetching your model, please wait...");
-      }, 5000);
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Network or server error";
-      toast.error(`AI start failed: ${errorMessage}`);
-      console.error("Start AI control error:", error);
-      mutateAIStatus({
-        ...aiStatus,
-        status: "stopped",
-      });
-      setShowCassette(false);
+      return;
     }
+
+    mutateAIStatus({
+      ...aiStatus,
+      id: response.ai_control_signal_id,
+      status: response.ai_control_signal_status,
+    });
+    mutateServerStatus();
   };
 
   const stopControl = async () => {
-    try {
-      const response = await fetchWithBaseUrl("/ai-control/stop", "POST");
+    const data = await fetchWithBaseUrl("/ai-control/stop", "POST");
 
-      if (!response) return;
+    if (!data) return;
 
-      mutateAIStatus({
-        ...aiStatus,
-        status: "stopped",
-      });
-      mutateServerStatus();
-      toast.success("AI control stopped successfully");
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Network or server error";
-      toast.error(`AI stop failed: ${errorMessage}`);
-      console.error("Stop AI control error:", error);
-    }
+    mutateAIStatus({
+      ...aiStatus,
+      status: "stopped",
+    });
+    mutateServerStatus();
+    toast.success("AI control stopped successfully");
   };
 
   const pauseControl = async () => {
-    try {
-      const response = await fetchWithBaseUrl("/ai-control/pause", "POST");
+    const data = await fetchWithBaseUrl("/ai-control/pause", "POST");
 
-      if (!response) return;
+    if (!data) return;
 
-      mutateAIStatus({
-        ...aiStatus,
-        status: "paused",
-      });
-      mutateServerStatus();
-      toast.success("AI control paused successfully");
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Network or server error";
-      toast.error(`AI pause failed: ${errorMessage}`);
-      console.error("Pause AI control error:", error);
-    }
+    mutateAIStatus({
+      ...aiStatus,
+      status: "paused",
+    });
+    mutateServerStatus();
+    toast.success("AI control paused successfully");
   };
 
   const resumeControl = async () => {
-    try {
-      const response = await fetchWithBaseUrl("/ai-control/resume", "POST");
+    const data = await fetchWithBaseUrl("/ai-control/resume", "POST");
 
-      if (!response) return;
+    if (!data) return;
 
-      mutateAIStatus({
-        ...aiStatus,
-        status: "running",
-      });
-      mutateServerStatus();
-      toast.success("AI control resumed successfully");
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Network or server error";
-      toast.error(`AI continue failed: ${errorMessage}`);
-      console.error("Continue AI control error:", error);
-    }
+    mutateAIStatus({
+      ...aiStatus,
+      status: "running",
+    });
+    mutateServerStatus();
+    toast.success("AI control resumed successfully");
   };
 
   return (
     <div className="container mx-auto py-8 max-w-4xl">
       <Card>
-        <CardContent className="space-y-6 pt-6">
+        <CardContent className="space-y-4 pt-6">
           <div className="flex flex-col gap-y-2">
             <div className="text-xs text-muted-foreground">
               Select model type
@@ -405,12 +299,42 @@ export default function AIControlPage() {
                     onValueChange={(option: Option) => {
                       setModelId(option.value);
                     }}
-                    placeholder="nvidia/GR00T-N1-2B"
+                    key={selectedModelType}
+                    placeholder="nvidia/GR00T-N1.5-3B"
                     className="w-full"
                     disabled={aiStatus?.status !== "stopped"}
                     emptyMessage="Make sure this is a public model available on Hugging Face."
                   />
-                  <Button variant="outline" className="cursor-pointer" asChild>
+                  {modelConfiguration?.checkpoints && (
+                    <Select
+                      value={
+                        selectedCheckpoint !== null
+                          ? selectedCheckpoint.toString()
+                          : "main"
+                      }
+                      onValueChange={(value) => {
+                        if (value === "main") {
+                          setSelectedCheckpoint(null);
+                        } else {
+                          setSelectedCheckpoint(parseInt(value, 10));
+                        }
+                        console.log("Selected checkpoint:", value);
+                      }}
+                      disabled={aiStatus?.status !== "stopped"}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select checkpoint" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modelConfiguration?.checkpoints?.map((checkpoint) => (
+                          <SelectItem key={checkpoint} value={checkpoint}>
+                            Checkpoint {checkpoint}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button variant="outline" asChild>
                     <a
                       href={
                         selectedModelType === "gr00t"
@@ -441,7 +365,7 @@ export default function AIControlPage() {
                         }}
                       >
                         <TooltipTrigger asChild>
-                          <div className="cursor-pointer flex items-center gap-2 flex-row">
+                          <div className="flex items-center gap-2 flex-row">
                             {showCamera ? (
                               <CameraOff className="mr-1 h-4 w-4" />
                             ) : (
@@ -467,13 +391,15 @@ export default function AIControlPage() {
                         selectedCameraId={selectedCameraId}
                       />
                     ) : (
-                      <CameraKeyMapper modelKeys={modelVideoKeys?.video_keys} />
+                      <CameraKeyMapper
+                        modelKeys={modelConfiguration?.video_keys}
+                      />
                     )}
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
 
-              <div className="space-y-2">
+              <div className="space-y-2 mt-2">
                 {selectedModelType == "gr00t" && <Label>Prompt</Label>}
                 {selectedModelType === "ACT_BBOX" && (
                   <Label>Object to detect</Label>
@@ -501,10 +427,10 @@ export default function AIControlPage() {
                   />
                   <Button
                     onClick={startControlByAI}
-                    className="cursor-pointer"
                     disabled={
                       aiStatus?.status !== "stopped" ||
                       !modelId.trim() ||
+                      !modelConfiguration ||
                       (!prompt.trim() &&
                         modelsThatRequirePrompt.includes(selectedModelType))
                     }
@@ -519,12 +445,16 @@ export default function AIControlPage() {
 
           {/* Cassette Player Style Control Panel */}
           {showCassette && (
-            <div className="bg-gray-100 p-6 rounded-lg shadow-inner">
+            <div className="bg-muted p-6 rounded-lg">
               <div className="flex flex-col items-center space-y-4">
                 {/* Message top of cassette */}
                 <div className="text-center mb-2">
                   <Badge variant={"outline"} className="text-sm px-3 py-1">
                     AI state: {aiStatus?.status}
+                    {aiStatus?.status === "waiting" && (
+                      // add spinner
+                      <LoaderCircle className="inline-block h-4 w-4 animate-spin ml-2" />
+                    )}
                   </Badge>
                 </div>
 
@@ -535,8 +465,8 @@ export default function AIControlPage() {
                     className={`h-16 w-16 rounded-full ${
                       aiStatus?.status === "stopped" ||
                       aiStatus?.status === "paused"
-                        ? "bg-green-600 hover:bg-green-700"
-                        : "bg-gray-400 cursor-not-allowed"
+                        ? "bg-green-500 hover:bg-green-600"
+                        : "bg-muted-foreground cursor-not-allowed"
                     }`}
                     onClick={
                       aiStatus?.status === "stopped"
@@ -576,7 +506,7 @@ export default function AIControlPage() {
                     className={`h-16 w-16 rounded-full ${
                       aiStatus?.status === "running"
                         ? "bg-amber-500 hover:bg-amber-600"
-                        : "bg-gray-400 cursor-not-allowed"
+                        : "bg-muted-foreground cursor-not-allowed"
                     }`}
                     onClick={pauseControl}
                     disabled={aiStatus?.status !== "running"}
@@ -591,8 +521,8 @@ export default function AIControlPage() {
                     variant="default"
                     className={`h-16 w-16 rounded-full ${
                       aiStatus?.status !== "stopped"
-                        ? "bg-red-600 hover:bg-red-700"
-                        : "bg-gray-400 cursor-not-allowed"
+                        ? "bg-red-500 hover:bg-red-600"
+                        : "bg-muted-foreground cursor-not-allowed"
                     }`}
                     onClick={stopControl}
                     disabled={aiStatus?.status === "stopped"}
@@ -603,7 +533,7 @@ export default function AIControlPage() {
                   </Button>
                 </div>
 
-                <div className="text-xs text-center text-gray-500 mt-2">
+                <div className="text-xs text-center mt-2 text-muted-foreground">
                   {aiStatus?.status === "stopped"
                     ? "Ready to start"
                     : aiStatus?.status === "paused"

@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.57"
+version = "0.3.79"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
@@ -10,9 +10,9 @@ dependencies = [
     "dynamixel-sdk>=3.7.31",
     "fastapi[standard]>=0.115.5",
     "loguru>=0.7.2",
-    "rich>=13.9.4",
+    "rich>=14.0.0",
     "matplotlib>=3.9.3",
-    "numpy",
+    "numpy>=1.26.4",
     "pybullet>=3.2.7",
     "pydantic>=2.10.2",
     "scipy>=1.14.1",
@@ -25,13 +25,13 @@ dependencies = [
     "pandas>=2.2",
     "tqdm>=4.67.1",
     "feetech-servo-sdk>=1.0.0",
-    "typer>=0.15.1",
+    "typer>=0.16.0",
     "websockets>=14.1",
     "huggingface-hub>=0.28.0",
     "datasets>=3.2.0",
     "sentry-sdk[fastapi]>=2.20.0",
     "posthog>=6.0.0",
-    "piper-sdk>=0.1.16",
+    "piper-sdk>=0.4.1",
     "supabase>=2.15.0",
     "zmq>=0.0.0",
     "toml>=0.10.2",
@@ -71,6 +71,7 @@ dev = [
     "pytest-dependency>=0.6.0",
     "types-python-dateutil>=2.9.0.20250516",
 ]
+rerun = ["rerun-sdk>=0.23.0"]
 
 
 [tool.uv]
@@ -78,9 +79,16 @@ default-groups = ["dev"]
 
 
 [tool.uv.sources]
+# Troubleshooting: on MacOS Silicon, you may need to compile pybullet from source.
+# If so, follow the guide in the README.md file and uncomment the line below.
+# pybullet = { path = "../bullet3", editable = true }
+
+
 # We are cloning from our fork instead of the original repo (https://github.com/Physical-Intelligence/openpi) 
 # because we had the error unknow host: github.com
 openpi-client = { git = "https://github.com/phospho-app/openpi.git", subdirectory = "packages/openpi-client", rev = "main" }
+
+# For Unitree Go2, you may install the Go2 WebRTC Connect package from source.
 # go2-webrtc-connect = { path = "../../go2_webrtc_connect", editable = true }
 
 

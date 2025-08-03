@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 import numpy as np
 from loguru import logger
@@ -11,6 +11,7 @@ from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware.base import BaseManipulator
 from phosphobot.hardware.motors.feetech import FeetechMotorsBus  # type: ignore
 from phosphobot.utils import get_resources_path
+from phosphobot.models import RobotConfigStatus
 
 
 class SO100Hardware(BaseManipulator):
@@ -104,6 +105,7 @@ class SO100Hardware(BaseManipulator):
         self.motors_bus.connect()
         self.is_connected = True
         self.init_config()
+        self._max_temperature_cache: dict = {}
 
     def disconnect(self):
         """
@@ -239,8 +241,9 @@ class SO100Hardware(BaseManipulator):
 
         values = q_target.tolist()
         motor_names = list(self.motors.keys())
+
+        # Gripper is the last parameter of q_target (last motor)
         if not enable_gripper:
-            # Gripper is the last parameter of q_target (last motor)
             values = values[:-1]
             motor_names = motor_names[:-1]
 
@@ -308,6 +311,71 @@ class SO100Hardware(BaseManipulator):
             return voltage / 10.0  # unit is 0.1V
         except Exception as e:
             logger.warning(f"Error reading motor voltage for servo {servo_id}: {e}")
+            self.update_motor_errors()
+            return None
+
+    def status(self) -> RobotConfigStatus:
+        temperature = self.current_temperature()
+        return RobotConfigStatus(
+            name=self.name,
+            device_name=getattr(self, "SERIAL_ID", None),
+            temperature=temperature,
+        )
+
+    def read_motor_temperature(
+        self, servo_id: int, **kwargs
+    ) -> tuple[float, float] | None:
+        """
+        Read the temperature of a Feetech servo.
+        """
+        if not self.is_connected:
+            return None
+        try:
+            present_temperature = self.motors_bus.read(
+                "Present_Temperature",
+                motor_names=self.servo_id_to_motor_name[servo_id],
+            )
+            if servo_id not in self._max_temperature_cache:
+                max_temp = self.motors_bus.read(
+                    "Max_Temperature_Limit",
+                    motor_names=self.servo_id_to_motor_name[servo_id],
+                )
+                self._max_temperature_cache[servo_id] = float(max_temp.item())
+            self.motor_communication_errors = 0
+
+            return (
+                float(present_temperature.item()),
+                self._max_temperature_cache[servo_id],
+            )  # unit is Celsius
+        except Exception as e:
+            logger.warning(f"Error reading motor temperature for servo {servo_id}: {e}")
+            self.update_motor_errors()
+            return None
+
+    def write_group_motor_maximum_temperature(
+        self, maximum_temperature_target: List[int], **kwargs
+    ) -> None:
+        """
+        Write the maximum temperature of all motors of a robot.
+        """
+        if not self.is_connected:
+            return None
+        values = maximum_temperature_target
+        motor_names = list(self.motors.keys())
+        try:
+            self.motors_bus.write(
+                "Lock", values=[0] * len(motor_names), motor_names=motor_names
+            )
+            self.motors_bus.write(
+                "Max_Temperature_Limit", values=values, motor_names=motor_names
+            )
+            self.motors_bus.write(
+                "Lock", values=[1] * len(motor_names), motor_names=motor_names
+            )
+            self._max_temperature_cache = {}
+            self.motor_communication_errors = 0
+        except Exception as e:
+            logger.warning(f"Error writing motor temperature: {e}")
             self.update_motor_errors()
             return None
 
@@ -424,6 +492,17 @@ class SO100Hardware(BaseManipulator):
                 return (
                     "error",
                     "Calibration failed: joint positions are NaN. Please check that every wire of the robot is plugged correctly.",
+                )
+
+            # If any of the joint positions are the same as the offsets, we cannot continue
+            if np.any(
+                np.array(self.config.servos_calibration_position)
+                == np.array(self.config.servos_offsets)
+            ):
+                self.calibration_current_step = 0
+                return (
+                    "error",
+                    "Calibration failed: joint positions are the same as the offsets. Please check that every wire of the robot is plugged correctly.",
                 )
 
             self.config.servos_offsets_signs = np.sign(

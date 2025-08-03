@@ -32,7 +32,7 @@ while True:
     # Get the robot state
     state = httpx.post(f"{PHOSPHOBOT_API_URL}/joints/read").json()
 
-    inputs = {"state": np.array(state["angles_rad"]), "images": np.array(images)}
+    inputs = {"state": np.array(state["angles"]), "images": np.array(images)}
 
     # Go through the model
     actions = model(inputs)
@@ -40,7 +40,7 @@ while True:
     for action in actions:
         # Send the new joint postion to the robot
         httpx.post(
-            f"{PHOSPHOBOT_API_URL}/joints/write", json={"angles": action.tolist()}
+            f"{PHOSPHOBOT_API_URL}/joints/write", json={"angles": action[0].tolist()}
         )
         # Wait to respect frequency control (30 Hz)
         time.sleep(1 / 30)

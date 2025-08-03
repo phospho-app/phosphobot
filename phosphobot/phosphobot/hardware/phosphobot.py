@@ -5,7 +5,7 @@ import numpy as np
 from phosphobot.hardware.base import BaseRobot
 from loguru import logger
 
-from phosphobot.models.robot import RobotConfigStatus
+from phosphobot.models import BaseRobotConfig, RobotConfigStatus
 
 
 class RemotePhosphobot(BaseRobot):
@@ -14,6 +14,7 @@ class RemotePhosphobot(BaseRobot):
     """
 
     name = "phosphobot"
+    _config: BaseRobotConfig | None = None
 
     def __init__(self, ip: str, port: int, robot_id: int, **kwargs):
         """
@@ -119,15 +120,19 @@ class RemotePhosphobot(BaseRobot):
         return state, joints_position
 
     def set_motors_positions(
-        self, positions: np.ndarray, enable_gripper: bool = False
+        self, q_target_rad: np.ndarray, enable_gripper: bool = False
     ) -> None:
         """
         Set the motor positions of the robot.
         """
 
+        if not enable_gripper:
+            # Exclude gripper joint if not enabled
+            q_target_rad = q_target_rad[:-1]
+
         self.client.post(
             "/joints/write",
-            json={"angles": positions.tolist(), "unit": "rad"},
+            json={"angles": q_target_rad.tolist(), "unit": "rad"},
             params={"robot_id": self.robot_id},
         )
 
@@ -435,3 +440,71 @@ class RemotePhosphobot(BaseRobot):
         """
         # TODO: Implement this method to set PID gains for the motors
         pass
+
+    @property
+    def config(self) -> BaseRobotConfig | None:
+        """
+        Get the configuration of the robot.
+
+        Returns:
+            BaseRobotConfig: Configuration of the robot
+        """
+        if self._config is not None:
+            return self._config
+
+        # Call the /robot/config endpoint to get the robot configuration
+        response = self.client.post(
+            "/robot/config",
+            params={"robot_id": self.robot_id},
+        )
+
+        config_response = response.json()
+        if config_response.get("config") is None:
+            logger.warning("Robot configuration is not set. Run the calibration first.")
+            return None
+        self._config = BaseRobotConfig.model_validate(config_response["config"])
+        self.GRIPPER_JOINT_INDEX = config_response.get("gripper_joint_index", -1)
+        self.SERVO_IDS = config_response.get("servo_ids", list(range(1, 7)))
+        self.RESOLUTION = config_response.get("resolution", 4096)
+        return self._config
+
+    def _rad_to_open_command(self, radians: float) -> float:
+        """
+        Convert radians to open command for the gripper.
+        """
+        if self.config is None:
+            raise ValueError(
+                "Robot configuration is not set. Run the calibration first."
+            )
+        open_position = self.config.servos_calibration_position[-1]
+        close_position = self.config.servos_offsets[-1]
+        open_command = (
+            self._radians_to_motor_units(
+                radians=radians, servo_id=self.GRIPPER_JOINT_INDEX
+            )
+            - close_position
+        ) / (open_position - close_position)
+        return np.clip(open_command, 0, 1)
+
+    def _radians_to_motor_units(self, radians: float, servo_id: int) -> int:
+        """
+        Convert a single q position from radians to motor discrete units (0 -> RESOLUTION)
+
+        Note: The result can exceed the resolution of the motor, in the case of a continuous rotation motor.
+        """
+        offset_id = self.SERVO_IDS.index(servo_id)
+        if self.config is None:
+            raise ValueError(
+                "Robot configuration is not set. Run the calibration first."
+            )
+
+        x = (
+            int(
+                radians
+                * self.config.servos_offsets_signs[offset_id]
+                * ((self.RESOLUTION - 1) / (2 * np.pi))
+            )
+            + self.config.servos_offsets[offset_id]
+        )
+
+        return int(x)

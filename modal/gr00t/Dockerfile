@@ -13,7 +13,7 @@ RUN apt update && \
     apt-get update && \
     apt-get install -y libgl1-mesa-glx git libvulkan-dev \
     zip unzip wget curl git git-lfs build-essential cmake \
-    vim less sudo htop ca-certificates man tmux ffmpeg \
+    vim less sudo htop ca-certificates man tmux ffmpeg tensorrt \
     # Add OpenCV system dependencies
     libglib2.0-0 libsm6 libxext6 libxrender-dev
 
@@ -22,11 +22,11 @@ RUN pip install gpustat wandb==0.19.0
 # Create and set working directory
 WORKDIR /workspace
 # Cloning the repo. By default, this is cached. Change the echo here to force a rebuild. 
-RUN echo "v12"
+RUN echo "v13"
 RUN git clone https://github.com/phospho-app/Isaac-GR00T.git /workspace
 
 # Install dependencies from pyproject.toml
-RUN pip install -e .
+RUN pip install -e .[base]
 # There's a conflict in the native python, so we have to resolve it by
 RUN pip uninstall -y transformer-engine
 RUN pip install flash_attn==2.7.1.post4 -U --force-reinstall

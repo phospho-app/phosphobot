@@ -1,62 +1,41 @@
 {
-    "name": "so-100",
-    "servos_voltage": 12.0,
-    "servos_offsets": [
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0
-    ],
-    "servos_calibration_position": [
-        1018.0,
-        3177.0,
-        938.0,
-        955.0,
-        3001.0,
-        3489.0
-    ],
-    "servos_offsets_signs": [
-        -1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
-    ],
-    "pid_gains": [
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.1,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.1,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 16.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        }
-    ],
-    "gripping_threshold": 150,
-    "non_gripping_threshold": 10
+  "name": "so-100",
+  "servos_voltage": 12.0,
+  "servos_offsets": [2048.0, 2048.0, 2048.0, 2048.0, 2048.0, 2048.0],
+  "servos_calibration_position": [1018.0, 3177.0, 938.0, 955.0, 3001.0, 3489.0],
+  "servos_offsets_signs": [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+  "pid_gains": [
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.1,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.1,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 16.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    }
+  ],
+  "gripping_threshold": 80,
+  "non_gripping_threshold": 10
 }

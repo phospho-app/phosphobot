@@ -5,12 +5,17 @@ from typing import List, Literal, Optional, Union
 
 import numpy as np
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from serial.tools.list_ports_common import ListPortInfo
 
 from phosphobot.utils import get_home_app_path
 
 DEFAULT_FILE_ENCODING = "utf-8"
+
+
+class Temperature(BaseModel):
+    current: float | None
+    max: float | None
 
 
 class RobotConfigStatus(BaseModel):
@@ -21,6 +26,7 @@ class RobotConfigStatus(BaseModel):
     name: str
     robot_type: Literal["manipulator", "mobile", "other"] = "manipulator"
     device_name: str | None
+    temperature: List[Temperature] | None = None
 
 
 class BaseRobot(ABC):
@@ -185,8 +191,39 @@ class BaseRobotConfig(BaseModel):
     pid_gains: List[BaseRobotPIDGains] = Field(default_factory=list)
 
     # Torque value to consider that an object is gripped
-    gripping_threshold: int = 0
-    non_gripping_threshold: int = 0  # noise
+    gripping_threshold: int = Field(
+        default=80,
+        gt=0,
+        description="Torque threshold to consider an object gripped. This will block the gripper position and prevent it from moving further.",
+    )
+    non_gripping_threshold: int = Field(
+        default=10,
+        gt=0,
+        description="Torque threshold to consider an object not gripped. This will allow the gripper to move freely.",
+    )
+
+    @model_validator(mode="after")
+    def validate_servos_arrays(self) -> "BaseRobotConfig":
+        """Validate that servos_offsets and servos_calibration_position have same length
+        and different values at each position"""
+        if len(self.servos_offsets) != len(self.servos_calibration_position):
+            raise ValueError(
+                f"servos_offsets (length {len(self.servos_offsets)}) and "
+                f"servos_calibration_position (length {len(self.servos_calibration_position)}) "
+                f"must have the same length"
+            )
+
+        # Check that corresponding elements are different
+        for i, (offset, cal_pos) in enumerate(
+            zip(self.servos_offsets, self.servos_calibration_position)
+        ):
+            if offset == cal_pos:
+                raise ValueError(
+                    f"servos_offsets[{i}] ({offset}) must be different from "
+                    f"servos_calibration_position[{i}] ({cal_pos})"
+                )
+
+        return self
 
     @classmethod
     def from_json(cls, filepath: str) -> Union["BaseRobotConfig", None]:
@@ -248,3 +285,16 @@ class BaseRobotConfig(BaseModel):
         logger.info(f"Saving configuration to {filepath}")
         self.to_json(filepath)
         return filepath
+
+
+class RobotConfigResponse(BaseModel):
+    """
+    Response model for robot configuration.
+    """
+
+    robot_id: int
+    name: str
+    config: BaseRobotConfig | None
+    gripper_joint_index: int | None = None
+    servo_ids: List[int] = Field(default_factory=lambda: list(range(1, 7)))
+    resolution: int = 4096

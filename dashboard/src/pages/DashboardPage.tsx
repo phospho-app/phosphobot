@@ -1,4 +1,4 @@
-import PhosphoProCallout from "@/components/callout/phospho-pro";
+import { PhosphoProCallout } from "@/components/callout/phospho-pro";
 import { AIControlDisclaimer } from "@/components/common/ai-control-disclaimer";
 import { HuggingFaceKeyInput } from "@/components/common/huggingface-key";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -217,11 +217,7 @@ function AIModelsCard() {
             >
               Cancel
             </Button>
-            <Button
-              variant="default"
-              onClick={onProceed}
-              className=" cursor-pointer"
-            >
+            <Button variant="default" onClick={onProceed}>
               I Understand the Risks
             </Button>
           </DialogFooter>
@@ -231,7 +227,7 @@ function AIModelsCard() {
   );
 }
 
-export default function DashboardPage() {
+export function DashboardPage() {
   const navigate = useNavigate();
   const { proUser } = useAuth();
   const { data: serverStatus, isLoading } = useSWR<ServerStatus>(
@@ -277,7 +273,7 @@ export default function DashboardPage() {
               <div className="flex-1/2">
                 <Button
                   variant="default"
-                  className="w-full h-full cursor-pointer"
+                  className="w-full h-full"
                   disabled={!robotConnected}
                   onClick={() => {
                     if (!robotConnected) return;

@@ -1,70 +1,48 @@
 {
-    "name": "wx-250s",
-    "servos_voltage": 12.0,
-    "servos_offsets": [
-        2059.0,
-        1885.0,
-        2171.0,
-        2075.0,
-        2086.0,
-        2019.0,
-        177.0
-    ],
-    "servos_calibration_position": [
-        3064.0,
-        3079.0,
-        1005.0,
-        3036.0,
-        3050.0,
-        1022.0,
-        1179.0
-    ],
-    "servos_offsets_signs": [
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        -1.0
-    ],
-    "pid_gains": [
-        {
-            "p_gain": 600.0,
-            "i_gain": 0.0,
-            "d_gain": 200.0
-        },
-        {
-            "p_gain": 600.0,
-            "i_gain": 0.0,
-            "d_gain": 200.0
-        },
-        {
-            "p_gain": 600.0,
-            "i_gain": 0.0,
-            "d_gain": 200.0
-        },
-        {
-            "p_gain": 450.0,
-            "i_gain": 0.0,
-            "d_gain": 200.0
-        },
-        {
-            "p_gain": 450.0,
-            "i_gain": 0.0,
-            "d_gain": 150.0
-        },
-        {
-            "p_gain": 450.0,
-            "i_gain": 0.0,
-            "d_gain": 150.0
-        },
-        {
-            "p_gain": 300.0,
-            "i_gain": 0.0,
-            "d_gain": 100.0
-        }
-    ],
-    "gripping_threshold": 150,
-    "non_gripping_threshold": 20
+  "name": "wx-250s",
+  "servos_voltage": 12.0,
+  "servos_offsets": [2059.0, 1885.0, 2171.0, 2075.0, 2086.0, 2019.0, 177.0],
+  "servos_calibration_position": [
+    3064.0, 3079.0, 1005.0, 3036.0, 3050.0, 1022.0, 1179.0
+  ],
+  "servos_offsets_signs": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0],
+  "pid_gains": [
+    {
+      "p_gain": 600.0,
+      "i_gain": 0.0,
+      "d_gain": 200.0
+    },
+    {
+      "p_gain": 600.0,
+      "i_gain": 0.0,
+      "d_gain": 200.0
+    },
+    {
+      "p_gain": 600.0,
+      "i_gain": 0.0,
+      "d_gain": 200.0
+    },
+    {
+      "p_gain": 450.0,
+      "i_gain": 0.0,
+      "d_gain": 200.0
+    },
+    {
+      "p_gain": 450.0,
+      "i_gain": 0.0,
+      "d_gain": 150.0
+    },
+    {
+      "p_gain": 450.0,
+      "i_gain": 0.0,
+      "d_gain": 150.0
+    },
+    {
+      "p_gain": 300.0,
+      "i_gain": 0.0,
+      "d_gain": 100.0
+    }
+  ],
+  "gripping_threshold": 80,
+  "non_gripping_threshold": 20
 }

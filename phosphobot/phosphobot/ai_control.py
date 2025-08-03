@@ -114,6 +114,7 @@ async def setup_ai_control(
     verify_cameras: bool = True,
     checkpoint: int | None = None,
 ) -> tuple[Gr00tN1 | ACT | SmolVLA, Gr00tSpawnConfig | ACTSpawnConfig | SmolVLASpawnConfig, ServerInfoResponse]:
+
     """
     Setup the AI control loop by spawning the inference server and returning the model.
     This function is called when the user clicks on the "Start AI Control" button in the UI.
@@ -178,6 +179,7 @@ async def setup_ai_control(
             url=f"{tokens.MODAL_API_URL}/spawn",
             json={
                 "model_id": model_id,
+                "checkpoint": checkpoint,
                 "model_type": model_type,
                 "timeout": 15 * 60,
                 "model_specifics": clean,
@@ -231,6 +233,6 @@ async def setup_ai_control(
                 detail="No robot connected. Exiting AI control loop.",
             )
         for robot in robots:
-            await robot.move_to_initial_position()
+            await robot.move_to_initial_position(open_gripper=True)
 
     return model, model_spawn_config, server_info

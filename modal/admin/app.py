@@ -10,7 +10,7 @@ import sentry_sdk
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 import modal
 import supabase
@@ -45,6 +45,7 @@ admin_image = (
         "zmq>=0.0.0",
         "av>=14.2.1",
         "sentry-sdk",
+        "stripe",
     )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
@@ -66,6 +67,8 @@ MINUTES = 60  # seconds
 BASE_TRAININGS_LIMIT = 2
 WHITELISTED_TRAININGS_LIMIT = 8
 PRO_TRAININGS_LIMIT = 8
+# Max allowed time for a server to cold start before we assume it failed
+TIMEOUT_SERVER_NOT_STARTED = 3 * MINUTES
 
 app = modal.App("admin-api")
 
@@ -261,6 +264,7 @@ class StartServerRequest(BaseModel):
     timeout: Annotated[int, Field(default=15 * MINUTES, ge=0)]
     region: Optional[Literal["us-east", "us-west", "eu", "ap", "anywhere"]] = None
     model_specifics: Gr00tSpawnConfig | ACTSpawnConfig
+    checkpoint: Optional[int] = None
 
     @field_validator("timeout", mode="before")
     def clamp_timeout(cls, v: int) -> int:
@@ -283,16 +287,22 @@ class StartServerRequest(BaseModel):
 
 
 class ServerInfo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     server_id: int
     url: str
     port: int
     tcp_socket: tuple[str, int]
     model_id: str
     timeout: int
+    modal_function_call_id: str
 
 
 class SupabaseServersTable(BaseModel):
-    status: Literal["running", "stopped"]
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    status: Literal["requested", "running", "stopped", "failed"]
     host: str | None = None
     port: int | None = None
     user_id: str
@@ -300,8 +310,13 @@ class SupabaseServersTable(BaseModel):
     model_type: Literal["gr00t", "ACT", "ACT_BBOX"]
     timeout: int | None = None
     requested_at: Optional[str] = None
+    started_at: Optional[str] = None
     terminated_at: Optional[str] = None
     region: Optional[str] = None
+    checkpoint: Optional[int] = None
+    tcp_port: Optional[int] = None
+    url: Optional[str] = None
+    modal_function_call_id: Optional[str] = None
 
 
 class ModelInfo(BaseModel):
@@ -350,7 +365,11 @@ class PublicUser(BaseModel):
 @app.function(
     image=admin_image,
     allow_concurrent_inputs=1000,
-    secrets=[modal.Secret.from_name("huggingface"), modal.Secret.from_name("supabase")],
+    secrets=[
+        modal.Secret.from_name("huggingface"),
+        modal.Secret.from_name("supabase"),
+        modal.Secret.from_name("stripe"),
+    ],
     # We keep at least one instance of the app running
     min_containers=1,
 )
@@ -361,6 +380,10 @@ def fastapi_app():
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
+    from fastapi.exceptions import HTTPException
+    import stripe
+
+    stripe.api_key = os.environ["STRIPE_API_KEY"]
 
     web_app = FastAPI()
     supabase_client = supabase.Client(
@@ -480,6 +503,52 @@ def fastapi_app():
         else:
             return ModelStatusResponse(model_url=model_url, model_status="not-found")
 
+    async def _stop_servers_of_user(user_id: str):
+        """
+        Stop all the currently running servers for the user
+        This is used by the auth middleware to stop servers when the user logs out
+
+        Return: the list of server IDs that were stopped
+        """
+        logger.debug(f"Stopping servers for user {user_id}")
+        active_servers = (
+            supabase_client.table("servers")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "running")
+            .execute()
+        )
+
+        if not active_servers.data:
+            logger.info("No active servers to cancel")
+            return []
+
+        # Update the status of all active servers to "stopped"
+        supabase_client.table("servers").update(
+            {
+                "status": "stopped",
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).in_("id", [server["id"] for server in active_servers.data]).execute()
+
+        # Cancel the modal function calls for each server
+        for server in active_servers.data:
+            server_id = server["id"]
+            try:
+                logger.debug(
+                    f"Cancelling Modal function {server['modal_function_call_id']} for server {server_id}"
+                )
+                modal_function = modal.FunctionCall.from_id(
+                    server["modal_function_call_id"]
+                )
+                # Stop the container
+                modal_function.cancel(terminate_containers=True)
+            except Exception as e:
+                logger.error(f"Error stopping server {server_id}: {e}")
+
+        # Return the list of server IDs that were stopped
+        return [server["id"] for server in active_servers.data]
+
     @web_app.post("/spawn")
     async def spawn_server_for_model(
         raw_request: Request,
@@ -491,93 +560,34 @@ def fastapi_app():
         """
         # See https://modal.com/docs/guide/webhooks#token-based-authentication for token-based auth
 
-        try:
-            user = supabase_client.auth.get_user(jwt=token.credentials)
-            logger.debug(f"User: {user.user.email} ({user.user.id}) spawning server")
-        except Exception as e:
-            logger.error(f"Error getting user: {e}")
+        user = supabase_client.auth.get_user(jwt=token.credentials)
+        if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        logger.debug(f"User: {user.user.email} ({user.user.id}) spawning server")
+        # Stop any existing servers for the user
+        await _stop_servers_of_user(user_id=user.user.id)
 
-        active_servers = (
+        new_server = (
             supabase_client.table("servers")
-            .select("*")
-            .eq("user_id", user.user.id)
-            .eq("status", "running")
-            .eq("model_id", request.model_id)
-            .is_("terminated_at", "null")
-            .limit(1)
+            .insert(
+                {
+                    "status": "requested",
+                    "user_id": user.user.id,
+                    "model_id": request.model_id,
+                    "model_type": request.model_type,
+                    "timeout": request.timeout,
+                    "region": request.region,
+                    "checkpoint": request.checkpoint,
+                    "requested_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             .execute()
         )
-
-        if active_servers.data:
-            # Return the existing server info into a ServerInfo object
-            # if it's the same model_id
-            row = active_servers.data[0]
-
-            if row["status"] == "running" and row["region"] is None:
-                # If it has been more than 5 minutes, we can assume there was an error
-                # and we can restart the server
-                if (
-                    datetime.now(timezone.utc)
-                    - datetime.fromisoformat(row["requested_at"])
-                ).total_seconds() > 5 * MINUTES:
-                    # Restart the server
-                    supabase_client.table("servers").update(
-                        {
-                            "status": "stopped",
-                            "terminated_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                    ).eq("id", row["id"]).execute()
-                    # Kill the modal function
-                    # TODO: we can't do that because the modal_function_call_id is not stored.
-                    # try:
-                    #     modal.FunctionCall.from_id(
-                    #         row["modal_function_call_id"]
-                    #     ).cancel()
-                    # except Exception as e:
-                    #     logger.error(f"Error cancelling modal function: {e}")
-                    #     # We can ignore this error, the server will be restarted anyway
-
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="There has been an error with the server. Please try again and reach out on Discord if it persists.",
-                    )
-
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Server is warming up... please wait and try again",
-                )
-            logger.info(
-                f"User {user.user.email} already has an active server for model {request.model_id}"
-            )
-            server_info = ServerInfo(
-                server_id=row["id"],
-                url=row["url"],
-                port=row["port"],  # This is the port on which we start ACT
-                tcp_socket=(str(row["host"]), int(row["tcp_port"])),
-                model_id=row["model_id"],
-                timeout=row["timeout"],
-            )
-            return server_info
-
-        server_data = SupabaseServersTable(
-            status="running",
-            user_id=user.user.id,
-            model_id=request.model_id,
-            model_type=request.model_type,
-            timeout=request.timeout,
-            region=request.region,
-        )
-        row = (
-            supabase_client.table("servers")
-            .insert(server_data.model_dump(exclude_unset=True))
-            .execute()
-        )
-        server_id = row.data[0]["id"]
+        server_id = new_server.data[0]["id"]
 
         # Determine region from IP if not specified
         if request.region is None:
@@ -605,8 +615,9 @@ def fastapi_app():
             # Get the function to serve from the zone to function mapping
             serve = MODEL_TO_ZONE[request.model_type][request.region]
             # Spawn the serve function with the queue
-            serve.spawn(
+            spawn_response = serve.spawn(
                 model_id=request.model_id,
+                checkpoint=request.checkpoint,
                 server_id=server_id,
                 timeout=request.timeout,
                 model_specifics=request.model_specifics,
@@ -617,20 +628,31 @@ def fastapi_app():
                 paligemma_warmup.spawn()
 
             # Get the tunnel information from the queue
-            result = q.get()
+            result: dict | None = q.get()
+            if result is None:
+                logger.error("No tunnel info received from queue")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to start server, no tunnel info received",
+                )
 
-        server_info = ServerInfo.model_validate(result)
+        server_info = ServerInfo(
+            modal_function_call_id=spawn_response.object_id, **result
+        )
 
         try:
-            supabase_data = {
+            update_payload = {
                 "url": server_info.url,
                 "port": server_info.port,
                 "host": server_info.tcp_socket[0],
                 "tcp_port": server_info.tcp_socket[1],
                 "region": request.region,
                 "model_id": request.model_id,
+                "status": "running",
+                "modal_function_call_id": server_info.modal_function_call_id,
+                "started_at": datetime.now(timezone.utc).isoformat(),
             }
-            supabase_client.table("servers").update(supabase_data).eq(
+            supabase_client.table("servers").update(update_payload).eq(
                 "id", server_id
             ).execute()
         except Exception as e:
@@ -640,8 +662,30 @@ def fastapi_app():
                 detail="Error inserting server data into database",
             )
 
-        logger.success(f"Server started: {server_info.model_dump()}")
+        logger.success(f"Server started:\n{server_info.model_dump_json(indent=4)}")
         return server_info
+
+    @web_app.post("/stop")
+    async def stop_inference(
+        token: HTTPAuthorizationCredentials = Depends(auth_scheme),
+    ):
+        """
+        Stop all the currently running servers for the user
+        """
+        user = supabase_client.auth.get_user(jwt=token.credentials)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        logger.debug(f"User: {user.user.email} ({user.user.id}) cancelling servers")
+
+        stopped_servers = await _stop_servers_of_user(user_id=user.user.id)
+        if not stopped_servers:
+            return {"detail": "No active servers to cancel"}
+
+        return {"detail": "All active servers cancelled successfully"}
 
     @web_app.post("/train")
     async def start_training(
@@ -649,16 +693,14 @@ def fastapi_app():
         token: HTTPAuthorizationCredentials = Depends(auth_scheme),
     ):
         # TODO: factorize using dependency injection
-        try:
-            user = supabase_client.auth.get_user(jwt=token.credentials)
-            logger.debug(f"User: {user.user.email} ({user.user.id}) spawning server")
-        except Exception as e:
-            logger.error(f"Error getting user: {e}")
+        user = supabase_client.auth.get_user(jwt=token.credentials)
+        if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        logger.debug(f"User: {user.user.email} ({user.user.id}) spawning server")
 
         active_trainings = (
             supabase_client.table("trainings")
@@ -784,18 +826,14 @@ def fastapi_app():
         """
         Cancel a training job by ID.
         """
-        try:
-            user = supabase_client.auth.get_user(jwt=token.credentials)
-            logger.debug(
-                f"User: {user.user.email} ({user.user.id}) cancelling training"
-            )
-        except Exception as e:
-            logger.error(f"Error getting user: {e}")
+        user = supabase_client.auth.get_user(jwt=token.credentials)
+        if user is None:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        logger.debug(f"User: {user.user.email} ({user.user.id}) cancelling training")
 
         # Check if the training exists and belongs to the user
         training = (
@@ -809,7 +847,7 @@ def fastapi_app():
 
         if not training.data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail="Training not found or does not belong to the user",
             )
 
@@ -860,6 +898,178 @@ def fastapi_app():
             public_user_data = PublicUser.model_validate(user_data.data[0])
 
         return public_user_data
+
+    @web_app.post("/stripe/webhooks")
+    async def stripe_webhook(request: Request):
+        """
+        Stripe webhook endpoint
+        TODO: return a 200 status directly for Stripe and update the database asynchronously
+        """
+        # Get the request body
+        payload = await request.body()
+        sig_header = request.headers.get("stripe-signature")
+        event = None
+
+        # Get the webhook secret from environment
+        endpoint_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+        except ValueError as e:
+            # Invalid payload
+            raise HTTPException(status_code=400, detail="Invalid payload")
+        except stripe.SignatureVerificationError as e:
+            # Invalid signature
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+        if (
+            event["type"] == "checkout.session.completed"
+            or event["type"] == "checkout.session.async_payment_succeeded"
+        ):
+            # Retrieve the Checkout Session from the API with line_items expanded and the metadata
+            checkout_session = stripe.checkout.Session.retrieve(
+                event["data"]["object"]["id"],
+                expand=["line_items"],
+            )
+            logger.info(f"Checkout session: {checkout_session}")
+
+            # Check if this is a subscription checkout session
+            if not checkout_session.get("subscription"):
+                logger.info(
+                    "Checkout session does not have a subscription, ignoring event"
+                )
+                return {"status": "ok"}
+
+            # Extract metadata fields
+            # metadata is a dict or None, so we need to handle the case where it is None
+            metadata = checkout_session.metadata or {}
+            supabase_user_email = metadata.get("supabase_user_email")
+            supabase_user_id = metadata.get("supabase_user_id")
+
+            if not supabase_user_email or not supabase_user_id:
+                logger.error(
+                    "Checkout session metadata is missing supabase_user_email or supabase_user_id"
+                )
+                return {"status": "ok"}
+
+            if checkout_session.payment_status != "unpaid":
+                # Check if the user already exists in the users table.
+                # This is not the default supabase auth.users table, but the public.users table
+                user_data = (
+                    supabase_client.table("users")
+                    .select("*")
+                    .eq("id", supabase_user_id)
+                    .execute()
+                )
+                # If the user already exists, update the plan to pro, add the stripe customer id and the subscription id
+                if user_data.data:
+                    # User exists, update the plan to pro
+                    supabase_client.table("users").update(
+                        {
+                            "plan": "pro",
+                            "stripe_customer_id": checkout_session.customer,
+                            "stripe_subscription_id": checkout_session.subscription,
+                        }
+                    ).eq("id", supabase_user_id).execute()
+                    logger.info(f"Updated user {supabase_user_email} to pro")
+                else:
+                    # In the users table, create a new user with the plan to pro, add the stripe customer id and the subscription id
+                    supabase_client.table("users").insert(
+                        {
+                            "id": supabase_user_id,
+                            "plan": "pro",
+                            "stripe_customer_id": checkout_session.customer,
+                            "stripe_subscription_id": checkout_session.subscription,
+                        }
+                    ).execute()
+                    logger.info(f"Created new user {supabase_user_email} with plan pro")
+            else:
+                logger.warning(
+                    "Received a checkout session with payment status unpaid!"
+                )
+
+        elif event["type"] == "customer.subscription.deleted":
+            # Handle subscription cancellation/deletion
+            subscription = event["data"]["object"]
+            subscription_id = subscription["id"]
+            customer_id = subscription["customer"]
+            logger.error(
+                f"Processing subscription deletion for subscription_id: {subscription_id} customer_id: {customer_id}"
+            )
+
+            # Find the user by stripe_subscription_id
+            user_data = (
+                supabase_client.table("users")
+                .select("*")
+                .eq("stripe_subscription_id", subscription_id)
+                .execute()
+            )
+
+            if user_data.data:
+                user = user_data.data[0]
+                user_id = user["id"]
+
+                # Update the user's plan back to free and clear subscription data
+                supabase_client.table("users").update({"plan": "free"}).eq(
+                    "id", user_id
+                ).execute()
+
+                logger.info(
+                    f"Updated user {user_id} plan to free due to subscription cancellation"
+                )
+            else:
+                logger.warning(f"No user found with subscription_id: {subscription_id}")
+
+        elif event["type"] == "customer.subscription.updated":
+            # Handle subscription updates (e.g., plan changes, status changes)
+            subscription = event["data"]["object"]
+            subscription_id = subscription["id"]
+            subscription_status = subscription["status"]
+            customer_id = subscription["customer"]
+            logger.error(
+                f"Processing subscription update for subscription_id: {subscription_id}, new status: {subscription_status}"
+            )
+
+            # Find the user by customer ID
+            user_data = (
+                supabase_client.table("users")
+                .select("*")
+                .eq("stripe_customer_id", customer_id)
+                .execute()
+            )
+
+            if user_data.data:
+                user = user_data.data[0]
+                user_id = user["id"]
+
+                # Handle different subscription statuses
+                if subscription_status in ["canceled", "unpaid", "past_due"]:
+                    # Downgrade to free plan
+                    supabase_client.table("users").update(
+                        {
+                            "plan": "free",
+                        }
+                    ).eq("id", user_id).execute()
+
+                    logger.info(
+                        f"Updated user {user_id} plan to free due to subscription status: {subscription_status}"
+                    )
+
+                elif subscription_status == "active":
+                    # Ensure user has pro plan
+                    supabase_client.table("users").update(
+                        {
+                            "plan": "pro",
+                        }
+                    ).eq("id", user_id).execute()
+
+                    logger.info(
+                        f"Updated user {user_id} plan to pro due to active subscription"
+                    )
+            else:
+                logger.error(f"No user found with subscription_id: {subscription_id}")
+
+        return {"status": "ok"}
 
     # Required by modal
     return web_app

@@ -16,7 +16,14 @@ from .lerobot_dataset import (
     LeRobotDataset,
     LeRobotEpisode,
 )
-from .robot import BaseRobot, BaseRobotConfig, BaseRobotPIDGains, RobotConfigStatus
+from .robot import (
+    BaseRobot,
+    BaseRobotConfig,
+    BaseRobotPIDGains,
+    RobotConfigStatus,
+    Temperature,
+    RobotConfigResponse,
+)
 
 
 class ServerStatus(BaseModel):
@@ -58,6 +65,14 @@ class RobotStatus(BaseModel):
     is_object_gripped: bool | None = None
     is_object_gripped_source: Literal["left", "right"] | None = None
     nb_actions_received: int
+
+
+class EndEffectorReadRequest(BaseModel):
+    sync: bool = Field(
+        False,
+        description="If True, the simulation will first read the motor positions, synchronize them with the simulated robot, and then return the end effector position."
+        + "Useful for measurements, however it will take more time to respond.",
+    )
 
 
 class EndEffectorPosition(BaseModel):
@@ -356,6 +371,28 @@ class VoltageReadResponse(BaseModel):
     )
 
 
+class TemperatureReadResponse(BaseModel):
+    """
+    Response to read the Temperature of the robot.
+    """
+
+    current_max_Temperature: List[Temperature] | None = Field(
+        ...,
+        description=" A list of Temperature objects, one for each joint. If the robot is not connected, this will be None.",
+    )
+
+
+class TemperatureWriteRequest(BaseModel):
+    """
+    Request to set the maximum Temperature for joints of the robot.
+    """
+
+    maximum_temperature: List[int] = Field(
+        ...,
+        description="A list with the maximum temperature of each joint. The length of the list must be equal to the number of joints.",
+    )
+
+
 class InfoResponse(BaseModel):
     """
     Response to the /dataset/info endpoint.
@@ -514,6 +551,10 @@ class RecordingStartRequest(BaseModel):
         None,
         description="List of robot serial ids to ignore. If set to None, records all available robots.",
         examples=[["/dev/ttyUSB0"]],
+    )
+    enable_rerun_visualization: bool = Field(
+        False,
+        description="Enable rerun",
     )
 
 
@@ -678,7 +719,7 @@ class DeleteEpisodeRequest(BaseModel):
     episode_id: int
 
 
-class ModelVideoKeysRequest(BaseModel):
+class ModelConfigurationRequest(BaseModel):
     model_id: str = Field(
         ...,
         description="Hugging Face model id to use",
@@ -692,11 +733,16 @@ class ModelVideoKeysRequest(BaseModel):
     )
 
 
-class ModelVideoKeysResponse(BaseModel):
+class ModelConfigurationResponse(BaseModel):
     video_keys: List[str] = Field(
         ...,
         description="List of video keys for the model. These are the keys used to access the videos in the dataset.",
         examples=[["video_0", "video_1"]],
+    )
+    checkpoints: List[str] = Field(
+        default_factory=list,
+        description="List of available checkpoints for the model.",
+        examples=[["100", "500"]],
     )
 
 
@@ -836,11 +882,10 @@ class StartAIControlRequest(BaseModel):
         True,
         description="Whether to verify the setup before starting the AI control. If False, skips the verification step.",
     )
-
-
-class AIStatusRequest(BaseModel):
-    user_id: str = Field(
-        ..., description="User ID of the user who started the AI control"
+    checkpoint: int | None = Field(
+        None,
+        description="Checkpoint to use for the model. If None, uses the latest checkpoint.",
+        examples=[500],
     )
 
 
@@ -888,6 +933,11 @@ class ResetPasswordRequest(BaseModel):
 class LoginCredentialsRequest(BaseModel):
     email: str
     password: str
+
+
+class VerifyEmailCodeRequest(BaseModel):
+    email: str
+    token: str
 
 
 class ConfirmRequest(BaseModel):
@@ -943,12 +993,12 @@ class RobotPairRequest(BaseModel):
     Represents a pair of robots for leader-follower control.
     """
 
+    model_config = ConfigDict(extra="ignore")
+
     leader_id: int | None = Field(..., description="Serial number of the leader robot")
     follower_id: int | None = Field(
         ..., description="Serial number of the follower robot"
     )
-
-    model_config = ConfigDict(extra="ignore")
 
 
 class StartLeaderArmControlRequest(BaseModel):

@@ -10,12 +10,12 @@ all: prod
 # Run the server for prod settings (able to connect to the Meta Quest). If npm is not installed, it will skip the build step.
 prod:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
-	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless
+	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
 # Same as prod, but with the simulation GUI (useful when adding new robots to test)
 prod_gui:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
-	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=gui
+	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=gui --no-crash-telemetry
 
 # Run the server for prod settings (able to connect to the Meta Quest) but with telemetry disabled. If npm is not installed, it will skip the build step.
 prod_no_telemetry:

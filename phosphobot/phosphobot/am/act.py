@@ -10,12 +10,13 @@ import numpy as np
 from loguru import logger
 from fastapi import HTTPException
 from huggingface_hub import HfApi
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from phosphobot.am.base import ActionModel
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.hardware.base import BaseManipulator
+from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
 
@@ -143,6 +144,18 @@ class HuggingFaceModelValidator(BaseModel):
         extra = "allow"
 
 
+class HuggingFaceAugmentedValidator(HuggingFaceModelValidator):
+    """
+    This model extends HuggingFaceModelValidator to include additional fields
+    for augmented models, such as available checkpoints.
+    """
+
+    checkpoints: List[str] = Field(
+        default_factory=list,
+        description="List of available checkpoints for the model.",
+    )
+
+
 class ACTSpawnConfig(BaseModel):
     state_key: str
     state_size: list[int]
@@ -150,7 +163,7 @@ class ACTSpawnConfig(BaseModel):
     env_size: Optional[list[int]] = None
     video_keys: list[str]
     video_size: list[int]
-    hf_model_config: HuggingFaceModelValidator
+    hf_model_config: HuggingFaceAugmentedValidator
 
 
 class RetryError(Exception):
@@ -231,7 +244,7 @@ class ACT(ActionModel):
         return actions
 
     @classmethod
-    def fetch_config(cls, model_id: str) -> HuggingFaceModelValidator:
+    def fetch_config(cls, model_id: str) -> HuggingFaceAugmentedValidator:
         """
         Fetch the model configuration from HuggingFace.
         """
@@ -240,6 +253,11 @@ class ACT(ActionModel):
             model_info = api.model_info(model_id)
             if model_info is None:
                 raise Exception(f"Model {model_id} not found on HuggingFace.")
+            # Fetch the available revisions
+            branches = []
+            refs = api.list_repo_refs(model_id)
+            for branch in refs.branches:
+                branches.append(branch.name)
             config_path = api.hf_hub_download(
                 repo_id=model_id,
                 filename="config.json",
@@ -250,18 +268,25 @@ class ACT(ActionModel):
             hf_model_config = HuggingFaceModelValidator.model_validate_json(
                 config_content
             )
+            hf_augmented_config = HuggingFaceAugmentedValidator(
+                **hf_model_config.model_dump(),
+                checkpoints=branches,
+            )
         except Exception as e:
             raise Exception(f"Error loading model {model_id} from HuggingFace: {e}")
-        return hf_model_config
+        return hf_augmented_config
 
     @classmethod
-    def fetch_and_get_video_keys(cls, model_id: str) -> list[str]:
+    def fetch_and_get_configuration(cls, model_id: str) -> ModelConfigurationResponse:
         """
         Fetch the model configuration from HuggingFace and return the video keys.
         """
         hf_model_config = cls.fetch_config(model_id=model_id)
-        video_keys = hf_model_config.input_features.video_keys
-        return video_keys
+        configuration = ModelConfigurationResponse(
+            video_keys=hf_model_config.input_features.video_keys,
+            checkpoints=hf_model_config.checkpoints,
+        )
+        return configuration
 
     @classmethod
     def fetch_spawn_config(cls, model_id: str) -> ACTSpawnConfig:
@@ -414,7 +439,7 @@ class ACT(ActionModel):
         unit: Literal["rad", "degrees"] = "rad"
         config = model_spawn_config.hf_model_config
 
-        db_state_updated = False
+        signal_marked_as_started = False
         actions_queue: deque = deque([])
 
         while control_signal.is_in_loop():
@@ -504,17 +529,15 @@ class ACT(ActionModel):
                 control_signal.stop()
                 break
 
-            if not db_state_updated:
+            if not signal_marked_as_started:
                 control_signal.set_running()
-                db_state_updated = True
-                # Small delay to let the UI update
-                await asyncio.sleep(1)
-
-            # Early stop
-            if not control_signal.is_in_loop():
-                break
+                signal_marked_as_started = True
 
             for action in actions:
+                # Early stop
+                if not control_signal.is_in_loop():
+                    break
+
                 if unit == "rad":
                     if action.max() > 2 * np.pi:
                         logger.warning("Actions are in degrees. Converting to radians.")

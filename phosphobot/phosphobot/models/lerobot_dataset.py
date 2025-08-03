@@ -80,7 +80,7 @@ class LeRobotDataset(BaseDataset):
         codec: VideoCodecs | None = None,
         target_size: tuple[int, int] | None = None,
         fps: int | None = None,
-        secondary_camera_key_names: List[str] | None = None,
+        all_camera_key_names: List[str] | None = None,
         force: bool = False,
     ):
         """Loads existing meta files or initializes new ones if they don't exist."""
@@ -93,7 +93,7 @@ class LeRobotDataset(BaseDataset):
                 robots=robots,  # Passed for initialization if file doesn't exist
                 codec=codec,
                 target_size=target_size,
-                secondary_camera_key_names=secondary_camera_key_names,
+                all_camera_key_names=all_camera_key_names,
                 fps=fps,
                 format=self.format_version,
             )
@@ -205,8 +205,9 @@ class LeRobotDataset(BaseDataset):
         If update_hub is True, also delete the episode data from the Hugging Face repository
         """
 
+        episode_data_path = self.get_episode_data_path(episode_id)
         episode_to_delete = LeRobotEpisode.from_parquet(
-            self.get_episode_data_path(episode_id),
+            episode_data_path=episode_data_path,
             format=self.format_version,
             dataset_path=self.data_folder_full_path,
         )
@@ -224,8 +225,9 @@ class LeRobotDataset(BaseDataset):
             update_hub = False
 
         logger.info(
-            f"Deleting episode {episode_id} from dataset {self.dataset_name} with episode format {self.format_version}"
+            f"Deleting episode {episode_to_delete.episode_index} {episode_data_path} from dataset {self.dataset_name} with episode format {self.format_version}"
         )
+        logger.debug(f"update_hub: {update_hub}")
 
         # Start loading current meta data
         info_model = InfoModel.from_json(meta_folder_path=self.meta_folder_full_path)
@@ -269,7 +271,7 @@ class LeRobotDataset(BaseDataset):
         logger.info("Info model updated")
 
         # Delete the actual episode files (parquet and mp4 video)
-        episode_to_delete.delete(update_hub=update_hub)
+        episode_to_delete.delete(update_hub=update_hub, repo_id=self.repo_id)
 
         # Rename the remaining episodes to keep the numbering consistent
         # be sure to reindex AFTER deleting the episode data
@@ -1221,7 +1223,7 @@ class LeRobotEpisode(BaseEpisode):
         freq: int,
         target_size: tuple[int, int],  # width, height
         instruction: str | None,
-        secondary_camera_key_names: List[str],
+        all_camera_key_names: List[str],
         **kwargs,
     ) -> "LeRobotEpisode":
         # Ensure meta models are loaded/initialized in the dataset manager
@@ -1230,7 +1232,7 @@ class LeRobotEpisode(BaseEpisode):
             codec=codec,
             target_size=target_size,  # Used by InfoModel if creating new
             fps=freq,
-            secondary_camera_key_names=secondary_camera_key_names,
+            all_camera_key_names=all_camera_key_names,
         )
 
         # These must not be None after the above call
@@ -1398,6 +1400,37 @@ class LeRobotEpisode(BaseEpisode):
             self.dataset_manager.info_model is not None
         )  # Should have been initialized
 
+        # Sanity check: make sure the actions and observations don't have any null or nan values
+        for step in self.steps:
+            if step.action is None or np.isnan(step.action).any():
+                # Attempt to repair the action by using the observation's joints_position
+                if (
+                    step.observation.joints_position is not None
+                    and not np.isnan(step.observation.joints_position).any()
+                ):
+                    logger.warning(
+                        f"Action in episode {self.episode_index} is None or NaN, automatically filling in the value."
+                    )
+                    step.action = step.observation.joints_position
+                else:
+                    raise ValueError(
+                        f"Step action in episode {self.episode_index} is None or NaN"
+                    )
+            if (
+                step.observation.joints_position is None
+                or np.isnan(step.observation.joints_position).any()
+            ):
+                # Attempt to repair the observation by using the action
+                if step.action is not None and not np.isnan(step.action).any():
+                    logger.warning(
+                        f"Observation in episode {self.episode_index} is None or NaN, automatically filling in the value."
+                    )
+                    step.observation.joints_position = step.action
+                else:
+                    raise ValueError(
+                        f"Step observation in episode {self.episode_index} is None or NaN"
+                    )
+
         # 1. Save Parquet data for the episode
         lerobot_parquet_model = self._convert_to_le_robot_episode_model()
         lerobot_parquet_model.to_parquet(str(self._parquet_path))
@@ -1502,6 +1535,7 @@ class LeRobotEpisode(BaseEpisode):
         Load an episode data file. We only extract the information from the parquet data file.
         TODO(adle): Add more information in the Episode when loading from parquet data file from metafiles and videos
         """
+        logger.debug(f"Loading episode from {episode_data_path} with format {format}")
         # Check that the file exists
         if not os.path.exists(episode_data_path):
             raise FileNotFoundError(f"Episode file {episode_data_path} not found.")
@@ -1604,16 +1638,21 @@ class LeRobotEpisode(BaseEpisode):
 
         # Delete the parquet file
         try:
+            logger.debug(f"Deleting parquet file {self._parquet_path}")
             os.remove(self._parquet_path)
         except FileNotFoundError:
             logger.warning(
                 f"Parquet file {self._parquet_path} not found. Skipping deletion."
             )
 
+        logger.debug(f"Episode deletion repo_id: {repo_id}, update_hub: {update_hub}")
         if update_hub and repo_id is not None:
             # In the huggingface dataset, we need to pass the relative path.
             relative_episode_path = (
                 f"data/chunk-000/episode_{self.episode_index:06d}.parquet"
+            )
+            logger.debug(
+                f"Deleting parquet file {relative_episode_path} from Hugging Face repo {repo_id}"
             )
             delete_file(
                 repo_id=repo_id,
@@ -1628,16 +1667,20 @@ class LeRobotEpisode(BaseEpisode):
                 if "image" not in camera_key:
                     continue
                 try:
-                    os.remove(self._get_video_path(camera_key))
+                    video_path = self._get_video_path(camera_key)
+                    logger.debug(f"Deleting video file {video_path}")
+                    os.remove(video_path)
                 except FileNotFoundError:
                     logger.warning(
                         f"Video file {self._get_video_path(camera_key)} not found. Skipping deletion."
                     )
                 if update_hub and repo_id is not None:
+                    path_in_repo = f"videos/chunk-000/{camera_key}/episode_{self.episode_index:06d}.mp4"
+                    logger.debug(
+                        f"Deleting video file {path_in_repo} from Hugging Face repo {repo_id}"
+                    )
                     delete_file(
-                        repo_id=repo_id,
-                        path_in_repo=f"videos/chunk-000/{camera_key}/episode_{self.episode_index:06d}.mp4",
-                        repo_type="dataset",
+                        repo_id=repo_id, path_in_repo=path_in_repo, repo_type="dataset"
                     )
         else:
             logger.warning(
@@ -2410,6 +2453,15 @@ class Stats(BaseModel):
         """
         Compute the mean and std from the rolling sum and square sum for images.
         """
+
+        if self.count == 0:
+            logger.error("Count is 0. Cannot compute mean and std for images.")
+            return
+
+        if self.sum is None or self.square_sum is None:
+            # We have already computed the mean and std
+            return
+
         self.mean = self.sum / self.count
         self.std = np.sqrt(self.square_sum / self.count - self.mean**2)
         # We want .tolist() to yield [[[mean_r, mean_g, mean_b]]] and not [mean_r, mean_g, mean_b]
@@ -3390,7 +3442,7 @@ class InfoModel(BaseModel):
         codec: VideoCodecs | None = None,
         robots: List[BaseRobot] | None = None,
         target_size: tuple[int, int] | None = None,
-        secondary_camera_key_names: List[str] | None = None,
+        all_camera_key_names: List[str] | None = None,
         format: Literal["lerobot_v2", "lerobot_v2.1"] = "lerobot_v2.1",
     ) -> "InfoModel":
         """
@@ -3414,7 +3466,7 @@ class InfoModel(BaseModel):
                 raise ValueError("No fps provided to create the InfoModel")
             if target_size is None:
                 raise ValueError("No target_size provided to create the InfoModel")
-            if secondary_camera_key_names is None:
+            if all_camera_key_names is None:
                 raise ValueError(
                     "No secondary_camera_ids provided to create the InfoModel"
                 )
@@ -3425,17 +3477,9 @@ class InfoModel(BaseModel):
 
             info_model.fps = fps
 
-            info_model.features.observation_images["observation.images.main"] = (
-                VideoFeatureDetails(
-                    shape=video_shape,
-                    names=["height", "width", "channel"],
-                    info=video_info,
-                )
-            )
-
-            # Add secondary cameras
-            for secondary_camera_key_name in secondary_camera_key_names:
-                info_model.features.observation_images[secondary_camera_key_name] = (
+            # Add cameras
+            for camera_key_name in all_camera_key_names:
+                info_model.features.observation_images[camera_key_name] = (
                     VideoFeatureDetails(
                         shape=video_shape,
                         names=["height", "width", "channel"],

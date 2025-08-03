@@ -255,7 +255,7 @@ export function Recorder({
               <Button
                 onClick={handleRecordStart}
                 variant="outline"
-                className="flex flex-row items-center justify-center cursor-pointer"
+                className="flex flex-row items-center justify-center"
                 disabled={isPlaying || isRecording}
               >
                 <div className="size-4 rounded-full bg-red-500" />
@@ -272,7 +272,7 @@ export function Recorder({
               <Button
                 onClick={handleRecordStop}
                 variant="outline"
-                className="flex flex-row items-center justify-center cursor-pointer"
+                className="flex flex-row items-center justify-center"
                 disabled={!isRecording}
               >
                 <Square className="size-4 mr-1" />
@@ -289,7 +289,7 @@ export function Recorder({
               <Button
                 onClick={handleRecordDiscard}
                 variant="outline"
-                className="flex flex-row items-center justify-center cursor-pointer"
+                className="flex flex-row items-center justify-center"
                 disabled={!isRecording}
               >
                 <X className="size-4 mr-1" />
@@ -306,7 +306,7 @@ export function Recorder({
               <Button
                 onClick={handleRecordPlay}
                 variant="outline"
-                className="flex flex-row items-center justify-center cursor-pointer"
+                className="flex flex-row items-center justify-center"
                 disabled={
                   isRecording ||
                   isPlaying ||
@@ -332,7 +332,7 @@ export function Recorder({
                 <PopoverTrigger asChild>
                   <Button
                     variant="default"
-                    className="flex flex-row items-center justify-center cursor-pointer"
+                    className="flex flex-row items-center justify-center"
                   >
                     <Settings className="size-4" />
                   </Button>
@@ -438,7 +438,6 @@ export function Recorder({
                     variant="outline"
                     size="sm"
                     onClick={handleSettingsClick}
-                    className="cursor-pointer"
                   >
                     <Ellipsis className="size-4 mr-2" />
                     More Settings
@@ -446,7 +445,7 @@ export function Recorder({
                   <Button
                     onClick={handleSaveSettings}
                     size="sm"
-                    className="cursor-pointer flex-grow"
+                    className="flex-grow"
                   >
                     <Save className="size-4 mr-2" />
                     Save

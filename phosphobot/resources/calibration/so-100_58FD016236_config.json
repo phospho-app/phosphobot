@@ -1,62 +1,41 @@
 {
-    "name": "so-100",
-    "servos_voltage": 12.0,
-    "servos_offsets": [
-        2051.0,
-        2048.0,
-        2048.0,
-        2048.0,
-        2047.0,
-        2047.0
-    ],
-    "servos_calibration_position": [
-        822.0,
-        3238.0,
-        862.0,
-        1189.0,
-        3074.0,
-        3496.0
-    ],
-    "servos_offsets_signs": [
-        -1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
-    ],
-    "pid_gains": [
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.1,
-            "d_gain": 15.0
-        },
-        {
-            "p_gain": 6.0,
-            "i_gain": 0.1,
-            "d_gain": 15.0
-        },
-        {
-            "p_gain": 10.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 15.0,
-            "i_gain": 0.0,
-            "d_gain": 30.0
-        },
-        {
-            "p_gain": 10.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        }
-    ],
-    "gripping_threshold": 100,
-    "non_gripping_threshold": 10
+  "name": "so-100",
+  "servos_voltage": 12.0,
+  "servos_offsets": [2051.0, 2048.0, 2048.0, 2048.0, 2047.0, 2047.0],
+  "servos_calibration_position": [822.0, 3238.0, 862.0, 1189.0, 3074.0, 3496.0],
+  "servos_offsets_signs": [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+  "pid_gains": [
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.1,
+      "d_gain": 15.0
+    },
+    {
+      "p_gain": 6.0,
+      "i_gain": 0.1,
+      "d_gain": 15.0
+    },
+    {
+      "p_gain": 10.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 15.0,
+      "i_gain": 0.0,
+      "d_gain": 30.0
+    },
+    {
+      "p_gain": 10.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    }
+  ],
+  "gripping_threshold": 80,
+  "non_gripping_threshold": 10
 }

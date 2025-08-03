@@ -1,3 +1,6 @@
 [submodule "docs"]
 	path = docs
 	url = https://github.com/phospho-app/docs.git
+[submodule "bullet3"]
+	path = bullet3
+	url = https://github.com/phospho-app/bullet3.git

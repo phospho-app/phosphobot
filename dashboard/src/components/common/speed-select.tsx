@@ -90,7 +90,7 @@ export function SpeedSelect({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="flex items-center gap-2 cursor-pointer"
+          className="flex items-center gap-2"
           disabled={disabled}
         >
           <Gauge className="h-4 w-4" />

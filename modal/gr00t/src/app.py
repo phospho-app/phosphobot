@@ -3,14 +3,14 @@ import threading
 from pathlib import Path
 
 import sentry_sdk
+from fastapi import HTTPException
 from huggingface_hub import HfApi
+from huggingface_hub.errors import HFValidationError
 from loguru import logger
 
 import modal
-
 from phosphobot.am.base import TrainingParamsGr00T
 from phosphobot.am.gr00t import Gr00tSpawnConfig
-
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -25,18 +25,21 @@ phosphobot_dir = (
 )
 gr00t_image = (
     modal.Image.from_dockerfile("Dockerfile")
+    .pip_install_from_pyproject(
+        pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
+    )
     .pip_install(
         "sentry-sdk",
         "loguru",
         "pydantic==2.10.6",
         "numpydantic==1.6.7",
+        "numpy==1.26.4",
         "supabase",
         "httpx>=0.28.1",
         "pydantic>=2.10.5",
         "fastparquet>=2024.11.0",
         "ffmpeg-python>=0.2.0",
         "loguru>=0.7.3",
-        "numpy<2",
         "opencv-python-headless>=4.0",
         "rich>=13.9.4",
         "pandas-stubs>=2.2.2.240807",
@@ -50,19 +53,6 @@ gr00t_image = (
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
-    .pip_install_from_pyproject(
-        pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
-    )
-    # .add_local_dir(
-    #     local_path=phosphobot_dir,
-    #     remote_path="/root/src/phosphobot",
-    #     ignore=lambda p: ".venv" in str(p),
-    # )
-    # .add_local_dir(
-    #     local_path=phosphobot_dir / "phosphobot",
-    #     remote_path="/root/src/phosphobot",
-    #     ignore=lambda p: ".venv" in str(p),
-    # )
     .add_local_python_source("phosphobot")
 )
 
@@ -75,7 +65,7 @@ MINUTES = 60  # seconds
 HOURS = 60 * MINUTES  # seconds
 FUNCTION_IMAGE = gr00t_image
 FUNCTION_GPU: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
-FUNCTION_TIMEOUT = 8 * MINUTES  # 2 extra minutes for the policy to load
+FUNCTION_TIMEOUT = 8 * MINUTES
 TRAINING_TIMEOUT = 12 * HOURS
 
 app = modal.App("gr00t-server")
@@ -86,6 +76,7 @@ def serve(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = FUNCTION_TIMEOUT,
     q=None,
 ):
@@ -101,6 +92,49 @@ def serve(
     from huggingface_hub import snapshot_download  # type: ignore
 
     from supabase import Client, create_client
+
+    def _update_server_status(
+        supabase_client: Client,
+        server_id: int,
+        status: str,
+    ):
+        logger.info(f"Updating server status to {status} for server_id {server_id}")
+        if status == "failed":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        elif status == "stopped":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        else:
+            raise NotImplementedError(
+                f"Status '{status}' not implemented for server update"
+            )
 
     # Start timer
     start_time = time.time()
@@ -143,12 +177,36 @@ def serve(
 
         # Check if we have the model in the volume
         model_path = f"/data/models/{model_id}"
+        if checkpoint is not None:
+            model_path = f"/data/models/{model_id}/{checkpoint}"
+
         # Check if this path exists in the container
         if not os.path.exists(model_path):
             logger.warning(
                 f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
             )
-            model_path = model_id
+            # Downloading the model from HF
+            try:
+                # Don't download the whole repo, just the checkpoint
+                if checkpoint is not None:
+                    model_path = snapshot_download(
+                        repo_id=model_id,
+                        repo_type="model",
+                        revision=str(checkpoint),
+                        local_dir=model_path,
+                    )
+                else:
+                    model_path = snapshot_download(
+                        repo_id=model_id,
+                        repo_type="model",
+                        revision="main",
+                        local_dir=model_path,
+                    )
+
+            except Exception as e:
+                logger.info(
+                    f"Failed to download model {model_id} from HuggingFace: {e}"
+                )
         else:
             logger.info(f"⛏️ Model {model_id} found in Modal volume")
 
@@ -188,51 +246,7 @@ def serve(
                 f"Server instanciated (not started) after {time_to_load} seconds"
             )
 
-            def run_server():
-                server.run()
-
-            server_thread = threading.Thread(target=run_server)
-            server_thread.start()
-
-            # We need to make sure the server terminates before the timeout
-            # Otherwise we can't update the database
-            server_thread.join(timeout=timeout - time_to_load - 10)
-
-            if server_thread.is_alive():
-                logger.warning(
-                    f"Timeout reached after {timeout} seconds, stopping server..."
-                )
-                server.running = False
-
-                # Give it a moment to shut down gracefully
-                server_thread.join(timeout=5)
-            else:
-                logger.info("Server exited before timeout")
-        finally:
-            try:
-                # Update the server status in the database
-                update_data_servers = {
-                    "status": "stopped",
-                    "terminated_at": datetime.now(timezone.utc).isoformat(),
-                }
-                supabase_client.table("servers").update(update_data_servers).eq(
-                    "id", server_id
-                ).execute()
-                logger.info(f"Updated server info in database: {update_data_servers}")
-
-                # Update the server status in the database
-                update_data_ai_control = {
-                    "status": "stopped",
-                    "ended_at": datetime.now(timezone.utc).isoformat(),
-                }
-                supabase_client.table("ai_control_sessions").update(
-                    update_data_ai_control
-                ).eq("server_id", server_id).execute()
-                logger.info(
-                    f"Updated AI control session info in database: {update_data_ai_control}"
-                )
-            except Exception as e:
-                logger.error(f"Failed to update server info in database: {e}")
+            server.run()
 
             # Push the model to the volume if it is not already there
             if not os.path.exists(f"/data/models/{model_id}"):
@@ -243,6 +257,22 @@ def serve(
                 shutil.copytree(local_model_path, f"/data/models/{model_id}")
                 gr00t_volume.commit()
                 logger.info(f"Model {model_id} pushed to Modal volume")
+
+        except Exception as e:
+            logger.error(f"Server error: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Server error: {e}",
+            )
+        finally:
+            # Stop the server and update the status
+            server._kill_server()
+            # Clean up resources
+            if hasattr(server, "context"):
+                server.context.destroy(linger=0)
+            if hasattr(server, "socket"):
+                server.socket.close()
 
 
 @app.function(
@@ -261,6 +291,7 @@ def serve_eu(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = 5 * MINUTES,
     q=None,
 ):
@@ -269,6 +300,7 @@ def serve_eu(
         model_id,
         server_id,
         model_specifics,
+        checkpoint,
         timeout,
         q,
     )
@@ -290,6 +322,7 @@ def serve_us_west(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = 5 * MINUTES,
     q=None,
 ):
@@ -298,6 +331,7 @@ def serve_us_west(
         model_id,
         server_id,
         model_specifics,
+        checkpoint,
         timeout,
         q,
     )
@@ -319,6 +353,7 @@ def serve_us_east(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = 5 * MINUTES,
     q=None,
 ):
@@ -327,6 +362,7 @@ def serve_us_east(
         model_id,
         server_id,
         model_specifics,
+        checkpoint,
         timeout,
         q,
     )
@@ -348,6 +384,7 @@ def serve_ap(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = 5 * MINUTES,
     q=None,
 ):
@@ -356,6 +393,7 @@ def serve_ap(
         model_id,
         server_id,
         model_specifics,
+        checkpoint,
         timeout,
         q,
     )
@@ -375,6 +413,7 @@ def serve_anywhere(
     model_id: str,
     server_id: int,
     model_specifics: Gr00tSpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = 5 * MINUTES,
     q=None,
 ):
@@ -387,6 +426,7 @@ def serve_anywhere(
         model_id,
         server_id,
         model_specifics,
+        checkpoint,
         timeout,
         q,
     )
@@ -405,7 +445,7 @@ def _upload_partial_checkpoint_gr00t(
     to the Hugging Face Hub model repo. Fails safely if no checkpoints
     are found or an upload error occurs.
     """
-    api = HfApi(token=hf_token)
+    hf_api = HfApi(token=hf_token)
     od = Path(output_dir)
 
     # Find checkpoint-* directories
@@ -440,7 +480,7 @@ def _upload_partial_checkpoint_gr00t(
         rel_path = file.relative_to(od)
         try:
             logger.debug(f"→ uploading {file} as {rel_path}")
-            api.upload_file(
+            hf_api.upload_file(
                 repo_id=hf_model_name,
                 repo_type="model",
                 path_or_fileobj=str(file),
@@ -460,8 +500,8 @@ def _upload_partial_checkpoint_gr00t(
 @app.function(
     image=FUNCTION_IMAGE,
     gpu="A100-80GB",
-    # 10 extra minutes to make sure the rest of the pipeline is done
-    timeout=TRAINING_TIMEOUT + 10 * MINUTES,
+    # 15 extra minutes to make sure the rest of the pipeline is done
+    timeout=TRAINING_TIMEOUT + 15 * MINUTES,
     # Added for debugging
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
@@ -497,7 +537,9 @@ def train(  # All these args should be verified in phosphobot
     if hf_token is None:
         raise ValueError("HF_TOKEN is not set")
 
-    logger.info(f"🚀 Training {dataset_name} with id {training_id}")
+    logger.info(
+        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
+    )
 
     try:
         predictor.predict(
@@ -530,14 +572,26 @@ def train(  # All these args should be verified in phosphobot
         )
         _upload_partial_checkpoint_gr00t(model_name, hf_token)
         raise e
-
-    except Exception as e:
-        logger.error(f"🚨 Training {training_id} for {dataset_name} failed: {e}")
-        terminated_at = datetime.now(timezone.utc).isoformat()
-
+    except HFValidationError as e:
+        logger.warning(f"Validation error during training: {e}")
         # Update the training status in Supabase
         supabase_client.table("trainings").update(
-            {"status": "failed", "terminated_at": terminated_at}
+            {
+                "status": "failed",
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
         ).eq("id", training_id).execute()
-
+        raise HTTPException(
+            status_code=400,
+            detail=f"HuggingFace validation error: {e}",
+        )
+    except Exception as e:
+        logger.error(f"🚨 Gr00t training {training_id} for {dataset_name} failed: {e}")
+        # Update the training status in Supabase
+        supabase_client.table("trainings").update(
+            {
+                "status": "failed",
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", training_id).execute()
         raise e

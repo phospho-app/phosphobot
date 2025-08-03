@@ -131,8 +131,8 @@ const formatJsonDisplay = (jsonString: string) => {
         {Object.entries(obj).map(([key, value]) => (
           <div key={key} className="mb-1">
             <span className="font-semibold text-green-500">{key}</span>
-            <span className="text-gray-600">: </span>
-            <span className="text-gray-800">
+            <span className="text-muted-foreground">: </span>
+            <span className="text-primary">
               {typeof value === "object"
                 ? JSON.stringify(value, null, 2)
                 : String(value)}
@@ -158,7 +158,7 @@ interface TrainingInfoResponse {
   training_body: Record<string, unknown>;
 }
 
-export default function AITrainingPage() {
+export function AITrainingPage() {
   const selectedDataset = useGlobalStore((state) => state.selectedDataset);
   const setSelectedDataset = useGlobalStore(
     (state) => state.setSelectedDataset,
@@ -221,6 +221,7 @@ export default function AITrainingPage() {
     const [, datasetName] = dataset.split("/");
 
     // Fetch whoami to get the username
+    let middlePart = "";
     try {
       const result = await fetchWithBaseUrl(
         "/admin/huggingface/whoami",
@@ -229,16 +230,25 @@ export default function AITrainingPage() {
       // Check the status from the whoami response
       if (result.status === "success" && result.username) {
         // Include username in the model name if status is success
-        return `phospho-app/${result.username}-${selectedModelType}-${datasetName}-${randomChars}`;
+        middlePart = `${result.username}-${selectedModelType}-${datasetName}`;
       } else {
         // Fallback without username if status is not success
-        return `phospho-app/${selectedModelType}-${datasetName}-${randomChars}`;
+        middlePart = `${selectedModelType}-${datasetName}`;
       }
     } catch (error) {
       console.error("Error fetching whoami:", error);
       // Fallback without username in case of error
-      return `phospho-app/${selectedModelType}-${datasetName}-${randomChars}`;
+      middlePart = `${selectedModelType}-${datasetName}`;
     }
+    // Ensure total model name doesn't exceed 96 characters
+    // "phospho-app/" = 13 chars, "-" + randomChars = 11 chars, so middlePart max = 96 - 13 - 11 = 72
+    const maxMiddleLength = 72;
+    if (middlePart.length > maxMiddleLength) {
+      middlePart = middlePart.substring(0, maxMiddleLength);
+    }
+
+    const modelName = `phospho-app/${middlePart}-${randomChars}`;
+    return modelName;
   };
 
   const handleTrainModel = async () => {
@@ -438,18 +448,18 @@ export default function AITrainingPage() {
                 </div>
               )}
               <div className="text-xs text-muted-foreground mt-4">
-                Dataset info:
+                Training parameters:
               </div>
               <div className="text-sm text-muted-foreground mt-2">
                 {isDatasetInfoLoading && (
                   <div className="flex flex-row items-center">
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Loading dataset info...
+                    Loading training parameters...
                   </div>
                 )}
                 {datasetInfoResponse?.status == "ok" &&
                   !isDatasetInfoLoading && (
-                    <div className="bg-gray-100 p-4 rounded-md w-full h-64">
+                    <div className="bg-muted p-4 rounded-lg w-full h-64">
                       <pre className="font-mono text-sm whitespace-pre-wrap">
                         {editableJson ? (
                           <JsonEditor

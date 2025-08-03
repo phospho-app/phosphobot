@@ -268,7 +268,6 @@ export function TopBar() {
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
-                className="cursor-pointer"
                 onClick={() => {
                   window.location.href = "/sign-in";
                 }}
@@ -277,7 +276,6 @@ export function TopBar() {
               </Button>
               <Button
                 variant="default"
-                className="cursor-pointer"
                 onClick={() => {
                   window.location.href = "/sign-up";
                 }}

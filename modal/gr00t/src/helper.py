@@ -88,6 +88,7 @@ class Predictor:
         batch_size: int | None = None,
         epochs: int = 20,
         learning_rate: float = 0.0002,
+        save_steps: int = 20_000,
         validation_dataset_name: str | None = None,
     ):
         """Run a single prediction on the model"""
@@ -114,8 +115,8 @@ class Predictor:
 
             # Download info.json file and determine appropriate batch size
             if batch_size is None:
-                api = HfApi(token=hf_token)
-                info_file_path = api.hf_hub_download(
+                hf_api = HfApi(token=hf_token)
+                info_file_path = hf_api.hf_hub_download(
                     repo_id=dataset_repo_id,
                     repo_type="dataset",
                     filename="meta/info.json",
@@ -130,14 +131,13 @@ class Predictor:
                     // validated_info_model.total_episodes
                 )
                 # This is a heuristic to determine the batch size, it is set for an A100 GPU
-                batch_size = 110 // number_of_cameras - 3 * number_of_cameras
+                batch_size = max(110 // number_of_cameras - 3 * number_of_cameras, 1)
                 logger.info(
                     f"Batch size not provided. Using default batch size of {batch_size}."
                 )
 
             # Handle the validation datase
 
-            ###
             training_params = TrainingParamsGr00T(
                 batch_size=batch_size,
                 epochs=epochs,
@@ -154,6 +154,7 @@ class Predictor:
                 ),
                 # model_name=hf_model_name,
                 path_to_gr00t_repo=".",
+                save_steps=save_steps,
             )
             config = Gr00tTrainerConfig(
                 dataset_name=dataset_repo_id,
@@ -202,8 +203,8 @@ class Predictor:
                 epochs=epochs,
                 return_readme_as_bytes=True,
             )
-            api = HfApi(token=hf_token)
-            api.upload_file(
+            hf_api = HfApi(token=hf_token)
+            hf_api.upload_file(
                 repo_type="model",
                 path_or_fileobj=readme,
                 path_in_repo="README.md",

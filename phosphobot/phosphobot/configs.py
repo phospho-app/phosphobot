@@ -50,13 +50,15 @@ class Configuration(BaseModel):
     ENABLE_CAMERAS: bool = True
     ENABLE_CAN: bool = True  # Enable CAN scanning
     # Enable crash reporting and usage telemetry
-    TELEMETRY: bool = False
+    CRASH_TELEMETRY: bool = False
+    USAGE_TELEMETRY: bool = False
 
     # How simulation should be run
     SIM_MODE: SimulationMode = SimulationMode.headless
     # Only simulation: Only use the simulation
     ONLY_SIMULATION: bool = False
     SIMULATE_CAMERAS: bool = False
+    MAX_OPENCV_INDEX: int = 10
 
     # HF token
     HF_TOKEN_VALID: bool = False

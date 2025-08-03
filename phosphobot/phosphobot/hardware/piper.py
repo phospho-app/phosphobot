@@ -174,7 +174,7 @@ class PiperHardware(BaseManipulator):
     ) -> Union[BaseRobotConfig, None]:
         return BaseRobotConfig(
             name=self.name,
-            servos_voltage=1,
+            servos_voltage=12.0,
             servos_offsets=[0] * len(self.SERVO_IDS),
             servos_calibration_position=[0] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
@@ -201,8 +201,6 @@ class PiperHardware(BaseManipulator):
             servos_offsets=[0] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
             servos_calibration_position=[0] * len(self.SERVO_IDS),
-            gripping_threshold=0,
-            non_gripping_threshold=0,
         )
 
     def enable_torque(self):
@@ -285,7 +283,7 @@ class PiperHardware(BaseManipulator):
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
                 max_limit = self.piper_limits_degrees[i + 1]["max_angle_limit"] * 1000
                 joints[i] = np.clip(joint, min_limit, max_limit)
-        
+
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
         )

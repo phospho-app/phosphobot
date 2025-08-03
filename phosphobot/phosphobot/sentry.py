@@ -1,12 +1,12 @@
 import sentry_sdk
 
 from phosphobot._version import __version__
-from phosphobot.telemetry import TELEMETRY
+from phosphobot.configs import config
 from phosphobot.utils import get_tokens
 
 
 def init_sentry():
-    if not TELEMETRY:
+    if not config.CRASH_TELEMETRY:
         return
 
     tokens = get_tokens()
@@ -23,7 +23,7 @@ def init_sentry():
 
 
 def add_email_to_sentry(email: str) -> None:
-    if not TELEMETRY:
+    if not config.CRASH_TELEMETRY:
         return
 
     if not email:

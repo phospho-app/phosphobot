@@ -1,13 +1,12 @@
-### This file is a copy of our script to compute meta files for a dataset
-
 import json
 import os
 import shutil
 from copy import deepcopy
 from math import ceil
 from pathlib import Path
-from typing import Optional, Tuple, Dict
+from typing import Optional, Dict
 
+import av
 import cv2
 import einops
 import numpy as np
@@ -32,6 +31,18 @@ act_volume = modal.Volume.from_name("act")
 MIN_NUMBER_OF_BBOXES = 10
 # Maximum batch size to use for PaliGemma (can cause OOM otherwise)
 MAX_BATCH_SIZE = 140
+
+
+class NotEnoughBBoxesError(Exception):
+    """Custom exception for when not enough bounding boxes are detected."""
+
+    pass
+
+
+class InvalidInputError(Exception):
+    """Custom exception for invalid input data."""
+
+    pass
 
 
 class ParquetEpisodesDataset(TorchDataset):
@@ -110,55 +121,51 @@ class ParquetEpisodesDataset(TorchDataset):
         videos_folders = os.path.join(self.videos_dir, "chunk-000")
         self.video_keys = os.listdir(videos_folders)  # e.g., ["camera1", "camera2"]
 
-        # Pre-decode and cache all video frames
-        self._initialize_video_cache()
+        # New: Episode info mapping
+        self.episode_info: dict = {}
+        for global_idx, info in self.index_mapping.items():
+            ep_idx = info["episode_idx"]
+            if ep_idx not in self.episode_info:
+                self.episode_info[ep_idx] = {
+                    "file_path": info["file_path"],
+                    "videos_paths": info["videos_paths"],
+                    "timestamps": None,
+                }
 
-    def _initialize_video_cache(self):
-        """Decode all video frames and store them in a cache using parallel processing."""
-        # Map episode_idx to video paths
-        self.episode_to_videos_paths = {}
-        for global_idx in self.index_mapping:
-            episode_idx = self.index_mapping[global_idx]["episode_idx"]
-            if episode_idx not in self.episode_to_videos_paths:
-                self.episode_to_videos_paths[episode_idx] = self.index_mapping[
-                    global_idx
-                ]["videos_paths"]
+        # Per-worker caching state
+        self.current_episode_idx = None
+        self.current_episode_frames = None
+        self.worker_cache: dict = {}
 
-        # Prepare arguments for parallel decoding
-        args_list = [
-            (episode_idx, file_path, self.episode_to_videos_paths[episode_idx])
-            for episode_idx, file_path in enumerate(self.file_paths)
-        ]
+    def _load_episode_frames(self, episode_idx: int) -> Dict[str, torch.Tensor]:
+        """Load and cache frames for a single episode"""
+        # Check worker-specific cache first
+        worker_id = multiprocessing.current_process().pid
+        if worker_id in self.worker_cache:
+            if self.worker_cache[worker_id]["episode_idx"] == episode_idx:
+                return self.worker_cache[worker_id]["frames"]
 
-        # Decode episodes in parallel using 8 CPUs
-        with multiprocessing.Pool(processes=8, maxtasksperchild=10) as pool:
-            results = list(
-                tqdm.tqdm(
-                    pool.imap(self._decode_episode, args_list),
-                    total=len(args_list),
-                    desc="Decoding videos",
-                )
-            )
+        # Load timestamps if not cached
+        if self.episode_info[episode_idx]["timestamps"] is None:
+            df = self.read_parquet(str(self.episode_info[episode_idx]["file_path"]))
+            self.episode_info[episode_idx]["timestamps"] = df["timestamp"].tolist()
 
-        # Populate cache
-        self.cache = {
-            episode_idx: decoded_frames for episode_idx, decoded_frames in results
-        }
-
-    def _decode_episode(
-        self, args: Tuple[int, Path, Dict[str, Path]]
-    ) -> Tuple[int, Dict[str, torch.Tensor]]:
-        """Decode all frames for an episode given its timestamps and video paths."""
-        episode_idx, parquet_file_path, videos_paths = args
-        df = pd.read_parquet(parquet_file_path)
-        timestamps = df["timestamp"].tolist()
+        # Decode frames
         decoded_frames = {}
-        for video_key, video_path in videos_paths.items():
-            frames = decode_video_frames_torchvision(video_path, timestamps)
-            # Store as uint8 to save memory
-            frames = (frames * 255).to(torch.uint8)
-            decoded_frames[video_key] = frames
-        return episode_idx, decoded_frames
+        for video_key, video_path in self.episode_info[episode_idx][
+            "videos_paths"
+        ].items():
+            frames = decode_video_frames_torchvision(
+                video_path, self.episode_info[episode_idx]["timestamps"]
+            )
+            decoded_frames[video_key] = (frames * 255).to(torch.uint8)  # Store as uint8
+
+        # Update worker cache (only keep current episode)
+        self.worker_cache[worker_id] = {
+            "episode_idx": episode_idx,
+            "frames": decoded_frames,
+        }
+        return decoded_frames
 
     def __len__(self) -> int:
         return self.total_length
@@ -193,9 +200,12 @@ class ParquetEpisodesDataset(TorchDataset):
             else:
                 sample[col_name] = torch.tensor([value], dtype=torch.float32)
 
+        # Load frames for this episode
+        frames = self._load_episode_frames(episode_idx)
+
         # Retrieve cached frames
         for video_key in self.video_keys:
-            frame = self.cache[episode_idx][video_key][row_idx]
+            frame = frames[video_key][row_idx]
             # Convert uint8 to float32 and normalize
             sample[video_key] = frame.float() / 255.0
 
@@ -323,7 +333,7 @@ def get_stats_einops_patterns(
 def compute_stats(
     dataset_path: Path,
     batch_size: int = 128,
-    num_workers: int = 2,
+    num_workers: int = 6,
     max_num_samples: Optional[int] = None,
 ) -> dict[str, dict[str, torch.Tensor]]:
     """Compute mean/std and min/max statistics of all data keys in a LeRobotDataset."""
@@ -568,6 +578,31 @@ def decode_video_frames_torchvision(
     return closest_frames
 
 
+def read_first_frame_with_pyav(video_path):
+    """
+    Read the first frame from a video file using PyAV library.
+    Returns the frame as a numpy array or None if failed.
+    """
+    try:
+        container = av.open(str(video_path))
+        video_stream = container.streams.video[0]
+
+        for frame in container.decode(video_stream):
+            # Convert to RGB numpy array
+            img = frame.to_rgb().to_ndarray()
+            container.close()
+            return img
+
+    except Exception as e:
+        logger.error(f"PyAV failed to read {video_path}: {e}")
+        return None
+    finally:
+        try:
+            container.close()
+        except:
+            pass
+
+
 def compute_bboxes(
     dataset_root_path: Path,
     detect_instruction: str,
@@ -592,6 +627,23 @@ def compute_bboxes(
     # Load the dataset with phosphobot to fix episodes.jsonl issues (usually: missing episodes)
     dataset = LeRobotDataset(path=str(dataset_root_path), enforce_path=False)
     dataset.load_meta_models()
+
+    # Ensure the image key exists in the dataset, if not, fail fast
+    image_key_detected = False
+    if dataset.info_model is not None:
+        for meta_image_key in dataset.info_model.features.observation_images.keys():
+            if image_key in meta_image_key:
+                image_key_detected = True
+                break
+
+    if not image_key_detected:
+        if dataset.info_model is None:
+            raise ValueError("Dataset could not be loaded correctly.")
+        raise InvalidInputError(
+            f"Image key '{image_key}' not found in the dataset info_model. "
+            "Please check the image keys in the dataset and pass the appropriate parameter.\n"
+            f"Available image keys: {list(dataset.info_model.features.observation_images.keys())}"
+        )
 
     # Copy the dataset to a new folder
     new_dataset_path = dataset_root_path.parent / f"{dataset_root_path.name}_bboxes"
@@ -656,9 +708,9 @@ Please specify one of the following video keys when launching a training: {", ".
         # Last batch is handled thanks to the min condition
         chunck_size = min(max_batch_size, validated_info.total_episodes - cursor)
         chunck_episodes = range(cursor, cursor + chunck_size)
-
         # Load the first frame of each episode in the batch
         frames = []
+
         for episode_index in chunck_episodes:
             video_path = (
                 new_dataset_path
@@ -674,19 +726,20 @@ Please specify one of the following video keys when launching a training: {", ".
                 )
                 episodes_to_delete.append(episode_index)
                 continue
-            video_capture = cv2.VideoCapture(str(video_path))
-            if not video_capture.isOpened():
-                logger.error(f"Failed to open video file: {video_path}")
-                episodes_to_delete.append(episode_index)
-                continue
-            # Read the first frame
-            ret, frame = video_capture.read()
-            video_capture.release()
-            if not ret:
+
+            # Read the first frame using PyAV
+            frame = read_first_frame_with_pyav(video_path)
+
+            if frame is None:
                 logger.error(f"Failed to read the first frame of video: {video_path}")
                 episodes_to_delete.append(episode_index)
                 continue
-            frames.append(frame[..., ::-1])  # Convert BGR to RGB
+
+            # Resize the frame to 224x224 (PaliGemma expects this size)
+            frame = cv2.resize(frame, (224, 224), interpolation=cv2.INTER_LINEAR)
+
+            # PyAV already returns RGB format, so no need to convert BGR to RGB
+            frames.append(frame[..., ::-1])
 
         # Call PaliGemma to compute the bounding box with the frames
         logger.info(
@@ -719,7 +772,6 @@ Please specify one of the following video keys when launching a training: {", ".
                 f"Saved bounding box {bbox} for episode {current_episode_index} in {parquet_file_path}"
             )
 
-        # Update the cursor
         cursor += chunck_size
 
     # Debug: list all the parquet files in the dataset
@@ -737,7 +789,7 @@ Please specify one of the following video keys when launching a training: {", ".
             visualizer_url = (
                 f"https://lerobot-visualize-dataset.hf.space/{dataset_name}/"
             )
-            raise RuntimeError(
+            raise NotEnoughBBoxesError(
                 f"The object '{detect_instruction}' was detected in {validated_info.total_episodes - len(episodes_to_delete)} episodes in {image_key} camera"
                 f" (should be: {MIN_NUMBER_OF_BBOXES} episodes min)."
                 f" This is not enough to train a model. Check your dataset: {visualizer_url} and rephrase the instruction."

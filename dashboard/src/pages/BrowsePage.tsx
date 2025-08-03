@@ -290,7 +290,7 @@ const MergeDialog: React.FC<MergeDialogProps> = ({
   );
 };
 
-export default function FileBrowser() {
+export function BrowsePage() {
   const params = useParams();
   const [searchParams] = useSearchParams();
   const path = params.path || searchParams.get("path") || "";
@@ -700,11 +700,7 @@ export default function FileBrowser() {
                                 rel="noopener noreferrer"
                                 className="inline-flex"
                               >
-                                <Button
-                                  variant={"outline"}
-                                  className="cursor-pointer"
-                                  size="sm"
-                                >
+                                <Button variant={"outline"} size="sm">
                                   <Eye className="mr-2 h-4 w-4" />
                                   Preview
                                 </Button>

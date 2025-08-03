@@ -96,11 +96,7 @@ export function WandBKeyInput() {
               disabled={isLoading}
               autoComplete="off"
             />
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="cursor-pointer"
-            >
+            <Button type="submit" disabled={isLoading}>
               {isLoading ? (
                 <span className="flex items-center">
                   <LoaderCircle className="animate-spin size-5" />

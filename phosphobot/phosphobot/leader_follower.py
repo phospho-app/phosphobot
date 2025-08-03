@@ -70,12 +70,12 @@ async def leader_follower_loop(
                     )
                     await asyncio.sleep(0.05)
         else:
-            assert isinstance(leader, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
-            assert isinstance(follower, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
+            assert isinstance(
+                leader, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
+            assert isinstance(
+                follower, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
             leader_current_voltage = leader.current_voltage()
             if (
                 leader_current_voltage is None
@@ -139,14 +139,23 @@ async def leader_follower_loop(
                 # Simple leader-follower control: follower mirrors leader's position
                 if invert_controls:
                     pos_rad[0] = -pos_rad[0]
-                follower.write_joint_positions(list(pos_rad), unit="rad")
+                follower.set_motors_positions(
+                    q_target_rad=pos_rad, enable_gripper=False
+                )
+                # Get the leader gripper position and set it to the follower
+                follower.control_gripper(
+                    open_command=leader._rad_to_open_command(
+                        pos_rad[leader.GRIPPER_JOINT_INDEX]
+                    )
+                )
+
             else:
-                assert isinstance(leader, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
-                assert isinstance(follower, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
+                assert isinstance(
+                    leader, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
+                assert isinstance(
+                    follower, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
                 # Calculate gravity compensation torque
                 # Update PyBullet simulation for gravity calculation
                 for i, idx in enumerate(joint_indices):
@@ -180,7 +189,15 @@ async def leader_follower_loop(
                 leader.write_joint_positions(theta_des_rad, unit="rad")
                 if invert_controls:
                     theta_des_rad[0] = -theta_des_rad[0]
-                follower.write_joint_positions(theta_des_rad, unit="rad")
+                follower.set_motors_positions(
+                    q_target_rad=theta_des_rad, enable_gripper=False
+                )
+                # Get the leader gripper position and set it to the follower
+                follower.control_gripper(
+                    open_command=leader._rad_to_open_command(
+                        theta_des_rad[leader.GRIPPER_JOINT_INDEX]
+                    )
+                )
 
         # Maintain loop frequency
         elapsed = time.perf_counter() - start_time

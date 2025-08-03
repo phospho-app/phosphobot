@@ -9,7 +9,7 @@ from fastapi import HTTPException
 import numpy as np
 from loguru import logger
 from phosphobot.configs import config as cfg
-from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo
+from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo, Temperature
 from phosphobot.models.lerobot_dataset import FeatureDetails
 from phosphobot.hardware import get_sim
 from scipy.spatial.transform import Rotation as R  # type: ignore
@@ -126,6 +126,26 @@ class BaseManipulator(BaseRobot):
         raise: Exception if the routine has not been implemented
         """
         raise NotImplementedError("The robot enable torque must be implemented.")
+
+    def read_motor_temperature(self, servo_id: int) -> tuple[float, float] | None:
+        """
+        Read the temperature of a motor
+        raise: Exception if the routine has not been implemented
+        """
+        raise NotImplementedError(
+            "The robot read motor temperature must be implemented."
+        )
+
+    def write_group_motor_maximum_temperature(
+        self, maximum_temperature_target: List[int]
+    ) -> None:
+        """
+        Write the maximum temperature of all motors of a robot.
+        raise: Exception if the routine has not been implemented
+        """
+        raise NotImplementedError(
+            "The robot write group motor temperature must be implemented."
+        )
 
     @abstractmethod
     def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
@@ -319,6 +339,7 @@ class BaseManipulator(BaseRobot):
         try:
             with open(json_filename, "r") as f:
                 data = json.load(f)
+            logger.debug(f"Loaded default config from {json_filename}")
             return BaseRobotConfig(**data)
         except FileNotFoundError:
             if raise_if_none:
@@ -361,14 +382,16 @@ class BaseManipulator(BaseRobot):
 
         return current_gripper_torque
 
-    async def move_to_initial_position(self):
+    async def move_to_initial_position(self, open_gripper: bool = False):
         """
         Move the robot to its initial position.
         """
         self.init_config()
         self.enable_torque()
         zero_position = np.zeros(len(self.actuated_joints))
-        self.set_motors_positions(zero_position, enable_gripper=True)
+        self.set_motors_positions(zero_position, enable_gripper=not open_gripper)
+        if open_gripper:
+            self.write_gripper_command(1.0)
         # Wait for the robot to move to the initial position
         await asyncio.sleep(0.5)
         (
@@ -600,12 +623,26 @@ class BaseManipulator(BaseRobot):
             current_effector_orientation_rad,
         )
 
-    def get_end_effector_state(self):
+    def get_end_effector_state(
+        self, sync: bool = False
+    ) -> tuple[np.ndarray, np.ndarray, float]:
         """
         Return the position and orientation in radians of the end effector and the gripper opening value.
         The gripper opening value between 0 and 1.
+
+        Args:
+            sync: If True, the simulation will first read the motor positions, synchronize them with the simulated robot,
+                and then return the end effector position. Useful for measurements, however it will take more time to respond.
+
+        Returns:
+            A tuple containing:
+                - effector_position: The position of the end effector in the URDF link frame.
+                - effector_orientation_rad: The orientation of the end effector in radians.
+                - closing_gripper_value: The value of the gripper opening, between 0 and 1.
         """
-        effector_position, effector_orientation_rad = self.forward_kinematics()
+        effector_position, effector_orientation_rad = self.forward_kinematics(
+            sync_robot_pos=sync
+        )
         return effector_position, effector_orientation_rad, self.closing_gripper_value
 
     def read_joints_position(
@@ -981,7 +1018,7 @@ class BaseManipulator(BaseRobot):
             if config is not None:
                 self.config = config
                 logger.success(
-                    f"Loaded default config for {self.name}, voltage {voltage}."
+                    f"Loaded default config for {self.name}, voltage {voltage}.\n{self.config.model_dump_json(indent=2)}"
                 )
                 return
 
@@ -1006,9 +1043,11 @@ class BaseManipulator(BaseRobot):
         # )
         # Clamp the command between 0 and 1
         self.update_object_gripping_status()
+
         if not self.is_object_gripped:
             open_command_clipped = np.clip(open_command, 0, 1)
         else:
+            # open_command 0 is closed. We won't close further if the object is already gripped, i.e. we will not send a command < closing_gripper_value
             open_command_clipped = np.clip(open_command, self.closing_gripper_value, 1)
 
         # Only tighten if object is not gripped:
@@ -1142,6 +1181,39 @@ class BaseManipulator(BaseRobot):
         # If the robot is not connected, error raised
         return None
 
+    def current_temperature(self) -> List[Temperature] | None:
+        """
+        Read the current and maximum temperature of the joints of the robot.
+        Returns:
+            List[Temperature] | None: A list of Temperature objects, one for each joint,
+                                    or None if the robot is not connected.
+        """
+        if self.is_connected:
+            temperatures = []
+            for servo_id in self.SERVO_IDS:
+                temps = self.read_motor_temperature(servo_id)
+                if temps is not None:
+                    # temps is a tuple: (current, max)
+                    temperature = Temperature(current=temps[0], max=temps[1])
+                    temperatures.append(temperature)
+                else:
+                    temperature = Temperature(current=None, max=None)
+                    temperatures.append(temperature)
+            return temperatures
+
+        # If the robot is not connected, return None
+        return None
+
+    def set_maximum_temperature(self, maximum_temperature_target: List[int]) -> None:
+        """
+        Set the maximum temperature of all motors of a robot.
+        """
+
+        if self.is_connected:
+            self.write_group_motor_maximum_temperature(
+                maximum_temperature_target=maximum_temperature_target
+            )
+
     def is_powered_on(self) -> bool:
         """
         Return True if all voltage readings are above 0.1V and successful
@@ -1207,6 +1279,24 @@ class BaseManipulator(BaseRobot):
             self.is_object_gripped = True
         if gripper_torque <= self.config.non_gripping_threshold:
             self.is_object_gripped = False
+
+    def _rad_to_open_command(self, radians: float) -> float:
+        """
+        Convert radians to open command for the gripper.
+        """
+        if self.config is None:
+            raise ValueError(
+                "Robot configuration is not set. Run the calibration first."
+            )
+        open_position = self.config.servos_calibration_position[-1]
+        close_position = self.config.servos_offsets[-1]
+        open_command = (
+            self._radians_to_motor_units(
+                radians=radians, servo_id=self.GRIPPER_JOINT_INDEX
+            )
+            - close_position
+        ) / (open_position - close_position)
+        return np.clip(open_command, 0, 1)
 
 
 class BaseMobileRobot(BaseRobot):

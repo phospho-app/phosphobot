@@ -39,5 +39,3 @@ export function PhosphoProCallout({ className }: { className?: string }) {
     </Card>
   );
 }
-
-export default PhosphoProCallout;

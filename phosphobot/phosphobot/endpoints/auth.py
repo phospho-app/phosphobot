@@ -11,6 +11,7 @@ from phosphobot.models import (
     ResetPasswordRequest,
     SessionReponse,
     StatusResponse,
+    VerifyEmailCodeRequest,
 )
 from phosphobot.posthog import add_email_to_posthog
 from phosphobot.sentry import add_email_to_sentry
@@ -70,6 +71,7 @@ async def signup(
                 },
             }
         )
+
         if response.user is not None:
             if response.session is not None:
                 if response.user.email is None:
@@ -218,6 +220,56 @@ async def confirm_email(request: ConfirmRequest) -> SessionReponse | HTTPExcepti
         raise HTTPException(
             status_code=400, detail=f"Invalid or expired token: {str(e)}"
         )
+
+
+@router.post("/auth/verify-email-token", response_model=SessionReponse)
+async def verify_email_token(
+    query: VerifyEmailCodeRequest,
+) -> SessionReponse | HTTPException:
+    """
+    Verify the email confirmation code sent to the user.
+    """
+    client = await get_client()
+
+    try:
+        response = await client.auth.verify_otp(
+            {
+                "email": query.email,
+                "token": query.token,
+                "type": "email",
+            }
+        )
+        if (
+            response.user is None
+            or response.session is None
+            or response.user.email is None
+        ):
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired email verification token."
+            )
+
+        session = Session(
+            user_id=response.user.id,
+            user_email=response.user.email,
+            email_confirmed=response.user.email_confirmed_at is not None,
+            access_token=response.session.access_token,
+            refresh_token=response.session.refresh_token,
+            expires_at=int(time.time()) + response.session.expires_in,
+        )
+        save_session(session)
+        add_email_to_posthog(response.user.email)
+        add_email_to_sentry(response.user.email)
+        is_pro_user = await check_pro_user(response.user.id)
+        return SessionReponse(
+            message="Email verification successful",
+            session=session,
+            is_pro_user=is_pro_user,
+        )
+    except HTTPException as http_exc:
+        # Re-raise HTTP exceptions to maintain the status code and detail
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email verification failed: {e}")
 
 
 @router.get("/auth/check_auth", response_model=AuthResponse)

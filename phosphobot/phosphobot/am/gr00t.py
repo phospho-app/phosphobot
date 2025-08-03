@@ -8,11 +8,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Tuple
+from typing import Any, Callable, Dict, Literal, Optional, Tuple
 
 import cv2
-import numpy as np
 import zmq
+import numpy as np
+import pandas as pd
 from fastapi import HTTPException
 from huggingface_hub import HfApi, snapshot_download
 from loguru import logger
@@ -30,6 +31,7 @@ from phosphobot.am.base import (
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.hardware.base import BaseManipulator
+from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
 # Code from: https://github.com/NVIDIA/Isaac-GR00T/blob/main/gr00t/eval/service.py#L111
@@ -202,6 +204,7 @@ class BaseInferenceClient:
         self, host: str = "localhost", port: int = 5555, timeout_ms: int = 15000
     ):
         self.context = zmq.Context()
+
         self.host = host
         self.port = port
         self.timeout_ms = timeout_ms
@@ -444,13 +447,24 @@ class HuggingFaceModelConfig(BaseModel):
         return data
 
 
+class HuggingFaceAugmentedConfig(HuggingFaceModelConfig):
+    """
+    This model extends HuggingFaceModelConfig to include additional fields
+    for augmented models, such as available checkpoints.
+    """
+
+    checkpoints: list[str] = Field(
+        default_factory=list, description="List of available checkpoints for the model."
+    )
+
+
 class Gr00tSpawnConfig(BaseModel):
     video_keys: list[str]
     state_keys: list[str]
     action_keys: list[str]
     embodiment_tag: str
     unit: Literal["degrees", "rad"]
-    hf_model_config: HuggingFaceModelConfig
+    hf_model_config: HuggingFaceAugmentedConfig
 
     # not good enough
     # class Config:
@@ -529,7 +543,7 @@ class Gr00tN1(ActionModel):
         return concatenated_actions
 
     @classmethod
-    def fetch_config(cls, model_id: str) -> HuggingFaceModelConfig:
+    def fetch_config(cls, model_id: str) -> HuggingFaceAugmentedConfig:
         """
         Fetch the model config from Hugging Face Hub.
         If the model is not found on Hugging Face Hub, it will be loaded from the given path.
@@ -551,6 +565,16 @@ class Gr00tN1(ActionModel):
                 config_content = f.read()
             # Parse the file
             hf_model_config = HuggingFaceModelConfig.model_validate_json(config_content)
+            # Fetch the available revisions
+            branches = []
+            refs = api.list_repo_refs(model_id)
+            for branch in refs.branches:
+                branches.append(branch.name)
+
+            hf_augmented_config = HuggingFaceAugmentedConfig(
+                **hf_model_config.model_dump(), checkpoints=branches
+            )
+
         except Exception as e:
             logger.info(
                 f"Couldn't load model {model_id} from Hugging Face Hub. Trying from local path."
@@ -565,8 +589,11 @@ class Gr00tN1(ActionModel):
                 config_content = f.read()
             # Parse the file
             hf_model_config = HuggingFaceModelConfig.model_validate_json(config_content)
+            hf_augmented_config = HuggingFaceAugmentedConfig(
+                **hf_model_config.model_dump(), checkpoints=["main"]
+            )
 
-        return hf_model_config
+        return hf_augmented_config
 
     @classmethod
     def fetch_spawn_config(cls, model_id: str) -> Gr00tSpawnConfig:
@@ -599,7 +626,7 @@ class Gr00tN1(ActionModel):
         )
 
     @classmethod
-    def fetch_and_get_video_keys(cls, model_id: str) -> list[str]:
+    def fetch_and_get_configuration(cls, model_id: str) -> ModelConfigurationResponse:
         """
         Fetch the model config and get the video keys.
         """
@@ -607,7 +634,10 @@ class Gr00tN1(ActionModel):
         video_keys = [
             "video." + key for key in hf_model_config.embodiment.modalities.video.keys()
         ]
-        return video_keys
+        return ModelConfigurationResponse(
+            video_keys=video_keys,
+            checkpoints=hf_model_config.checkpoints,
+        )
 
     @classmethod
     def fetch_and_verify_config(
@@ -705,8 +735,7 @@ class Gr00tN1(ActionModel):
 
         nb_iter = 0
         config = model_spawn_config.hf_model_config
-
-        db_state_updated = False
+        signal_marked_as_started = False
 
         while control_signal.is_in_loop():
             logger.debug(
@@ -807,17 +836,14 @@ class Gr00tN1(ActionModel):
                 control_signal.stop()
                 break
 
-            if not db_state_updated:
+            if not signal_marked_as_started:
                 control_signal.set_running()
-                db_state_updated = True
-                # Small delay to let the UI update
-                await asyncio.sleep(1)
-
-            # Early stop
-            if not control_signal.is_in_loop():
-                break
+                signal_marked_as_started = True
 
             for action in actions:
+                # Early stop
+                if not control_signal.is_in_loop():
+                    break
                 # Send the new joint position to the robot
                 action_list = action.tolist()
                 for robot_index in range(len(robots)):
@@ -849,6 +875,97 @@ class Gr00tTrainerConfig(BaseTrainerConfig):
     # Set the value of model_type to "gr00t"
     model_type: Literal["gr00t"] = "gr00t"
     training_params: TrainingParamsGr00T
+
+
+def check_for_nans_null_in_value(value):
+    """
+    Check if a value contains NaN/null, including nested lists
+    """
+    if pd.isna(value).any():
+        return True
+
+    if pd.isnull(value).any():
+        return True
+
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if check_for_nans_null_in_value(item):
+                return True
+
+    return False
+
+
+def check_parquet_files(folder_path):
+    """
+    Check all parquet files in a folder for NaN/null values in the action/observation column
+
+    Will raise an error if it finds any NaN/null values in the action/observation column.
+    """
+    folder_path = Path(folder_path)
+
+    if not folder_path.exists():
+        raise FileNotFoundError(f"Folder '{folder_path}' does not exist.")
+
+    # Find all parquet files
+    parquet_files = list(folder_path.glob("*.parquet"))
+
+    if not parquet_files:
+        raise FileNotFoundError(f"No parquet files found in '{folder_path}'")
+
+    print(f"Found {len(parquet_files)} parquet file(s) to check:")
+    print("-" * 50)
+
+    total_issues = 0
+
+    for file_path in parquet_files:
+        try:
+            # Read the parquet file
+            df = pd.read_parquet(file_path)
+
+            # Check if action column exists
+            if "action" not in df.columns:
+                raise ValueError(
+                    f"File '{file_path.name}' does not contain 'action' column."
+                )
+            if "observation.state" not in df.columns:
+                raise ValueError(
+                    f"File '{file_path.name}' does not contain 'observation.state' column."
+                )
+
+            # Check for issues in the action column
+            issues_found = 0
+            problematic_rows = []
+
+            for idx, value in enumerate(df["action"]):
+                if check_for_nans_null_in_value(value):
+                    issues_found += 1
+                    problematic_rows.append(idx)
+
+            for idx, value in enumerate(df["observation.state"]):
+                if check_for_nans_null_in_value(value):
+                    issues_found += 1
+                    problematic_rows.append(idx)
+
+            if issues_found > 0:
+                print(
+                    f"❌ {file_path.name}: Found {issues_found} rows with NaN/null in action column"
+                )
+                print(
+                    f"   Problematic rows: {problematic_rows[:10]}{'...' if len(problematic_rows) > 10 else ''}"
+                )
+                total_issues += issues_found
+            else:
+                print(f"✅ {file_path.name}: No NaN/null values found in action column")
+
+        except Exception as e:
+            print(f"❌ {file_path.name}: Error reading file - {str(e)}")
+
+    print("-" * 50)
+    print(f"Total issues found across all files: {total_issues}")
+    if total_issues > 0:
+        raise ValueError(
+            f"Found {total_issues} NaN/null values in action/observation columns across all files. Please fix the data before re-training."
+        )
 
 
 def generate_modality_json(data_dir) -> tuple[int, int]:
@@ -909,6 +1026,7 @@ async def run_gr00t_training(
     number_of_robots,
     number_of_cameras,
     learning_rate,
+    save_steps: int,
     wandb_enabled: bool,
     validation_data_dir=None,
     timeout_seconds: int | None = None,
@@ -941,7 +1059,7 @@ async def run_gr00t_training(
             "--num-epochs",
             str(epochs),
             "--save-steps",
-            "10000",
+            str(save_steps),
             "--num-arms",
             str(number_of_robots),
             "--num-cams",
@@ -1066,12 +1184,15 @@ class Gr00tTrainer(BaseTrainer):
                         f"Failed to download dataset {self.config.dataset_name} after {max_retries} attempts, is Hugging Face down ? : {e}"
                     )
 
-        resized_successful, _ = resize_dataset(
+        # Check the dataset for null/nan values in action/observation columns
+        check_parquet_files(DATASET_PATH / "data" / "chunk-000")
+
+        resized_successful, _, resize_details = resize_dataset(
             dataset_root_path=DATASET_PATH, resize_to=(224, 224)
         )
         if not resized_successful:
             raise RuntimeError(
-                f"Resizing dataset {self.config.dataset_name} to 224x224 failed: {resized_successful}"
+                f"Resizing dataset {self.config.dataset_name} to 224x224 failed: {resize_details}"
             )
         logger.info(f"Resized dataset {self.config.dataset_name} to 224x224")
 
@@ -1111,12 +1232,12 @@ class Gr00tTrainer(BaseTrainer):
                             f"Failed to download dataset {self.config.training_params.validation_dataset_name} after {max_retries} attempts, is Hugging Face down ? : {e}"
                         )
 
-            resized_successful, _ = resize_dataset(
+            resized_successful, _, resize_details = resize_dataset(
                 dataset_root_path=VAL_DATASET_PATH, resize_to=(224, 224)
             )
             if not resized_successful:
                 raise RuntimeError(
-                    f"Resizing dataset {self.config.training_params.validation_dataset_name} to 224x224 failed: {resized_successful}"
+                    f"Resizing dataset {self.config.training_params.validation_dataset_name} to 224x224 failed: {resize_details}"
                 )
             logger.info(
                 f"Resized dataset {self.config.training_params.validation_dataset_name} to 224x224"
@@ -1154,6 +1275,7 @@ class Gr00tTrainer(BaseTrainer):
                 number_of_robots=number_of_robots,
                 number_of_cameras=number_of_cameras,
                 learning_rate=self.config.training_params.learning_rate,
+                save_steps=self.config.training_params.save_steps,
                 wandb_enabled=self.config.wandb_api_key is not None,
                 validation_data_dir=val_data_dir,
                 timeout_seconds=timeout_seconds,
@@ -1203,6 +1325,40 @@ class Gr00tTrainer(BaseTrainer):
                             path_in_repo=str(rel_path),
                             repo_id=self.config.model_name,
                         )
+
+            # Also upload checkpoint directories if they exist, named as "checkpoint-<number>"
+            for item in files_directory.glob("checkpoint-*"):
+                if item.is_dir():
+                    # Upload the entire directory structure
+                    for sub_item in item.glob("**/*"):
+                        if sub_item.is_file():
+                            # Get the relative path to maintain structure
+                            rel_path = sub_item.relative_to(item)
+
+                            logger.info(f"Uploading file: {rel_path}")
+                            # Parse the checkpoint number as an int
+                            try:
+                                # Should be 100, 400, etc.
+                                checkpoint_number = int(item.name.split("-")[-1])
+                            except ValueError:
+                                # Can also be "last" or similar
+                                logger.debug(
+                                    f"Skipping upload for {rel_path} as it does not have a valid checkpoint number"
+                                )
+                                continue
+                            api.create_branch(
+                                repo_type="model",
+                                branch=str(checkpoint_number),
+                                exist_ok=True,
+                                repo_id=self.config.model_name,
+                            )
+                            api.upload_file(
+                                repo_type="model",
+                                revision=str(checkpoint_number),
+                                path_or_fileobj=str(sub_item.resolve()),
+                                path_in_repo=str(rel_path),
+                                repo_id=self.config.model_name,
+                            )
 
             # Upload README last
             readme = generate_readme(

@@ -83,7 +83,6 @@ export function Footer() {
         <Button
           variant="ghost"
           size="icon"
-          className="cursor-pointer"
           onClick={() => {
             window.open("https://discord.gg/cbkggY6NSK", "_blank");
           }}
@@ -93,7 +92,6 @@ export function Footer() {
         <Button
           variant="ghost"
           size="icon"
-          className="cursor-pointer"
           onClick={() => {
             window.open("https://github.com/phospho-app/phosphobot", "_blank");
           }}
@@ -128,7 +126,7 @@ export function Footer() {
               }
             }}
             size="sm"
-            className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600 cursor-pointer"
+            className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600"
             disabled={isUpdating}
           >
             {isUpdating ? (
@@ -146,7 +144,7 @@ export function Footer() {
             <PopoverTrigger>
               <Button
                 size="sm"
-                className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600 cursor-pointer"
+                className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600"
               >
                 Update
               </Button>
@@ -177,7 +175,7 @@ phosphobot --version`}
             <PopoverTrigger>
               <Button
                 size="sm"
-                className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600 cursor-pointer"
+                className="text-xs h-6 px-2 py-0 bg-green-500 hover:bg-green-600"
               >
                 Update
               </Button>

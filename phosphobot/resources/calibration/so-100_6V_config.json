@@ -1,62 +1,43 @@
 {
-    "name": "so-100",
-    "servos_voltage": 6.0,
-    "servos_offsets": [
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0,
-        2048.0
-    ],
-    "servos_calibration_position": [
-        1072.0,
-        3076.0,
-        979.0,
-        1042.0,
-        2943.0,
-        3422.0
-    ],
-    "servos_offsets_signs": [
-        -1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
-    ],
-    "pid_gains": [
-        {
-            "p_gain": 12.0,
-            "i_gain": 0.0,
-            "d_gain": 36.0
-        },
-        {
-            "p_gain": 20.0,
-            "i_gain": 0.0,
-            "d_gain": 36.0
-        },
-        {
-            "p_gain": 20.0,
-            "i_gain": 0.0,
-            "d_gain": 36.0
-        },
-        {
-            "p_gain": 20.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 32.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        },
-        {
-            "p_gain": 10.0,
-            "i_gain": 0.0,
-            "d_gain": 32.0
-        }
-    ],
-    "gripping_threshold": 150,
-    "non_gripping_threshold": 10
+  "name": "so-100",
+  "servos_voltage": 6.0,
+  "servos_offsets": [2048.0, 2048.0, 2048.0, 2048.0, 2048.0, 2048.0],
+  "servos_calibration_position": [
+    1072.0, 3076.0, 979.0, 1042.0, 2943.0, 3422.0
+  ],
+  "servos_offsets_signs": [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+  "pid_gains": [
+    {
+      "p_gain": 12.0,
+      "i_gain": 0.0,
+      "d_gain": 36.0
+    },
+    {
+      "p_gain": 20.0,
+      "i_gain": 0.0,
+      "d_gain": 36.0
+    },
+    {
+      "p_gain": 20.0,
+      "i_gain": 0.0,
+      "d_gain": 36.0
+    },
+    {
+      "p_gain": 20.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 32.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    },
+    {
+      "p_gain": 10.0,
+      "i_gain": 0.0,
+      "d_gain": 32.0
+    }
+  ],
+  "gripping_threshold": 80,
+  "non_gripping_threshold": 10
 }

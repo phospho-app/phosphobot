@@ -46,6 +46,7 @@ Create the necessary secrets:
 ```bash
 uv run modal secret create huggingface HF_TOKEN=YOUR_TOKEN
 uv run modal secret create supabase SUPABASE_KEY=YOUR_SUPABASE_KEY SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY SUPABASE_URL=YOUR_SUPABASE_URL
+uv run modal secret create stripe STRIPE_API_KEY=YOUR_STRIPE_API_KEY STRIPE_WEBHOOK_SECRET=YOUR_STRIPE_WEBHOOK_SECRET
 ```
 
 You can now deploy all apps to your environment:

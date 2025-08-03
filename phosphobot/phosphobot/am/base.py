@@ -11,7 +11,7 @@ from huggingface_hub import HfApi
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from phosphobot.models import InfoModel
+from phosphobot.models import InfoModel, ModelConfigurationResponse
 
 # Disable PyAV logs
 av.logging.set_level(None)
@@ -35,13 +35,14 @@ class ActionModel(ABC):
         self.server_port = server_port
 
     @classmethod
-    def fetch_and_get_video_keys(cls, model_id: str) -> list[str]:
+    def fetch_and_get_configuration(cls, model_id: str) -> ModelConfigurationResponse:
         """
-        Fetch the model from Hugging Face and get the video keys.
+        Fetch the model from Hugging Face and get the configuration.
         Args:
             model_id (str): Model ID on Hugging Face.
         Returns:
-            list[str]: List of video keys.
+            video_keys, list[str]: List of configuration keys.
+            checkpoints, list[str]: List of available checkpoints.
         """
         raise NotImplementedError(
             f"This method is not implemented in {cls.__name__}. You need to implement it in your subclass."
@@ -93,7 +94,13 @@ class TrainingParamsAct(BaseModel):
         default=None,
         description="Number of training steps, leave it to None to auto-detect based on your dataset",
         gt=0,
-        le=10_000,
+        le=1_000_000,
+    )
+    save_steps: int = Field(
+        default=5_000,
+        description="Number of steps between saving the model, leave it to None to get the default value",
+        gt=0,
+        le=1_000_000,
     )
 
     class Config:
@@ -166,7 +173,13 @@ class TrainingParamsGr00T(BaseModel):
         default=10,
         description="Number of epochs to train for, default is 10",
         gt=0,
-        le=50,
+        le=100,
+    )
+    save_steps: int = Field(
+        default=1_000,
+        description="Number of steps between saving the model, default is 1000",
+        gt=0,
+        le=100_000,
     )
     learning_rate: float = Field(
         default=0.0001,
@@ -246,15 +259,32 @@ class TrainingRequest(BaseTrainerConfig):
         # So we can upload it to the phospho Hugging Face repo
         size = model_name.split("/")
 
+        def clamp_length(name: str, max_length: int) -> str:
+            """Clamp the length of the model name to a maximum length."""
+            if len(name) > max_length:
+                return name[:max_length]
+            return name
+
         if len(size) == 1:
+            # Make sure the total model_name is shorter than 96 characters
+            model_name = clamp_length(
+                model_name, 96 - len(random_chars) - len("phospho-app/")
+            )
+
             model_name = "phospho-app/" + model_name + "-" + random_chars
         elif len(size) == 2:
             if size[0] != "phospho-app":
+                # Make sure the total model_name is shorter than 96 characters
+                size[1] = clamp_length(
+                    size[1], 96 - len(random_chars) - len("phospho-app/")
+                )
+
                 model_name = "phospho-app/" + size[1] + "-" + random_chars
         else:
             raise ValueError(
                 "Model name should be in the format phospho-app/<model_name> or <model_name>",
             )
+
         return model_name
 
     @field_validator("dataset_name", mode="before")
@@ -389,7 +419,7 @@ Training was successful, try it out on your robot!
 def resize_dataset(
     dataset_root_path: Path,
     resize_to: tuple = (320, 240),
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, str | None]:
     """
     Resize the dataset to a smaller size for faster training.
 
@@ -399,6 +429,7 @@ def resize_dataset(
     Returns:
         1st bool: True if the processing was successful, False otherwise.
         2nd bool: True if we need to recompute the stats, False otherwise.
+        str: Details if error
     """
     # Start by opening the InfoModel and checking the video sizes
     logger.info(
@@ -427,7 +458,7 @@ def resize_dataset(
 
         if video_information == {}:
             logger.info("No videos need to be resized.")
-            return True, False
+            return True, False, "No videos need to be resize"
 
         for video_folder in video_information:
             if video_information[video_folder]["need_to_resize"]:
@@ -484,11 +515,11 @@ def resize_dataset(
 
         logger.info("Resizing completed.")
         logger.warning("You now need to recompute the stats for the dataset.")
-        return True, True
+        return True, True, "Resizing successful"
 
     except Exception as e:
         logger.error(f"Error resizing videos: {e}")
-        return False, False
+        return False, False, f"Error resizing videos: {e}"
 
 
 class BaseTrainer(ABC):

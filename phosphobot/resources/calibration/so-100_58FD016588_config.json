@@ -36,6 +36,6 @@
       "d_gain": 32.0
     }
   ],
-  "gripping_threshold": 150,
+  "gripping_threshold": 80,
   "non_gripping_threshold": 10
 }

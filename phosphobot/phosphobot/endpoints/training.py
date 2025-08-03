@@ -97,9 +97,9 @@ async def start_training(
             request.wandb_api_key = f.read().strip()
 
     # Check that the given dataset has enough episodes to train
-    api = HfApi(token=get_hf_token())
+    hf_api = HfApi(token=get_hf_token())
     try:
-        info_file_path = api.hf_hub_download(
+        info_file_path = hf_api.hf_hub_download(
             repo_id=request.dataset_name,
             repo_type="dataset",
             filename="meta/info.json",
@@ -126,7 +126,7 @@ async def start_training(
         training_params = cast(TrainingParamsGr00T, request.training_params)
         if training_params.validation_dataset_name:
             try:
-                info_file_path = api.hf_hub_download(
+                info_file_path = hf_api.hf_hub_download(
                     repo_id=training_params.validation_dataset_name,
                     repo_type="dataset",
                     filename="meta/info.json",

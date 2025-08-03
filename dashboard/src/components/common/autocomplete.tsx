@@ -10,7 +10,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
 import { Check } from "lucide-react";
-import { type KeyboardEvent, useCallback, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type Option = Record<"value" | "label", string> & Record<string, string>;
 
@@ -41,6 +47,12 @@ export const AutoComplete = ({
   const [isOpen, setOpen] = useState(false);
   const [selected, setSelected] = useState<Option>(value as Option);
   const [inputValue, setInputValue] = useState<string>(value?.label || "");
+
+  // Sync internal state when value prop changes
+  useEffect(() => {
+    setSelected(value as Option);
+    setInputValue(value?.label || "");
+  }, [value]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -74,12 +86,12 @@ export const AutoComplete = ({
 
   const handleBlur = useCallback(() => {
     setOpen(false);
-    setInputValue(selected?.label);
+    setInputValue(selected?.label || "");
   }, [selected]);
 
   const handleSelectOption = useCallback(
     (option: Option) => {
-      setInputValue(option.label);
+      setInputValue(option.label || "");
       setSelected(option);
       onValueChange?.(option);
       // blur to close

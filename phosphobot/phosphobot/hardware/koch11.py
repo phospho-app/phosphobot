@@ -100,6 +100,10 @@ class KochHardware(BaseManipulator):
         Set the PID gains for a motor.
         Note: You have to call this function AFTER enabling torque.
         """
+        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
+            return
+
         # Set Position D Gain
         self.packetHandler.write2ByteTxRx(
             self.portHandler, dxl_id, self.ADDR_POSITION_D_GAIN, d_gain
@@ -119,6 +123,10 @@ class KochHardware(BaseManipulator):
 
         This function should be called AFTER enabling torque.
         """
+        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
+            return
+
         # Create a GroupSyncWrite instance for 2-byte values (D, I, and P gains)
         groupSyncWriteD = GroupSyncWrite(
             self.portHandler, self.packetHandler, self.ADDR_POSITION_D_GAIN, 2
@@ -178,7 +186,9 @@ class KochHardware(BaseManipulator):
         Enable torque for the motors.
         """
         if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
             return
+
         # Create a GroupSyncWrite instance for 1-byte values (Torque Enable)
         groupSyncWrite = GroupSyncWrite(
             self.portHandler, self.packetHandler, self.ADDR_TORQUE_ENABLE, 1
@@ -212,8 +222,7 @@ class KochHardware(BaseManipulator):
         Disable torque for the motors.
         """
         if not self.is_connected:
-            return
-        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
             return
 
         # Create a GroupSyncWrite instance for 1-byte values (Torque Disable)
@@ -246,7 +255,9 @@ class KochHardware(BaseManipulator):
     def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
         # Write goal position
         if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
             return
+
         self.packetHandler.write4ByteTxRx(
             self.portHandler,
             servo_id,
@@ -257,6 +268,10 @@ class KochHardware(BaseManipulator):
     def write_group_motor_position(
         self, q_target: np.ndarray, enable_gripper: bool
     ) -> None:
+        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
+            return
+
         # Filter out the gripper servo if needed
         servo_ids = np.array(self.SERVO_IDS)
         if not enable_gripper:
@@ -307,6 +322,10 @@ class KochHardware(BaseManipulator):
         Returns:
             np.ndarray: An array of motor positions in Dynamixel units.
         """
+        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
+            return np.full(len(self.SERVO_IDS), np.nan)
+
         # Create a Sync Read group for present position (4 bytes per motor)
         groupSyncRead = GroupSyncRead(
             self.portHandler, self.packetHandler, self.ADDR_PRESENT_POSITION, 4
@@ -349,6 +368,7 @@ class KochHardware(BaseManipulator):
         Read the position of a Dynamixel servo.
         """
         if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
             return None
 
         try:
@@ -379,6 +399,7 @@ class KochHardware(BaseManipulator):
         Read the torque of a Dynamixel servo.
         """
         if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
             return None
 
         try:
@@ -406,6 +427,10 @@ class KochHardware(BaseManipulator):
             return None
 
     def read_motor_voltage(self, servo_id: int, **kwargs) -> None:
+        if not self.is_connected:
+            logger.warning("KochHardware: Not connected. Run .connect() first.")
+            return
+
         # Read voltage value (2-byte unsigned integer)
         voltage_raw, dxl_comm_result, dxl_error = self.packetHandler.read2ByteTxRx(
             self.portHandler, servo_id, self.ADDR_PRESENT_VOLTAGE
