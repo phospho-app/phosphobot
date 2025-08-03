@@ -471,6 +471,7 @@ async def move_sleep(
     await robot.move_to_sleep()
     return StatusResponse()
 
+
 @router.post(
     "/end-effector/read",
     response_model=EndEffectorPosition,
