@@ -112,6 +112,7 @@ async def setup_ai_control(
     cameras_keys_mapping: dict[str, int] | None = None,
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
+    checkpoint: int | None = None,
 ) -> tuple[Gr00tN1 | ACT | SmolVLA, Gr00tSpawnConfig | ACTSpawnConfig | SmolVLASpawnConfig, ServerInfoResponse]:
     """
     Setup the AI control loop by spawning the inference server and returning the model.

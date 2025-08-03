@@ -420,7 +420,9 @@ export default function AITrainingPage() {
                         BB-ACT (recommended)
                       </SelectItem>
                       <SelectItem value="ACT">ACT</SelectItem>
-                      <SelectItem value="gr00t">gr00t</SelectItem>
+                      <SelectItem value="gr00t">
+                        gr00t-n1.5 (updated)
+                      </SelectItem>
                       <SelectItem value="smolvla">SmolVLA</SelectItem>
                       <SelectItem value="custom">Custom</SelectItem>
                     </SelectContent>
