@@ -255,7 +255,7 @@ class AutoControlRequest(BaseModel):
     Launch an auto control with a request to the OpenVLA or ACT server.
     """
 
-    type_of_model: Literal["act", "openvla", "pi0"] = Field(
+    type_of_model: Literal["act", "openvla", "pi0", "smolvla"] = Field(
         ..., description="Type of model, either OpenVLA or ACT"
     )
     size_of_images: Optional[tuple[int, int]] = Field(
@@ -686,7 +686,7 @@ class ModelVideoKeysRequest(BaseModel):
         # no empty string
         pattern=r"^\s*\S.*$",
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "smolvla"] = Field(
         ...,
         description="Type of model to use.",
     )
@@ -824,7 +824,7 @@ class StartAIControlRequest(BaseModel):
         description="Mapping of the camera keys to the camera ids. If set to None, use the default mapping based on cameras order.",
         examples=[{"wrist_camera": 0, "context_camera": 1}],
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "smolvla"] = Field(
         ...,
         description="Type of model to use. Can be gr00t or act.",
     )

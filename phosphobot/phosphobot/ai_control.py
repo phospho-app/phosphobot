@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from phosphobot.am.act import ACT, ACTSpawnConfig
+from phosphobot.am.smolvla import SmolVLA, SmolVLASpawnConfig
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
@@ -106,12 +107,12 @@ async def setup_ai_control(
     robots: List[BaseManipulator],
     all_cameras: AllCameras,
     ai_control_signal_id: str,
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX"],
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "smolvla"],
     model_id: str = "PLB/GR00T-N1-lego-pickup-mono-2",
     cameras_keys_mapping: dict[str, int] | None = None,
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
-) -> tuple[Gr00tN1 | ACT, Gr00tSpawnConfig | ACTSpawnConfig, ServerInfoResponse]:
+) -> tuple[Gr00tN1 | ACT | SmolVLA, Gr00tSpawnConfig | ACTSpawnConfig | SmolVLASpawnConfig, ServerInfoResponse]:
     """
     Setup the AI control loop by spawning the inference server and returning the model.
     This function is called when the user clicks on the "Start AI Control" button in the UI.
@@ -132,10 +133,11 @@ async def setup_ai_control(
             detail="Session expired. Please log in again.",
         )
 
-    model_types: Dict[str, type[ACT | Gr00tN1]] = {
+    model_types: Dict[str, type[ACT | Gr00tN1 | SmolVLA]] = {
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,
+        "smolvla": SmolVLA,
     }
 
     try:
