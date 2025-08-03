@@ -76,6 +76,7 @@ serve_us_west = modal.Function.from_name("gr00t-server", "serve_us_west")
 serve_eu = modal.Function.from_name("gr00t-server", "serve_eu")
 serve_ap = modal.Function.from_name("gr00t-server", "serve_ap")
 serve_act = modal.Function.from_name("act-server", "serve")
+serve_smolvla = modal.Function.from_name("smolvla-server", "serve")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
 train_act = modal.Function.from_name("act-server", "train")
@@ -106,12 +107,21 @@ ZONE_TO_FUNCTION_ACT = {
     "ap": serve_act,
 }
 
+ZONE_TO_FUNCTION_SMOLVLA = {
+    "anywhere": serve_smolvla,
+    "us-east":  serve_smolvla,
+    "us-west":  serve_smolvla,
+    "eu":       serve_smolvla,
+    "ap":       serve_smolvla,
+}
+
 
 # Model mapping
 MODEL_TO_ZONE = {
     "gr00t": ZONE_TO_FUNCTION_GR00T,
     "ACT": ZONE_TO_FUNCTION_ACT,
     "ACT_BBOX": ZONE_TO_FUNCTION_ACT,  # ACT_BBOX uses the same serving function as ACT
+    "smolvla": ZONE_TO_FUNCTION_SMOLVLA,    
 }
 
 # Mapping from countryCode to best region
