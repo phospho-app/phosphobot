@@ -53,8 +53,6 @@ class UnitreeGo2(BaseMobileRobot):
 
         # Track movement instructions
         self.movement_queue: Deque[MovementCommand] = deque(maxlen=max_history_len)
-        self.last_movement_command = np.zeros(6)  # [x, y, z, roll, pitch, yaw]
-        
         super().__init__(**kwargs)
 
     @property
