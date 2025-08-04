@@ -24,6 +24,12 @@ from phosphobot.hardware import (
 from phosphobot.models import RobotConfigStatus
 from phosphobot.utils import is_can_plugged
 
+try:
+    from phosphobot.hardware.ros2_robot import ROS2Robot
+    ros2_available = True
+except ImportError:
+    ros2_available = False
+
 rcm = None
 
 robot_name_to_class = {
@@ -35,6 +41,9 @@ robot_name_to_class = {
     PiperHardware.name: PiperHardware,
     RemotePhosphobot.name: RemotePhosphobot,
 }
+
+if ros2_available:
+    robot_name_to_class[ROS2Robot.name] = ROS2Robot
 
 
 @dataclass
