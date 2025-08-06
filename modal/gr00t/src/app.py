@@ -570,6 +570,12 @@ def train(  # All these args should be verified in phosphobot
             "Training timed out—uploading partial checkpoint before failing", exc_info=e
         )
         _upload_partial_checkpoint_gr00t(model_name, hf_token)
+        supabase_client.table("trainings").update(
+            {
+                "status": "failed",
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", training_id).execute()
         raise e
     except HFValidationError as e:
         logger.warning(f"Validation error during training: {e}")
