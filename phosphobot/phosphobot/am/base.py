@@ -362,6 +362,10 @@ def generate_readme(
 ):
     readme = f"""
 ---
+datasets: {dataset_repo_id}
+library_name: phosphobot
+pipeline_tag: robotics
+model_name: {model_type}
 tags:
 - phosphobot
 - {model_type}
