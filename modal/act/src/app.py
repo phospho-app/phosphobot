@@ -254,6 +254,49 @@ async def serve(
 
     server_port = 80
 
+    def _update_server_status(
+        supabase_client: Client,
+        server_id: int,
+        status: str,
+    ):
+        logger.info(f"Updating server status to {status} for server_id {server_id}")
+        if status == "failed":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        elif status == "stopped":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        else:
+            raise NotImplementedError(
+                f"Status '{status}' not implemented for server update"
+            )
+
     with modal.forward(server_port, unencrypted=True) as tunnel:
         model_path = find_model_path(model_id=model_id, checkpoint=checkpoint)
 
@@ -330,19 +373,19 @@ async def serve(
                 nonlocal last_bbox_computed
                 nonlocal policy
 
-                assert (
-                    len(current_qpos) == model_specifics.state_size[0]
-                ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-                assert (
-                    len(images) <= len(model_specifics.video_keys)
-                ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+                assert len(current_qpos) == model_specifics.state_size[0], (
+                    f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+                )
+                assert len(images) <= len(model_specifics.video_keys), (
+                    f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+                )
                 if len(images) > 0:
-                    assert (
-                        len(images[0].shape) == 3
-                    ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-                    assert (
-                        len(images[0].shape) == 3 and images[0].shape[2] == 3
-                    ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+                    assert len(images[0].shape) == 3, (
+                        f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+                    )
+                    assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
+                        f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+                    )
 
                 with torch.no_grad(), torch.autocast(device_type="cuda"):
                     current_qpos = current_qpos.copy()
@@ -516,51 +559,6 @@ async def serve(
                     raise HTTPException(
                         status_code=500,
                         detail=str(e),
-                    )
-
-            def _update_server_status(
-                supabase_client: Client,
-                server_id: int,
-                status: str,
-            ):
-                logger.info(
-                    f"Updating server status to {status} for server_id {server_id}"
-                )
-                if status == "failed":
-                    server_payload = {
-                        "status": status,
-                        "terminated_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    supabase_client.table("servers").update(server_payload).eq(
-                        "id", server_id
-                    ).execute()
-                    # Update also the AI control session
-                    ai_control_payload = {
-                        "status": "stopped",
-                        "ended_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    supabase_client.table("ai_control_sessions").update(
-                        ai_control_payload
-                    ).eq("server_id", server_id).execute()
-                elif status == "stopped":
-                    server_payload = {
-                        "status": status,
-                        "terminated_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    supabase_client.table("servers").update(server_payload).eq(
-                        "id", server_id
-                    ).execute()
-                    # Update also the AI control session
-                    ai_control_payload = {
-                        "status": "stopped",
-                        "ended_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    supabase_client.table("ai_control_sessions").update(
-                        ai_control_payload
-                    ).eq("server_id", server_id).execute()
-                else:
-                    raise NotImplementedError(
-                        f"Status '{status}' not implemented for server update"
                     )
 
             # Send tunnel info back to caller if queue is provided
