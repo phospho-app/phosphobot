@@ -38,38 +38,22 @@ phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 act_image = (
-    modal.Image.from_dockerfile("Dockerfile")
+    modal.Image.debian_slim(python_version="3.10")
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
     .pip_install(
-        "loguru",
-        "supabase",
-        "sentry-sdk",
+        "lerobot",
         "huggingface_hub[hf_transfer]",
         "hf_xet",
         "wandb",
         "accelerate",
-        "httpx>=0.28.1",
-        "pydantic>=2.10.5",
-        "fastparquet>=2024.11.0",
-        "loguru>=0.7.3",
-        "numpy<2",
-        "opencv-python-headless>=4.0",
-        "rich>=13.9.4",
-        "pandas>=2.2.2.240807",
-        "json-numpy>=2.1.0",
-        "fastapi>=0.115.11",
-        "zmq>=0.0.0",
-        "av>=14.2.1",
         "einops",
         "torch>=2.2.1",
         "torchvision>=0.21.0",
         "pyarrow>=8.0.0",
-        "uvicorn",
         "asyncio",
         "draccus",
-        "datasets",
         "jsonlines",
         "imageio[ffmpeg]>=2.34.0",
         "zarr>=2.17.0",
@@ -83,7 +67,7 @@ act_image = (
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 FUNCTION_IMAGE = act_image
-FUNCTION_TIMEOUT_TRAINING = 2 * HOURS  # 12 hours
+FUNCTION_TIMEOUT_TRAINING = 3 * HOURS  # 3 hours
 FUNCTION_TIMEOUT_INFERENCE = 6 * MINUTES  # 6 minutes
 FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A10G"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["T4"]
@@ -149,7 +133,7 @@ async def run_act_training(
         f"--dataset.root={dataset_path}",
         "--policy.type=act",
         f"--batch_size={training_params.batch_size}",
-        "--wandb.project=phospho-ACT",
+        "--wandb.project=phosphobot-ACT",
         f"--save_freq={training_params.save_steps}",
         f"--steps={training_params.steps}",
         "--policy.device=cuda",
@@ -234,7 +218,7 @@ async def serve(
     from huggingface_hub import snapshot_download  # type: ignore
     from pydantic import BaseModel
 
-    from lerobot.common.policies.act.modeling_act import ACTPolicy
+    from lerobot.policies.act.modeling_act import ACTPolicy
     from supabase import Client, create_client
 
     class RetryError(Exception):
@@ -624,8 +608,8 @@ async def serve(
 @app.function(
     image=FUNCTION_IMAGE,
     gpu=FUNCTION_GPU_TRAINING,
-    # 15 minutes added for the rest of the code to execute
-    timeout=FUNCTION_TIMEOUT_TRAINING + 15 * MINUTES,
+    # 20 minutes added for the rest of the code to execute
+    timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),

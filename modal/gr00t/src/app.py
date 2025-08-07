@@ -65,7 +65,7 @@ HOURS = 60 * MINUTES  # seconds
 FUNCTION_IMAGE = gr00t_image
 FUNCTION_GPU: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 FUNCTION_TIMEOUT = 8 * MINUTES
-TRAINING_TIMEOUT = 2 * HOURS
+TRAINING_TIMEOUT = 3 * HOURS
 
 app = modal.App("gr00t-server")
 gr00t_volume = modal.Volume.from_name("gr00t-n1")
@@ -499,8 +499,8 @@ def _upload_partial_checkpoint_gr00t(
 @app.function(
     image=FUNCTION_IMAGE,
     gpu="A100-80GB",
-    # 15 extra minutes to make sure the rest of the pipeline is done
-    timeout=TRAINING_TIMEOUT + 15 * MINUTES,
+    # 20 extra minutes to make sure the rest of the pipeline is done
+    timeout=TRAINING_TIMEOUT + 20 * MINUTES,
     # Added for debugging
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
