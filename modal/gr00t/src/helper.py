@@ -101,19 +101,6 @@ class Predictor:
             if wandb_enabled:
                 try:
                     wandb.login(key=wandb_api_key, verify=True)
-                    # Log in a specific project
-                    wandb.init(
-                        project="phosphobot-gr00t",
-                        name=hf_model_name,
-                        config={
-                            "dataset_repo_id": dataset_repo_id,
-                            "hf_model_name": hf_model_name,
-                            "batch_size": batch_size,
-                            "epochs": epochs,
-                            "learning_rate": learning_rate,
-                            "save_steps": save_steps,
-                        },
-                    )
                 except Exception as e:
                     logger.info(
                         f"Failed to login to Weights & Biases: {e}. Disabling Weights & Biases."
