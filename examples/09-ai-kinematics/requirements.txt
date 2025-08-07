@@ -1,0 +1,11 @@
+# Core dependencies for RGBD processing
+numpy>=1.21.0
+opencv-python>=4.5.0
+record3d>=1.4.0
+
+# AI Vision dependencies (optional)
+anthropic>=0.40.0
+pillow>=8.0.0
+
+# Additional utilities
+typing-extensions>=4.0.0 
