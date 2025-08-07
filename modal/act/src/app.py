@@ -38,12 +38,12 @@ phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 act_image = (
-    modal.Image.from_dockerfile("Dockerfile")
+    modal.Image.debian_slim(python_version="3.10")
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
     .pip_install(
-        "loguru",
+        "lerobot",
         "supabase",
         "sentry-sdk",
         "huggingface_hub[hf_transfer]",
@@ -83,7 +83,7 @@ act_image = (
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 FUNCTION_IMAGE = act_image
-FUNCTION_TIMEOUT_TRAINING = 2 * HOURS  # 12 hours
+FUNCTION_TIMEOUT_TRAINING = 2 * HOURS  # 2 hours
 FUNCTION_TIMEOUT_INFERENCE = 6 * MINUTES  # 6 minutes
 FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A10G"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["T4"]
@@ -234,7 +234,7 @@ async def serve(
     from huggingface_hub import snapshot_download  # type: ignore
     from pydantic import BaseModel
 
-    from lerobot.common.policies.act.modeling_act import ACTPolicy
+    from lerobot.policies.act.modeling_act import ACTPolicy
     from supabase import Client, create_client
 
     class RetryError(Exception):

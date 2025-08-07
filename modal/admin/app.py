@@ -707,6 +707,7 @@ def fastapi_app():
         id_whitelist = [
             "ab9b958d-ca0b-4d83-862f-60ba4ed35398",
             "a9cff082-9c44-4bcb-b262-0edc31c067c0",
+            "e6719a3d-2675-400b-bd14-867c6abc1bae",
         ]
         user_id = user.user.id
 
@@ -727,7 +728,7 @@ def fastapi_app():
             logger.info(
                 f"User {user_id} is a PRO user or whitelisted, extending timeout to 2 hours"
             )
-            timeout_seconds = 2 * 60 * 60  # 12 hours in seconds
+            timeout_seconds = 2 * 60 * 60  # 2 hours in seconds
 
         if user_id in id_whitelist:
             logger.info(f"User {user_id} is launching a training")
