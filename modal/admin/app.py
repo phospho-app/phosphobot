@@ -25,37 +25,12 @@ phosphobot_dir = (
 admin_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install(
-        "loguru",
-        "supabase",
-        "fastapi[standard]",
-        "pydantic==2.10.6",
-        "requests",
-        "httpx>=0.28.1",
-        "pydantic>=2.10.5",
-        "fastparquet>=2024.11.0",
         "ffmpeg-python>=0.2.0",
-        "loguru>=0.7.3",
-        "numpy<2",
-        "opencv-python-headless>=4.0",
-        "rich>=13.9.4",
-        "pandas-stubs>=2.2.2.240807",
-        "huggingface-hub>=0.29.0",
-        "json-numpy>=2.1.0",
-        "fastapi>=0.115.11",
-        "zmq>=0.0.0",
-        "av>=14.2.1",
-        "sentry-sdk",
         "stripe",
     )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
-    # .add_local_dir(
-    #     local_path=phosphobot_dir,
-    #     remote_path="/root/phosphobot",
-    #     # ignore if .venv is in path
-    #     ignore=lambda p: ".venv" in str(p),
-    # )
     .add_local_python_source("phosphobot")
 )
 
@@ -728,7 +703,7 @@ def fastapi_app():
             logger.info(
                 f"User {user_id} is a PRO user or whitelisted, extending timeout to 2 hours"
             )
-            timeout_seconds = 2 * 60 * 60  # 2 hours in seconds
+            timeout_seconds = 3 * 60 * 60  # 2 hours in seconds
 
         if user_id in id_whitelist:
             logger.info(f"User {user_id} is launching a training")
