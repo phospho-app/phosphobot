@@ -253,7 +253,7 @@ def generate_huggingface_model_name(dataset):
 class StartServerRequest(BaseModel):
     model_id: str
     model_type: Literal["gr00t", "ACT", "ACT_BBOX"]
-    timeout: Annotated[int, Field(default=15 * MINUTES, ge=0)]
+    timeout: Annotated[int, Field(default=15 * MINUTES, ge=0, le=15 * MINUTES)]
     region: Optional[Literal["us-east", "us-west", "eu", "ap", "anywhere"]] = None
     model_specifics: Gr00tSpawnConfig | ACTSpawnConfig
     checkpoint: Optional[int] = None

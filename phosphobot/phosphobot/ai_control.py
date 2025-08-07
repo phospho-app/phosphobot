@@ -178,7 +178,6 @@ async def setup_ai_control(
                 "model_id": model_id,
                 "checkpoint": checkpoint,
                 "model_type": model_type,
-                "timeout": 15 * 60,
                 "model_specifics": clean,
             },
             headers={
