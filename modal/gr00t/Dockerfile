@@ -22,7 +22,7 @@ RUN pip install gpustat wandb==0.19.0
 # Create and set working directory
 WORKDIR /workspace
 # Cloning the repo. By default, this is cached. Change the echo here to force a rebuild. 
-RUN echo "v13"
+RUN echo "v14"
 RUN git clone https://github.com/phospho-app/Isaac-GR00T.git /workspace
 
 # Install dependencies from pyproject.toml
