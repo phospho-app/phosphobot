@@ -56,7 +56,18 @@ export function KeyboardControl() {
   const keysPressedRef = useRef(new Set<string>());
   const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
   const lastExecutionTimeRef = useRef(0);
+  // open state is continuous between 0 (fully closed) and 1 (fully open)
   const openStateRef = useRef(1);
+
+  // NEW PARAMETER: full close time in milliseconds at speed = 1.
+  // Change this value to adjust how long it takes to fully close the gripper.
+  const FULL_CLOSE_MS = 400; // <-- fully close after ~400ms hold at speed=1
+
+  // Derived parameter: how long a "brief press" should be (as a fraction of full close)
+  const BRIEF_PRESS_MS = Math.max(20, Math.round(FULL_CLOSE_MS * 0.25));
+
+  // Refs for space (gripper hold) behavior
+  const spacePressStartRef = useRef<number | null>(null);
 
   // Configuration constants (from control.js)
   const BASE_URL = `http://${window.location.hostname}:${window.location.port}/`; // Use template literal for clarity
@@ -87,7 +98,8 @@ export function KeyboardControl() {
     g: { x: 0, y: 0, z: 0, rz: 0, rx: -STEP_SIZE * 3.14, ry: 0 },
     b: { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: STEP_SIZE * 3.14 },
     c: { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: -STEP_SIZE * 3.14 },
-    " ": { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: 0, toggleOpen: true },
+    // space no longer toggles; we handle it with hold logic below
+    " ": { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: 0 },
   };
 
   const robotIDFromName = (name?: string | null) => {
@@ -133,10 +145,39 @@ export function KeyboardControl() {
       setActiveKey(event.key);
 
       const keyLower = event.key.toLowerCase();
+
+      // Special handling for space (gripper)
+      const isSpace = event.key === " " || keyLower === " ";
+      if (isSpace) {
+        // If gripper is not fully open, a single press always opens it immediately
+        if (openStateRef.current < 0.99) {
+          openStateRef.current = 1;
+          // Send immediate open command
+          const data = {
+            x: 0,
+            y: 0,
+            z: 0,
+            rx: 0,
+            ry: 0,
+            rz: 0,
+            open: openStateRef.current,
+          };
+          postData(BASE_URL + "move/relative", data, {
+            robot_id: robotIDFromName(selectedRobotName),
+          });
+          // Don't add to keysPressedRef: this press is consumed as "open" action
+          return;
+        }
+
+        // If gripper is (fully) open, start the hold-closure behavior
+        keysPressedRef.current.add(" ");
+        spacePressStartRef.current = Date.now();
+        return;
+      }
+
       if (KEY_MAPPINGS[keyLower]) {
         keysPressedRef.current.add(keyLower);
       } else if (KEY_MAPPINGS[event.key]) {
-        // For keys like ArrowUp, Space
         keysPressedRef.current.add(event.key);
       }
     };
@@ -144,6 +185,14 @@ export function KeyboardControl() {
     const handleKeyUp = (event: KeyboardEvent) => {
       setActiveKey(null);
       const keyLower = event.key.toLowerCase();
+
+      const isSpace = event.key === " " || keyLower === " ";
+      if (isSpace) {
+        keysPressedRef.current.delete(" ");
+        spacePressStartRef.current = null;
+        return;
+      }
+
       if (KEY_MAPPINGS[keyLower]) {
         keysPressedRef.current.delete(keyLower);
       } else if (KEY_MAPPINGS[event.key]) {
@@ -157,7 +206,7 @@ export function KeyboardControl() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [selectedRobotName, serverStatus]);
 
   useEffect(() => {
     if (
@@ -182,8 +231,9 @@ export function KeyboardControl() {
             deltaRZ = 0,
             deltaRX = 0,
             deltaRY = 0;
-          let didToggleOpen = false;
 
+          // Note: we no longer use toggleOpen from KEY_MAPPINGS. The space key is
+          // handled via spacePressStartRef and keysPressedRef contains " " while held.
           keysPressedRef.current.forEach((key) => {
             if (KEY_MAPPINGS[key]) {
               deltaX += KEY_MAPPINGS[key].x;
@@ -192,9 +242,6 @@ export function KeyboardControl() {
               deltaRZ += KEY_MAPPINGS[key].rz;
               deltaRX += KEY_MAPPINGS[key].rx;
               deltaRY += KEY_MAPPINGS[key].ry;
-              if (KEY_MAPPINGS[key].toggleOpen) {
-                didToggleOpen = true;
-              }
             }
           });
 
@@ -206,11 +253,35 @@ export function KeyboardControl() {
           deltaRY *= selectedSpeed;
           deltaRZ *= selectedSpeed;
 
-          if (didToggleOpen) {
-            openStateRef.current = openStateRef.current > 0.99 ? 0 : 1;
-            keysPressedRef.current.delete(" ");
+          // Handle gripper hold-to-close behavior when space is held
+          if (keysPressedRef.current.has(" ") && spacePressStartRef.current) {
+            const holdMs = Math.max(0, Date.now() - spacePressStartRef.current);
+            const holdSec = holdMs / 1000;
+
+            // Effective hold is scaled by selectedSpeed so higher speed -> faster closing
+            const speedFactor = Math.max(0.01, selectedSpeed);
+            const effectiveHold = holdSec * speedFactor; // seconds in "effective" units
+
+            // Full-close parameter in effective seconds (derived from FULL_CLOSE_MS)
+            const fullCloseEffective = Math.max(0.001, FULL_CLOSE_MS / 1000);
+
+            // Normalized logarithmic progress in [0,1]
+            // We map: norm = log(1 + effectiveHold) / log(1 + fullCloseEffective)
+            // This makes the gripper close faster at first and slow down later (log curve),
+            // and ensures full close occurs when effectiveHold ~= fullCloseEffective,
+            // i.e. when holdSec ~= FULL_CLOSE_MS / 1000 / speedFactor.
+            const denom = Math.log(1 + fullCloseEffective);
+            const numer = Math.log(1 + effectiveHold);
+            const norm = denom > 0 ? Math.min(1, numer / denom) : 1;
+
+            // Target open state decreases from 1 down to 0 as norm goes 0->1
+            const targetOpen = Math.max(0, 1 - norm);
+
+            // Update openStateRef directly to the computed target (continuous)
+            openStateRef.current = Math.max(0, Math.min(1, targetOpen));
           }
 
+          // Build and send command if any movement or open state changed since last send
           if (
             deltaX !== 0 ||
             deltaY !== 0 ||
@@ -218,7 +289,8 @@ export function KeyboardControl() {
             deltaRZ !== 0 ||
             deltaRX !== 0 ||
             deltaRY !== 0 ||
-            didToggleOpen
+            // Always include open state so gripper updates are sent while holding
+            keysPressedRef.current.has(" ")
           ) {
             const data = {
               x: deltaX,
@@ -233,6 +305,7 @@ export function KeyboardControl() {
               robot_id: robotIDFromName(selectedRobotName),
             });
           }
+
           lastExecutionTimeRef.current = currentTime;
         }
       };
@@ -269,6 +342,8 @@ export function KeyboardControl() {
       await postData(BASE_URL + "move/absolute", initData, {
         robot_id: robotIDFromName(selectedRobotName),
       });
+      // Ensure our local state tracks the robot
+      openStateRef.current = 1;
     } catch (error) {
       console.error("Error during init:", error);
     }
@@ -337,7 +412,7 @@ export function KeyboardControl() {
     },
     {
       key: " ",
-      description: "Toggle the open state",
+      description: "Hold Space to close the gripper. Press once to open.",
       icon: <Space className="size-6" />,
     },
   ];
@@ -428,12 +503,6 @@ export function KeyboardControl() {
                   onClick={() => {
                     if (!isMoving && control.key !== " ") {
                       // For non-spacebar clicks, simulate a quick key press only if not already moving via keyboard
-                      // This is for single-step movements via UI click
-                      // This part might need more fleshed out logic if complex interactions are desired
-                      console.warn(
-                        "UI button clicks for movement are illustrative and might need specific handling if robot is not 'moving' via keyboard.",
-                      );
-                      // A simple way: send one command
                       const move =
                         KEY_MAPPINGS[control.key.toLowerCase()] ||
                         KEY_MAPPINGS[control.key];
@@ -457,25 +526,33 @@ export function KeyboardControl() {
                       return; // Prevent falling through to old logic for these buttons if not moving
                     }
 
-                    // Original logic for space bar and when isMoving
+                    // New behavior for spacebar click: emulate short hold to close a bit, or open if closed
                     if (control.key === " ") {
-                      openStateRef.current = openStateRef.current === 1 ? 0 : 1;
-                      const data = {
-                        x: 0,
-                        y: 0,
-                        z: 0,
-                        rx: 0,
-                        ry: 0,
-                        rz: 0,
-                        open: openStateRef.current,
-                      };
-                      // Send command even if not "moving" via keyboard loop
-                      postData(BASE_URL + "move/relative", data, {
-                        robot_id: robotIDFromName(selectedRobotName),
-                      });
-                      // No setActiveKey or keysPressedRef manipulation for space, it's a toggle
+                      if (openStateRef.current < 0.99) {
+                        // If not open, open with single click
+                        openStateRef.current = 1;
+                        const data = {
+                          x: 0,
+                          y: 0,
+                          z: 0,
+                          rx: 0,
+                          ry: 0,
+                          rz: 0,
+                          open: openStateRef.current,
+                        };
+                        postData(BASE_URL + "move/relative", data, {
+                          robot_id: robotIDFromName(selectedRobotName),
+                        });
+                      } else {
+                        // Emulate a brief hold to slightly close the gripper (scaled by FULL_CLOSE_MS)
+                        keysPressedRef.current.add(" ");
+                        spacePressStartRef.current = Date.now();
+                        setTimeout(() => {
+                          keysPressedRef.current.delete(" ");
+                          spacePressStartRef.current = null;
+                        }, BRIEF_PRESS_MS);
+                      }
                     } else if (isMoving) {
-                      // Only manipulate keysPressedRef if already in keyboard move mode
                       const K = KEY_MAPPINGS[control.key.toLowerCase()]
                         ? control.key.toLowerCase()
                         : control.key;
