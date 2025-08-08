@@ -96,7 +96,7 @@ For development or if you face issues with some submodule or version, you can in
 
    On Windows, run the full command to build the app.
 
-### Troubleshooting: pybullet won't build on Windows
+### Troubleshooting: pybullet won't build on Windows
 
 You may encounter the error: `error: Microsoft Visual C++ 14.0 is required. Get it with "Microsoft Visual C++ Build Tools`
 
