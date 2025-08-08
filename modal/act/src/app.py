@@ -39,6 +39,7 @@ phosphobot_dir = (
 )
 act_image = (
     modal.Image.debian_slim(python_version="3.10")
+    .apt_install("ffmpeg", "libavutil-dev", "libavcodec-dev", "libavformat-dev")
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
@@ -126,12 +127,13 @@ async def run_act_training(
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
 ):
     cmd = [
-        "/opt/conda/envs/lerobot/bin/python",
+        "python",
         "-m",
         "lerobot.scripts.train",
         f"--dataset.repo_id={dataset_name}",
         f"--dataset.root={dataset_path}",
         "--policy.type=act",
+        "--policy.push_to_hub=false",
         f"--batch_size={training_params.batch_size}",
         "--wandb.project=phosphobot-ACT",
         f"--save_freq={training_params.save_steps}",
