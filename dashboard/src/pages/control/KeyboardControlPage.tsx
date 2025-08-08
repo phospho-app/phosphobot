@@ -68,6 +68,8 @@ export function KeyboardControl() {
 
   // Refs for space (gripper hold) behavior
   const spacePressStartRef = useRef<number | null>(null);
+  // Interval used when the user holds the UI button but `isMoving` is false
+  const uiHoldIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Configuration constants (from control.js)
   const BASE_URL = `http://${window.location.hostname}:${window.location.port}/`; // Use template literal for clarity
@@ -139,6 +141,24 @@ export function KeyboardControl() {
     }
   };
 
+  // compute target open value (0..1) from a hold duration in milliseconds
+  const computeTargetOpenFromHoldMs = (holdMs: number) => {
+    const holdSec = Math.max(0, holdMs) / 1000;
+    // Effective hold is scaled by selectedSpeed so higher speed -> faster closing
+    const speedFactor = Math.max(0.01, selectedSpeed);
+    const effectiveHold = holdSec * speedFactor; // seconds in "effective" units
+
+    // Full-close parameter in effective seconds (derived from FULL_CLOSE_MS)
+    const fullCloseEffective = Math.max(0.001, FULL_CLOSE_MS / 1000);
+
+    const denom = Math.log(1 + fullCloseEffective);
+    const numer = Math.log(1 + effectiveHold);
+    const norm = denom > 0 ? Math.min(1, numer / denom) : 1;
+
+    // Target open state decreases from 1 down to 0 as norm goes 0->1
+    return Math.max(0, 1 - norm);
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
@@ -206,7 +226,7 @@ export function KeyboardControl() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedRobotName, serverStatus]);
+  }, [selectedRobotName, serverStatus, selectedSpeed]);
 
   useEffect(() => {
     if (
@@ -256,26 +276,8 @@ export function KeyboardControl() {
           // Handle gripper hold-to-close behavior when space is held
           if (keysPressedRef.current.has(" ") && spacePressStartRef.current) {
             const holdMs = Math.max(0, Date.now() - spacePressStartRef.current);
-            const holdSec = holdMs / 1000;
 
-            // Effective hold is scaled by selectedSpeed so higher speed -> faster closing
-            const speedFactor = Math.max(0.01, selectedSpeed);
-            const effectiveHold = holdSec * speedFactor; // seconds in "effective" units
-
-            // Full-close parameter in effective seconds (derived from FULL_CLOSE_MS)
-            const fullCloseEffective = Math.max(0.001, FULL_CLOSE_MS / 1000);
-
-            // Normalized logarithmic progress in [0,1]
-            // We map: norm = log(1 + effectiveHold) / log(1 + fullCloseEffective)
-            // This makes the gripper close faster at first and slow down later (log curve),
-            // and ensures full close occurs when effectiveHold ~= fullCloseEffective,
-            // i.e. when holdSec ~= FULL_CLOSE_MS / 1000 / speedFactor.
-            const denom = Math.log(1 + fullCloseEffective);
-            const numer = Math.log(1 + effectiveHold);
-            const norm = denom > 0 ? Math.min(1, numer / denom) : 1;
-
-            // Target open state decreases from 1 down to 0 as norm goes 0->1
-            const targetOpen = Math.max(0, 1 - norm);
+            const targetOpen = computeTargetOpenFromHoldMs(holdMs);
 
             // Update openStateRef directly to the computed target (continuous)
             openStateRef.current = Math.max(0, Math.min(1, targetOpen));
@@ -319,6 +321,119 @@ export function KeyboardControl() {
       };
     }
   }, [isMoving, selectedSpeed, serverStatus, selectedRobotName]); // Added dependencies
+
+  // UI-controlled hold start (mouse / touch)
+  const startSpacePressFromUI = (
+    e?: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent,
+  ) => {
+    // Prevent focus/drag behavior on touch
+    if (e && e.preventDefault) e.preventDefault();
+
+    // If gripper is not fully open, open immediately on a single press
+    if (openStateRef.current < 0.99) {
+      openStateRef.current = 1;
+      const data = {
+        x: 0,
+        y: 0,
+        z: 0,
+        rx: 0,
+        ry: 0,
+        rz: 0,
+        open: openStateRef.current,
+      };
+      postData(BASE_URL + "move/relative", data, {
+        robot_id: robotIDFromName(selectedRobotName),
+      });
+      return;
+    }
+
+    // Begin holding
+    keysPressedRef.current.add(" ");
+    spacePressStartRef.current = Date.now();
+    setActiveKey(" ");
+
+    // If the main keyboard-controlled loop isn't running, we need to send
+    // updates ourselves while the UI button is held. Start a temporary interval.
+    if (!isMoving) {
+      if (uiHoldIntervalRef.current) {
+        clearInterval(uiHoldIntervalRef.current);
+        uiHoldIntervalRef.current = null;
+      }
+      uiHoldIntervalRef.current = setInterval(() => {
+        if (!spacePressStartRef.current) return;
+        const holdMs = Date.now() - spacePressStartRef.current;
+        const targetOpen = computeTargetOpenFromHoldMs(holdMs);
+        openStateRef.current = Math.max(0, Math.min(1, targetOpen));
+        const data = {
+          x: 0,
+          y: 0,
+          z: 0,
+          rx: 0,
+          ry: 0,
+          rz: 0,
+          open: openStateRef.current,
+        };
+        postData(BASE_URL + "move/relative", data, {
+          robot_id: robotIDFromName(selectedRobotName),
+        });
+      }, LOOP_INTERVAL);
+    }
+  };
+
+  // UI-controlled hold end (mouse up / touch end / leave)
+  const endSpacePressFromUI = () => {
+    const start = spacePressStartRef.current;
+    // Clear UI interval if present
+    if (uiHoldIntervalRef.current) {
+      clearInterval(uiHoldIntervalRef.current);
+      uiHoldIntervalRef.current = null;
+    }
+
+    // If there was no real start, nothing to do
+    if (!start) {
+      setActiveKey(null);
+      keysPressedRef.current.delete(" ");
+      spacePressStartRef.current = null;
+      return;
+    }
+
+    const holdMs = Math.max(0, Date.now() - start);
+
+    // Delete the pressed flag and clear timing
+    keysPressedRef.current.delete(" ");
+    spacePressStartRef.current = null;
+    setActiveKey(null);
+
+    // If the press was very brief, treat as brief press (BRIEF_PRESS_MS)
+    const usedHoldMs = holdMs < BRIEF_PRESS_MS ? BRIEF_PRESS_MS : holdMs;
+
+    const targetOpen = computeTargetOpenFromHoldMs(usedHoldMs);
+    openStateRef.current = Math.max(0, Math.min(1, targetOpen));
+
+    // Send final update so UI click produces immediate effect (even if isMoving is false)
+    const data = {
+      x: 0,
+      y: 0,
+      z: 0,
+      rx: 0,
+      ry: 0,
+      rz: 0,
+      open: openStateRef.current,
+    };
+    postData(BASE_URL + "move/relative", data, {
+      robot_id: robotIDFromName(selectedRobotName),
+    });
+  };
+
+  useEffect(() => {
+    // Ensure we clean up UI interval when unmounting
+    return () => {
+      if (uiHoldIntervalRef.current) {
+        clearInterval(uiHoldIntervalRef.current);
+        uiHoldIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   const initRobot = async () => {
     try {
@@ -500,6 +615,37 @@ export function KeyboardControl() {
                       ? "bg-primary text-primary-foreground"
                       : "bg-card" // Ensure default background for card
                   }`}
+                  // For the space control we use press (mouse/touch) handlers so long presses work
+                  onMouseDown={
+                    control.key === " "
+                      ? (e) => startSpacePressFromUI(e)
+                      : undefined
+                  }
+                  onTouchStart={
+                    control.key === " "
+                      ? (e) => startSpacePressFromUI(e)
+                      : undefined
+                  }
+                  onMouseUp={
+                    control.key === " "
+                      ? () => endSpacePressFromUI()
+                      : undefined
+                  }
+                  onMouseLeave={
+                    control.key === " "
+                      ? () => endSpacePressFromUI()
+                      : undefined
+                  }
+                  onTouchEnd={
+                    control.key === " "
+                      ? () => endSpacePressFromUI()
+                      : undefined
+                  }
+                  onTouchCancel={
+                    control.key === " "
+                      ? () => endSpacePressFromUI()
+                      : undefined
+                  }
                   onClick={() => {
                     if (!isMoving && control.key !== " ") {
                       // For non-spacebar clicks, simulate a quick key press only if not already moving via keyboard
@@ -526,32 +672,10 @@ export function KeyboardControl() {
                       return; // Prevent falling through to old logic for these buttons if not moving
                     }
 
-                    // New behavior for spacebar click: emulate short hold to close a bit, or open if closed
+                    // New behavior for spacebar click: handled by press handlers above
                     if (control.key === " ") {
-                      if (openStateRef.current < 0.99) {
-                        // If not open, open with single click
-                        openStateRef.current = 1;
-                        const data = {
-                          x: 0,
-                          y: 0,
-                          z: 0,
-                          rx: 0,
-                          ry: 0,
-                          rz: 0,
-                          open: openStateRef.current,
-                        };
-                        postData(BASE_URL + "move/relative", data, {
-                          robot_id: robotIDFromName(selectedRobotName),
-                        });
-                      } else {
-                        // Emulate a brief hold to slightly close the gripper (scaled by FULL_CLOSE_MS)
-                        keysPressedRef.current.add(" ");
-                        spacePressStartRef.current = Date.now();
-                        setTimeout(() => {
-                          keysPressedRef.current.delete(" ");
-                          spacePressStartRef.current = null;
-                        }, BRIEF_PRESS_MS);
-                      }
+                      // no-op here because we handle open/close in the press handlers
+                      return;
                     } else if (isMoving) {
                       const K = KEY_MAPPINGS[control.key.toLowerCase()]
                         ? control.key.toLowerCase()
