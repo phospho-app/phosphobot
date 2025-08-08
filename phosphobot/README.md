@@ -96,6 +96,12 @@ For development or if you face issues with some submodule or version, you can in
 
    On Windows, run the full command to build the app.
 
+### Troubleshooting: pybullet won't build on Windows
+
+You may encounter the error: `error: Microsoft Visual C++ 14.0 is required. Get it with "Microsoft Visual C++ Build Tools`
+
+If so, you need to install [Visual Studio](https://visualstudio.microsoft.com/downloads/) and [the Microsoft C++ v14 tools (it should be called C++ build tools)](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+
 ### Troubleshooting: pybullet won't compile on MacOS Silicon
 
 This is a recurring issue with Mac Silicon (M1, M2, M3, M4, etc.) [linked to pybullet](https://github.com/bulletphysics/bullet3/issues/4712).
