@@ -201,6 +201,7 @@ def serve(
                         revision="main",
                         local_dir=model_path,
                     )
+                logger.info(f"Model {model_id} downloaded to {model_path}")
 
             except Exception as e:
                 logger.error(
