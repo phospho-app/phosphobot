@@ -175,12 +175,12 @@ def serve(
         from phosphobot.am.gr00t import RobotInferenceServer
 
         # Check if we have the model in the volume
-        model_path = f"/data/models/{model_id}"
+        local_model_path = f"/data/models/{model_id}"
         if checkpoint is not None:
-            model_path = f"/data/models/{model_id}/{checkpoint}"
+            local_model_path = f"/data/models/{model_id}/{checkpoint}"
 
         # Check if this path exists in the container
-        if not os.path.exists(model_path):
+        if not os.path.exists(local_model_path):
             logger.warning(
                 f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
             )
@@ -188,20 +188,20 @@ def serve(
             try:
                 # Don't download the whole repo, just the checkpoint
                 if checkpoint is not None:
-                    model_path = snapshot_download(
+                    local_model_path = snapshot_download(
                         repo_id=model_id,
                         repo_type="model",
                         revision=str(checkpoint),
-                        local_dir=model_path,
+                        local_dir=local_model_path,
                     )
                 else:
-                    model_path = snapshot_download(
+                    local_model_path = snapshot_download(
                         repo_id=model_id,
                         repo_type="model",
                         revision="main",
-                        local_dir=model_path,
+                        local_dir=local_model_path,
                     )
-                logger.info(f"Model {model_id} downloaded to {model_path}")
+                logger.info(f"Model {model_id} downloaded to {local_model_path}")
 
             except Exception as e:
                 logger.error(
@@ -209,16 +209,28 @@ def serve(
                 )
                 _update_server_status(supabase_client, server_id, "failed")
                 raise HTTPException(
-                    status_code=500,
+                    status_code=401,
                     detail=f"Failed to download model {model_id} from HuggingFace: {e}",
                 )
 
         else:
             logger.info(f"⛏️ Model {model_id} found in Modal volume")
 
+        # Check if the model path exists now, if not, raise an error
+        if not os.path.exists(local_model_path):
+            logger.error(
+                f"Model path {local_model_path} does not exist after download attempt."
+            )
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model path {local_model_path} does not exist after download attempt.",
+            )
+
+        server = None
         try:
             args = Namespace(
-                model_path=model_path,
+                model_path=local_model_path,
                 embodiment_tag=model_specifics.embodiment_tag,
                 server=True,
                 client=False,
@@ -272,12 +284,11 @@ def serve(
                 detail=f"Server error: {e}",
             )
         finally:
-            # Stop the server and update the status
-            server._kill_server()
-            # Clean up resources
-            if hasattr(server, "context"):
+            # Stop the server
+            if server is not None:
+                server._kill_server()
+                # Clean up resources
                 server.context.destroy(linger=0)
-            if hasattr(server, "socket"):
                 server.socket.close()
 
 

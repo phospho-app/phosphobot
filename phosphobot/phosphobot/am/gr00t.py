@@ -491,7 +491,7 @@ class Gr00tN1(ActionModel):
         **kwargs,
     ):
         super().__init__(server_url, server_port)
-        self.client = ExternalRobotInferenceClient(server_url, server_port)
+        self.client = ExternalRobotInferenceClient(host=server_url, port=server_port)
         self.action_keys = action_keys
 
     def sample_actions(self, inputs: dict) -> np.ndarray:
