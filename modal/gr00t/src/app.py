@@ -203,9 +203,15 @@ def serve(
                     )
 
             except Exception as e:
-                logger.info(
+                logger.error(
                     f"Failed to download model {model_id} from HuggingFace: {e}"
                 )
+                _update_server_status(supabase_client, server_id, "failed")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to download model {model_id} from HuggingFace: {e}",
+                )
+
         else:
             logger.info(f"⛏️ Model {model_id} found in Modal volume")
 
