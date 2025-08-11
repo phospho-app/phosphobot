@@ -1,4 +1,4 @@
-import { PhosphoProCallout } from "@/components/callout/phospho-pro";
+import { PhosphoVRCallout } from "@/components/callout/phospho-vr";
 import { Recorder } from "@/components/common/recorder";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/context/AuthContext";
 import { useGlobalStore } from "@/lib/hooks";
 import { ViewVideoPage } from "@/pages/ViewVideoPage";
 import {
@@ -28,6 +29,7 @@ export function ControlPage() {
   const showCamera = useGlobalStore((state) => state.showCamera);
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
   const [activeTab, setActiveTab] = useState("keyboard");
+  const { proUser } = useAuth();
 
   const controlOptions = [
     {
@@ -114,48 +116,51 @@ export function ControlPage() {
           <SingleArmReplay />
         </TabsContent>
         <TabsContent value="VR">
-          <div className="space-y-4">
-            <PhosphoProCallout />
-            <div className="flex flex-col gap-4 p-4 bg-background rounded-2xl">
-              <div className="text-sm">
-                Use the Meta Quest app to control the robot in VR with a Meta
-                Quest 2, Meta Quest Pro, Meta Quest 3 or Meta Quest 3s.
+          <div className="space-y-6">
+            {!proUser && <PhosphoVRCallout />}
+
+            <div className="flex flex-col gap-4 p-6 bg-background rounded-2xl border">
+              <div className="space-y-4">
+                <h4 className="font-semibold text-lg">
+                  How to connect to your robot in VR?
+                </h4>
+                <p className="text-muted-foreground">
+                  Control your robot in virtual reality using a Meta Quest 2,
+                  Meta Quest Pro, Meta Quest 3, or Meta Quest 3S. Watch the
+                  video to learn how to connect your robot in VR.
+                </p>
               </div>
-              <div className="text-sm">
-                If you bought a{" "}
-                <a
-                  href="https://robots.phospho.ai/"
-                  target="_blank"
-                  className="underline"
-                >
-                  phospho starter pack
-                </a>
-                , reach out to us on Discord to get access to the app.
+
+              <div className="aspect-video max-w-2xl">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src="https://www.youtube.com/embed/AQ-xgCTdj_w?si=tUw1JIWwm75gd5_9"
+                  title="Phospho VR Control Demo"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  className="rounded-lg"
+                ></iframe>
               </div>
-              <iframe
-                width="560"
-                height="315"
-                src="https://www.youtube.com/embed/AQ-xgCTdj_w?si=tUw1JIWwm75gd5_9"
-                title="YouTube video player"
-                frame-border="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                referrerPolicy="strict-origin-when-cross-origin"
-              ></iframe>
-              <div className="text-sm"></div>
-              <div className="flex gap-2">
-                <Button asChild className="min-w-32" variant="secondary">
-                  <a href="https://docs.phospho.ai/examples/teleop">
-                    Learn more
+
+              <div className="flex flex-wrap gap-3">
+                <Button asChild variant="outline">
+                  <a
+                    href="https://docs.phospho.ai/examples/teleop"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Read the Docs
                   </a>
                 </Button>
-                <Button asChild className="min-w-32" variant={"secondary"}>
-                  <a href="https://discord.gg/cbkggY6NSK">
-                    Reach out on Discord
-                  </a>
-                </Button>
-                <Button asChild className="min-w-32">
-                  <a href="https://www.meta.com/en-gb/experiences/phospho-teleoperation/8873978782723478/">
-                    Get on the Meta Store
+                <Button asChild variant="outline">
+                  <a
+                    href="https://discord.gg/cbkggY6NSK"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Get Help on Discord
                   </a>
                 </Button>
               </div>
