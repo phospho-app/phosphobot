@@ -848,6 +848,9 @@ class Gr00tN1(ActionModel):
                 # Send the new joint position to the robot
                 action_list = action.tolist()
                 for robot_index in range(len(robots)):
+                    logger.debug(
+                        f"Robot {robot_index} action: {action_list[robot_index * 6 : robot_index * 6 + 6]}"
+                    )
                     if all(
                         np.isclose(
                             action_list[robot_index * 6 : robot_index * 6 + 6],
@@ -855,6 +858,28 @@ class Gr00tN1(ActionModel):
                         )
                     ):
                         logger.warning("All predicted actions are -pi. Skipping.")
+                        continue
+
+                    # If the distance between the current and target position is too high, skip the action
+                    current_position = robots[robot_index].read_joints_position(
+                        unit=unit, max_value=max_angle, min_value=min_angle
+                    )
+                    if np.any(
+                        np.abs(
+                            current_position
+                            - action_list[robot_index * 6 : robot_index * 6 + 6]
+                        )
+                        > 0.5 * (np.pi if unit == "rad" else 180)
+                    ):
+                        largest_diff = np.max(
+                            np.abs(
+                                current_position
+                                - action_list[robot_index * 6 : robot_index * 6 + 6]
+                            )
+                        )
+                        logger.warning(
+                            f"Skipping action for robot {robot_index} due to large position difference: {largest_diff}\nCurrent: {current_position}"
+                        )
                         continue
 
                     robots[robot_index].write_joint_positions(
