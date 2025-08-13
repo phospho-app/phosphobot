@@ -48,7 +48,6 @@ dependencies = [
     "netifaces-plus>=0.12.0",
     "wasmtime>=33.0.0",
     "async-property>=0.2.2",
-    "gotrue>=2.12.0",
 ]
 
 [dependency-groups]
