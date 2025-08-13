@@ -851,7 +851,10 @@ class Gr00tN1(ActionModel):
                 for robot_index in range(len(robots)):
                     # If the distance between the current and target position is too high, skip the action
                     current_position = robots[robot_index].read_joints_position(
-                        unit=unit, max_value=max_angle, min_value=min_angle
+                        unit=unit,
+                        max_value=max_angle,
+                        min_value=min_angle,
+                        source="sim",
                     )
                     max_transition_angle: float
                     if unit == "degrees":
