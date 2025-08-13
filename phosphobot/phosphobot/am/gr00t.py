@@ -849,6 +849,8 @@ class Gr00tN1(ActionModel):
                 # Send the new joint position to the robot
                 action_list = action.tolist()
                 for robot_index in range(len(robots)):
+                    target_position = action_list[robot_index * 6 : robot_index * 6 + 6]
+
                     # If the distance between the current and target position is too high, skip the action
                     current_position = robots[robot_index].read_joints_position(
                         unit=unit,
@@ -856,30 +858,46 @@ class Gr00tN1(ActionModel):
                         min_value=min_angle,
                         source="sim",
                     )
-                    max_transition_angle: float
+                    max_transition_angles: np.ndarray
                     if unit == "degrees":
-                        max_transition_angle = 90
+                        # The last joint is the gripper, which can open/close
+                        max_transition_angles = np.array([90.0] * 5 + [180.0])
+                        current_to_target_diff = np.abs(
+                            (target_position - current_position + 180) % 360 - 180
+                        )
+
                     elif unit == "radians":
-                        max_transition_angle = np.pi / 2
+                        # The last joint is the gripper, which can open/close
+                        max_transition_angles = np.array([np.pi / 2] * 5 + [np.pi])
+                        current_to_target_diff = np.abs(
+                            (target_position - current_position + np.pi) % (2 * np.pi)
+                            - np.pi
+                        )
                     elif (
                         unit == "other"
                         and max_angle is not None
                         and min_angle is not None
                     ):
+                        # The last joint is the gripper, which can open/close
                         max_transition_angle = (max_angle - min_angle) / 2
+                        max_transition_angles = np.array(
+                            [max_transition_angle] * 5 + [max_angle - min_angle]
+                        )
+                        current_to_target_diff = np.abs(
+                            (target_position - current_position + max_angle)
+                            % (max_angle - min_angle)
+                            - max_transition_angle
+                        )
                     else:
                         raise ValueError(f"Unknown unit: {unit}")
 
-                    current_to_target_diff = np.abs(
-                        current_position
-                        - action_list[robot_index * 6 : robot_index * 6 + 6]
-                    )
-                    if np.any(current_to_target_diff > max_transition_angle):
+                    if np.any(current_to_target_diff > max_transition_angles):
                         largest_diff = np.max(current_to_target_diff)
+                        largest_diff_index = np.argmax(current_to_target_diff)
                         error_message = (
-                            f"Skipping action for robot {robot_index} because the to joint position difference is too large: {largest_diff} > {max_transition_angle} in units {unit}"
+                            f"Skipping action for robot {robot_index} because the to joint position difference is too large: {largest_diff} > {max_transition_angles[largest_diff_index]} in units {unit}"
                             + f"\nCurrent position: {current_position}"
-                            + f"\nTarget position: {action_list[robot_index * 6 : robot_index * 6 + 6]}\n"
+                            + f"\nTarget position: {target_position}\n"
                             + "Possible reasons for this error:"
                             + "\n1. Make sure you selected the *right angle unit* in the control page (angle, degrees, other)."
                             + "\n2. Inspect your dataset joints positions to ensure they are within the expected range."
@@ -894,11 +912,11 @@ class Gr00tN1(ActionModel):
                             raise Exception(error_message)
                     else:
                         logger.debug(
-                            f"Writing joint position to robot {robot_index}: {action_list[robot_index * 6 : robot_index * 6 + 6]}"
+                            f"Writing joint position to robot {robot_index}: {target_position}"
                         )
 
                     robots[robot_index].write_joint_positions(
-                        angles=action_list[robot_index * 6 : robot_index * 6 + 6],
+                        angles=target_position,
                         unit=unit,
                         max_value=max_angle,
                         min_value=min_angle,

@@ -213,9 +213,9 @@ class BaseManipulator(BaseRobot):
 
         # When creating a new robot, you should add default values for these
         # These values depends on the hardware
-        assert self.CALIBRATION_POSITION is not None, (
-            "CALIBRATION_POSITION must be defined in the class"
-        )
+        assert (
+            self.CALIBRATION_POSITION is not None
+        ), "CALIBRATION_POSITION must be defined in the class"
         assert self.RESOLUTION is not None, "RESOLUTION must be defined in the class"
         assert self.SERVO_IDS is not None, "SERVO_IDS must be defined in the class"
 
@@ -738,14 +738,14 @@ class BaseManipulator(BaseRobot):
                 # Convert from motor units to radians
                 output_position_rad = self._units_vec_to_radians(output_position)
                 # Normalize the angles to [min_value, max_value]
-
                 output_position = min_value + (max_value - min_value) * (
-                    (output_position_rad + np.pi) / (2 * np.pi)
-                )
+                    output_position_rad + np.pi
+                ) / (2 * np.pi)
+
             elif source_unit == "rad":
                 output_position = min_value + (max_value - min_value) * (
-                    (output_position + np.pi) / (2 * np.pi)
-                )
+                    output_position + np.pi
+                ) / (2 * np.pi)
         else:
             raise ValueError(
                 f"Invalid unit: {unit}. Must be one of ['rad', 'motor_units', 'degrees']"
