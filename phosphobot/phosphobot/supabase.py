@@ -4,9 +4,9 @@ import time
 
 from fastapi import HTTPException
 from gotrue.errors import AuthRetryableError
+from gotrue.types import Session as GotrueSession
 from loguru import logger
 from supabase import AsyncClient, acreate_client
-from gotrue.types import Session as GotrueSession
 
 from phosphobot.models import Session
 from phosphobot.utils import get_home_app_path, get_tokens
