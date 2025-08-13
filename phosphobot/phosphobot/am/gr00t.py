@@ -895,7 +895,7 @@ class Gr00tN1(ActionModel):
                         largest_diff = np.max(current_to_target_diff)
                         largest_diff_index = np.argmax(current_to_target_diff)
                         error_message = (
-                            f"Skipping action for robot {robot_index} because the to joint position difference is too large: {largest_diff} > {max_transition_angles[largest_diff_index]} in units {unit}"
+                            f"Skipping action for robot {robot_index} because the to joint position {largest_diff_index} difference is too large: {largest_diff} > {max_transition_angles[largest_diff_index]} in units {unit}"
                             + f"\nCurrent position: {current_position}"
                             + f"\nTarget position: {target_position}\n"
                             + "Possible reasons for this error:"
