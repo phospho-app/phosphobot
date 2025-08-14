@@ -87,14 +87,17 @@ For development or if you face issues with some submodule or version, you can in
    make
    ```
 
-   Which is a shortcut for the following command:
+   Which is a shortcut for the following two commands. First, build frontend:
 
-   ```
+   ```bash
    cd ./dashboard && ((npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/) || echo "npm command failed, continuing anyway")
+   ```
+
+   Then, build backend:
+
+   ```bash
    cd phosphobot && uv run phosphobot run --simulation=headless
    ```
-
-   On Windows, run the full command to build the app.
 
 ### Troubleshooting: pybullet won't build on Windows
 
