@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Literal, Optional, List
 
 import numpy as np
@@ -39,6 +40,12 @@ class Recorder:
     cameras: AllCameras
     robots: list[BaseRobot]
 
+    # Performance optimization: thread pools for concurrent operations
+    _image_thread_pool: Optional[ThreadPoolExecutor] = None
+    _robot_thread_pool: Optional[ThreadPoolExecutor] = None
+    _max_image_workers: int = 4
+    _max_robot_workers: int = 2
+
     # For push_to_hub, if Recorder handles it directly after save
     # _current_dataset_full_path_for_push: Optional[str] = None
     # _current_branch_path_for_push: Optional[str] = None
@@ -54,6 +61,25 @@ class Recorder:
         self.robots = robots
         self.cameras = cameras
         self.rerun_visualizer = RerunVisualizer()
+
+        # Initialize thread pools for performance optimization
+        self._max_image_workers = max(
+            4, len(cameras.camera_ids)
+        )  # At least one per camera
+        self._max_robot_workers = min(
+            2, len(robots) + 1
+        )  # Adaptive based on robot count
+
+        self._image_thread_pool = ThreadPoolExecutor(
+            max_workers=self._max_image_workers, thread_name_prefix="recorder_images"
+        )
+        self._robot_thread_pool = ThreadPoolExecutor(
+            max_workers=self._max_robot_workers, thread_name_prefix="recorder_robots"
+        )
+
+        logger.info(
+            f"Recorder initialized with {self._max_image_workers} image workers and {self._max_robot_workers} robot workers"
+        )
 
     async def start(
         self,
@@ -268,55 +294,23 @@ class Recorder:
         while self.is_recording:  # This flag is controlled by self.stop()
             loop_iteration_start_time = time.perf_counter()
 
-            # --- Image Gathering (largely unchanged) ---
-            main_frames = self.cameras.get_main_camera_frames(
-                target_video_size=target_size
+            # --- Optimized Image Gathering with Parallel Processing ---
+            main_frames, secondary_frames = await self._gather_frames_parallel(
+                target_size
             )
-            main_frame: np.ndarray
-            secondary_frames: List[np.ndarray] = []
 
-            if main_frames is not None and len(main_frames) > 0:
+            if main_frames and len(main_frames) > 0:
                 main_frame = main_frames[0]
-                if len(main_frames) == 2:  # Stereo main camera
-                    secondary_frames.append(
-                        main_frames[1]
-                    )  # Add right frame as first secondary
-                # Add other configured secondary cameras
-                secondary_frames.extend(
-                    self.cameras.get_secondary_camera_frames(
-                        target_video_size=target_size
-                    )
-                )
-            else:  # Fallback if no frames
+            else:
                 main_frame = np.zeros(
                     (target_size[1], target_size[0], 3), dtype=np.uint8
                 )
 
-            # --- Robot Observation (largely unchanged) ---
-            # Consolidate observations if multiple robots are present
-            all_robot_states = []
-            all_robot_joints_positions = []
-            for robot_instance in self.robots:
-                robot_state, robot_joints = robot_instance.get_observation()
-                all_robot_states.append(robot_state)
-                all_robot_joints_positions.append(robot_joints)
-
-            # Concatenate if multiple robots, otherwise use the first robot's data
-            # Ensure np.array even for single robot for consistency
-            final_state = (
-                np.concatenate(all_robot_states)
-                if len(all_robot_states) > 1
-                else (all_robot_states[0] if all_robot_states else np.array([]))
-            )
-            final_joints_position = (
-                np.concatenate(all_robot_joints_positions)
-                if len(all_robot_joints_positions) > 1
-                else (
-                    all_robot_joints_positions[0]
-                    if all_robot_joints_positions
-                    else np.array([])
-                )
-            )
+            # --- Optimized Robot Observation with Parallel Processing ---
+            (
+                final_state,
+                final_joints_position,
+            ) = await self._gather_robot_observations_parallel()
 
             current_time_in_episode = loop_iteration_start_time - self.start_ts
 
@@ -372,6 +366,13 @@ class Recorder:
 
             elapsed_this_iteration = time.perf_counter() - loop_iteration_start_time
             time_to_wait = max((1 / self.freq) - elapsed_this_iteration, 0)
+
+            # Log performance metrics every 100 steps
+            if step_count % 100 == 0:
+                logger.debug(
+                    f"Step {step_count}: Processing time: {elapsed_this_iteration:.3f}s, Target: {1/self.freq:.3f}s"
+                )
+
             await asyncio.sleep(time_to_wait)
             step_count += 1
 
@@ -381,6 +382,153 @@ class Recorder:
         logger.info(
             f"Recording loop for episode {self.episode.episode_index if self.episode else 'N/A'} has gracefully exited."
         )
+
+    async def _gather_frames_parallel(
+        self, target_size: tuple[int, int]
+    ) -> tuple[List[np.ndarray], List[np.ndarray]]:
+        """
+        Simple parallel frame capture - each camera runs independently.
+        Returns (main_frames, secondary_frames).
+        """
+        loop = asyncio.get_event_loop()
+
+        # Get all cameras and their roles
+        main_camera = self.cameras.main_camera
+        secondary_cameras = self.cameras.get_secondary_cameras()
+
+        # Submit individual camera capture tasks
+        camera_futures = []
+
+        # Main camera
+        if (
+            main_camera
+            and hasattr(main_camera, "camera_id")
+            and main_camera.camera_id is not None
+        ):
+            future = loop.run_in_executor(
+                self._image_thread_pool,
+                self._capture_single_camera,
+                main_camera,
+                target_size,
+            )
+            camera_futures.append(("main", main_camera.camera_id, future))
+
+        # Secondary cameras
+        for camera in secondary_cameras:
+            if hasattr(camera, "camera_id") and camera.camera_id is not None:
+                future = loop.run_in_executor(
+                    self._image_thread_pool,
+                    self._capture_single_camera,
+                    camera,
+                    target_size,
+                )
+                camera_futures.append(("secondary", camera.camera_id, future))
+
+        # Wait for all camera captures
+        main_frames = []
+        secondary_frames = []
+
+        for role, camera_id, future in camera_futures:
+            try:
+                frame = await future
+                if frame is not None:
+                    if role == "main":
+                        main_frames.append(frame)
+                    else:
+                        secondary_frames.append(frame)
+            except Exception as e:
+                logger.warning(f"Failed to capture frame from camera {camera_id}: {e}")
+
+        return main_frames, secondary_frames
+
+    def _capture_single_camera(
+        self, camera, target_size: tuple[int, int]
+    ) -> Optional[np.ndarray]:
+        """
+        Capture frame from a single camera.
+        This runs in the thread pool.
+        """
+        try:
+            return camera.get_rgb_frame(resize=target_size)
+        except Exception as e:
+            logger.warning(
+                f"Exception capturing frame from camera {getattr(camera, 'camera_id', 'unknown')}: {e}"
+            )
+            return None
+
+    async def _gather_robot_observations_parallel(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Simple parallel robot observation gathering - each robot runs independently.
+        Returns (final_state, final_joints_position).
+        """
+        if not self.robots:
+            return np.array([]), np.array([])
+
+        loop = asyncio.get_event_loop()
+
+        # Submit individual robot observation tasks
+        robot_futures = []
+        for i, robot_instance in enumerate(self.robots):
+            future = loop.run_in_executor(
+                self._robot_thread_pool,
+                self._get_single_robot_observation,
+                robot_instance,
+                i,
+            )
+            robot_futures.append(future)
+
+        # Wait for all robot observations
+        all_robot_states = []
+        all_robot_joints_positions = []
+
+        for future in robot_futures:
+            try:
+                robot_state, robot_joints = await future
+                if robot_state is not None and robot_joints is not None:
+                    all_robot_states.append(robot_state)
+                    all_robot_joints_positions.append(robot_joints)
+            except Exception as e:
+                logger.warning(f"Failed to get robot observation: {e}")
+
+        # Concatenate if multiple robots, otherwise use the first robot's data
+        final_state = (
+            np.concatenate(all_robot_states)
+            if len(all_robot_states) > 1
+            else (all_robot_states[0] if all_robot_states else np.array([]))
+        )
+        final_joints_position = (
+            np.concatenate(all_robot_joints_positions)
+            if len(all_robot_joints_positions) > 1
+            else (
+                all_robot_joints_positions[0]
+                if all_robot_joints_positions
+                else np.array([])
+            )
+        )
+
+        return final_state, final_joints_position
+
+    def _get_single_robot_observation(
+        self, robot, robot_idx: int
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get observation from a single robot.
+        This runs in the thread pool.
+        """
+        try:
+            return robot.get_observation()
+        except Exception as e:
+            logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
+            return None, None
+
+    def __del__(self):
+        """Cleanup thread pools on deletion."""
+        if hasattr(self, "_image_thread_pool") and self._image_thread_pool:
+            self._image_thread_pool.shutdown(wait=True)
+        if hasattr(self, "_robot_thread_pool") and self._robot_thread_pool:
+            self._robot_thread_pool.shutdown(wait=True)
 
 
 async def get_recorder(
