@@ -375,7 +375,7 @@ export function AIControlPage() {
                     value={selectedAngleFormat}
                     onValueChange={setSelectedAngleFormat}
                   >
-                    <ToggleGroupItem value="radians" className="flex-none">
+                    <ToggleGroupItem value="rad" className="flex-none">
                       <div className="flex items-center w-full">
                         <TestTubeDiagonal className="mr-1 h-4 w-4 text-green-500" />
                         Radians (default)
