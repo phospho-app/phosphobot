@@ -743,6 +743,7 @@ def fastapi_app():
                 "requested_at",
                 datetime(datetime.now(timezone.utc).year, current_month, 1),
             )
+            .in_("status", ["succeeded", "running", "canceled"])
             .execute()
         )
         logger.info(f"User {user_id} has {len(user_quota.data)} trainings this month")
