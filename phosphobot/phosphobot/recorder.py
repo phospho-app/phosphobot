@@ -400,7 +400,11 @@ class Recorder:
         camera_futures = []
 
         # Main camera
-        if main_camera and main_camera.camera_id is not None:
+        if (
+            main_camera
+            and hasattr(main_camera, "camera_id")
+            and main_camera.camera_id is not None
+        ):
             future = loop.run_in_executor(
                 self._image_thread_pool,
                 self._capture_single_camera,
@@ -411,7 +415,7 @@ class Recorder:
 
         # Secondary cameras
         for camera in secondary_cameras:
-            if camera.camera_id is not None:
+            if hasattr(camera, "camera_id") and camera.camera_id is not None:
                 future = loop.run_in_executor(
                     self._image_thread_pool,
                     self._capture_single_camera,
@@ -456,7 +460,7 @@ class Recorder:
         self,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Gather robot observations in parallel using thread pool for performance.
+        Simple parallel robot observation gathering - each robot runs independently.
         Returns (final_state, final_joints_position).
         """
         if not self.robots:
@@ -464,28 +468,29 @@ class Recorder:
 
         loop = asyncio.get_event_loop()
 
-        # Submit all robot observation tasks to thread pool
+        # Submit individual robot observation tasks
         robot_futures = []
         for i, robot_instance in enumerate(self.robots):
             future = loop.run_in_executor(
-                self._robot_thread_pool, robot_instance.get_observation
+                self._robot_thread_pool,
+                self._get_single_robot_observation,
+                robot_instance,
+                i,
             )
-            robot_futures.append((i, future))
+            robot_futures.append(future)
 
-        # Wait for all robot observations to complete
+        # Wait for all robot observations
         all_robot_states = []
         all_robot_joints_positions = []
 
-        for robot_idx, future in robot_futures:
+        for future in robot_futures:
             try:
                 robot_state, robot_joints = await future
-                all_robot_states.append(robot_state)
-                all_robot_joints_positions.append(robot_joints)
+                if robot_state is not None and robot_joints is not None:
+                    all_robot_states.append(robot_state)
+                    all_robot_joints_positions.append(robot_joints)
             except Exception as e:
-                logger.warning(f"Failed to get observation from robot {robot_idx}: {e}")
-                # Use zero arrays as fallback
-                all_robot_states.append(np.array([]))
-                all_robot_joints_positions.append(np.array([]))
+                logger.warning(f"Failed to get robot observation: {e}")
 
         # Concatenate if multiple robots, otherwise use the first robot's data
         final_state = (
@@ -504,6 +509,19 @@ class Recorder:
         )
 
         return final_state, final_joints_position
+
+    def _get_single_robot_observation(
+        self, robot, robot_idx: int
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get observation from a single robot.
+        This runs in the thread pool.
+        """
+        try:
+            return robot.get_observation()
+        except Exception as e:
+            logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
+            return None, None
 
     def __del__(self):
         """Cleanup thread pools on deletion."""
