@@ -103,7 +103,7 @@ For development or if you face issues with some submodule or version, you can in
 
 You may encounter the error: `error: Microsoft Visual C++ 14.0 is required. Get it with "Microsoft Visual C++ Build Tools`
 
-If so, you need to install [Visual Studio](https://visualstudio.microsoft.com/downloads/) and [the Microsoft C++ v14 tools (it should be called C++ build tools)](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+If so, you need to install [Visual Studio](https://visualstudio.microsoft.com/downloads/) and [the Microsoft C++ v14 tools (it's the first item in the list of additional downloads, should be called C++ build tools for Windows)](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 
 ### Troubleshooting: pybullet won't compile on MacOS Silicon
 
