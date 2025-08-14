@@ -1,5 +1,6 @@
 ENV = "prod"
-SENTRY_DSN = "https://75a41a69eb862ad6fbf0b4a660a81d4c@o4506399435325440.ingest.us.sentry.io/4508731898527744"
+# No crash telemetry if running from source
+# SENTRY_DSN = "https://75a41a69eb862ad6fbf0b4a660a81d4c@o4506399435325440.ingest.us.sentry.io/4508731898527744"
 POSTHOG_API_KEY = "phc_EesFKS4CVoyc0URzJN0FOETpg7KipCBEpRvHEvv5mDF"
 POSTHOG_HOST = "https://us.i.posthog.com"
 SUPABASE_URL = "https://gcwsecdavxceezodulvq.supabase.co"
