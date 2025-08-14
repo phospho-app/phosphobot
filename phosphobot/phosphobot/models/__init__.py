@@ -887,10 +887,10 @@ class StartAIControlRequest(BaseModel):
         description="Checkpoint to use for the model. If None, uses the latest checkpoint.",
         examples=[500],
     )
-    angle_format: Literal["degrees", "radians", "other"] = Field(
-        "radians",
+    angle_format: Literal["degrees", "rad", "other"] = Field(
+        "rad",
         description="Format of the angles used in the model. Can be 'degrees', 'radians', or 'other'. If other is selected, you will need to specify a min and max angle value.",
-        examples=["radians"],
+        examples=["rad"],
     )
     min_angle: float | None = Field(
         None,

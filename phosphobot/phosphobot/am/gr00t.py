@@ -711,7 +711,7 @@ class Gr00tN1(ActionModel):
         fps: int = 30,
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
-        angle_format: Literal["degrees", "radians", "other"] = "radians",
+        unit: Literal["degrees", "rad", "other"] = "rad",
         min_angle: float | None = None,
         max_angle: float | None = None,
         **kwargs: Any,
@@ -726,11 +726,6 @@ class Gr00tN1(ActionModel):
         nb_iter = 0
         config = model_spawn_config.hf_model_config
         signal_marked_as_started = False
-        unit: Literal["degrees", "rad", "other"]
-        if angle_format != "radians":
-            unit = angle_format
-        else:
-            unit = "rad"
 
         while control_signal.is_in_loop():
             logger.debug(
