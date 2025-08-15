@@ -126,16 +126,13 @@ async def start_recording_episode(
             if is_github_actions() and number_of_connected_cameras == 0:
                 number_of_connected_cameras += 2
 
-            # Our robots are 6 DOF, so we divide the number of actions by 6
-            number_of_robots_in_dataset = info_model.features.action.shape[0] // 6
-
             if number_of_connected_cameras != number_of_cameras_in_dataset:
                 raise KeyError(
                     f"Dataset {dataset_name} has {number_of_cameras_in_dataset} cameras but you have {number_of_connected_cameras} connected. Create a new dataset by changing the dataset name in Admin Settings."
                 )
-            if number_of_connected_robots != number_of_robots_in_dataset:
+            if expected_action_shape != dataset_action_shape:
                 raise KeyError(
-                    f"Dataset {dataset_name} has {number_of_robots_in_dataset} robots but you have {number_of_connected_robots} connected. Create a new dataset by changing the dataset name in Admin Settings."
+                    f"Dataset {dataset_name} expects action shape {dataset_action_shape} but current robots provide {expected_action_shape}. Create a new dataset by changing the dataset name in Admin Settings."
                 )
         except ValueError:
             # This means the dataset does not exist yet

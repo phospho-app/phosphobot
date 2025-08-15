@@ -71,6 +71,19 @@ const ROBOT_TYPES = [
       { name: "port", label: "Port", type: "number", default: 5555 },
     ],
   },
+
+  {
+    id: "ros2-robot",
+    name: "ROS 2 robot",
+    category: "manipulator",
+    image: placeholderSvg,
+    fields: [
+      { name: "namespace", label: "Ros2 Namespace", type: "text", default: ""},
+      { name: "joint_states_topic", label: "Joint States Topic", type: "text", default: "/joint_states"},
+      { name: "joint_commanders_topic", label: "Joint Commands Topic", type: "text", default: "/joint_commands" },
+      { name: "num_joints", label: "Number of Joints", type: "number", default: 6 },
+    ],
+  },
 ];
 
 interface RobotConfigModalProps {
