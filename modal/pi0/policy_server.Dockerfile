@@ -28,3 +28,6 @@ ENV UV_PROJECT_ENVIRONMENT=/.venv
 RUN uv venv --python 3.11.9 $UV_PROJECT_ENVIRONMENT
 RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/Physical-Intelligence/openpi.git@342342140953b362a8d7a32982475299aceeb083
 RUN uv pip install colorama==0.4.6
+
+# Add Python to PATH so Modal can find it
+ENV PATH="/.venv/bin:$PATH"
