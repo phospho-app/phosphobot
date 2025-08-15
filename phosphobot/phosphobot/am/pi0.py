@@ -33,6 +33,9 @@ from phosphobot.utils import background_task_log_exceptions, get_hf_token
 import websockets.asyncio.server as _server
 from websockets.http11 import Request, Response
 from openpi_client import base_policy, msgpack_numpy
+from openpi.policies import policy as _policy
+from openpi.policies import policy_config as _policy_config
+from openpi.training import config as _config
 
 
 @dataclass
@@ -344,6 +347,101 @@ class Pi0EnvMode(enum.Enum):
     LIBERO = "libero"
 
 
+@dataclass
+class Checkpoint:
+    """Load a policy from a trained checkpoint."""
+
+    # Training config name (e.g., "pi0_aloha_sim").
+    config: str
+    # Checkpoint directory (e.g., "checkpoints/pi0_aloha_sim/exp/10000").
+    dir: str
+
+
+# Default checkpoints that should be used for each environment.
+DEFAULT_CHECKPOINT: dict[Pi0EnvMode, Checkpoint] = {
+    Pi0EnvMode.ALOHA: Checkpoint(
+        config="pi0_aloha",
+        dir="gs://openpi-assets/checkpoints/pi0_base",
+    ),
+    Pi0EnvMode.ALOHA_SIM: Checkpoint(
+        config="pi0_aloha_sim",
+        dir="gs://openpi-assets/checkpoints/pi0_aloha_sim",
+    ),
+    Pi0EnvMode.DROID: Checkpoint(
+        config="pi0_fast_droid",
+        dir="gs://openpi-assets/checkpoints/pi0_fast_droid",
+    ),
+    Pi0EnvMode.LIBERO: Checkpoint(
+        config="pi0_fast_libero",
+        dir="gs://openpi-assets/checkpoints/pi0_fast_libero",
+    ),
+}
+
+
+@dataclass
+class Default:
+    """Use the default policy for the given environment."""
+
+
+class Pi0SpawnConfig(BaseModel):
+    """Configuration for spawning a Pi0 model server"""
+    # Environment to serve the policy for. This is only used when serving default policies.
+    # env: EnvMode = EnvMode.ALOHA_SIM
+    env: Pi0EnvMode = Field(
+        default=Pi0EnvMode.ALOHA_SIM,
+        description="Environment mode (aloha, aloha_sim, droid, libero)"
+    )
+    default_prompt: str | None = Field(
+        default=None,
+        description="If provided, will be used in case the 'prompt' key is not present in the data,"
+        + "or if the model does not have a default prompt"
+    )
+    # host: str = "localhost"
+    port: int = 8000
+    record: bool = Field(
+        default=False,
+        description="Record the policy's behavior for debugging"
+    )
+    checkpoint: Checkpoint | Default = Field(
+        default=Default(),
+        description="Checkpoint to load the policy from. If not provided,"
+        + "the default checkpoint for the environment will be used."
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Pi0SpawnConfig":
+        """Load Pi0SpawnConfig from a dictionary."""
+        return cls.model_validate(data)
+
+    @classmethod
+    def from_file(cls, file_path: str) -> "Pi0SpawnConfig":
+        """Load Pi0SpawnConfig from a file."""
+        with open(file_path, "r") as f:
+            return cls.model_validate_json(f.read())
+
+
+def create_default_policy(env: Pi0EnvMode, *, default_prompt: str | None = None) -> _policy.Policy:
+    """Create a default policy for the given environment."""
+    if checkpoint := DEFAULT_CHECKPOINT.get(env):
+        return _policy_config.create_trained_policy(
+            _config.get_config(checkpoint.config), checkpoint.dir, default_prompt=default_prompt
+        )
+    raise ValueError(f"Unsupported environment mode: {env}")
+
+
+def create_policy(config: Pi0SpawnConfig) -> _policy.Policy:
+    """Create a policy from a config"""
+    match config.checkpoint:
+        case Checkpoint():
+            return _policy_config.create_trained_policy(
+                _config.get_config(config.checkpoint.config),
+                config.checkpoint.dir,
+                default_prompt=config.default_prompt
+            )
+        case Default():
+            return create_default_policy(config.env, default_prompt=config.default_prompt)
+
+
 class Pi0Config(BaseModel):
     """Configuration for Pi0 models."""
 
@@ -375,13 +473,6 @@ class Pi0Config(BaseModel):
         default=None,
         description="Checkpoint directory"
     )
-
-
-class Pi0SpawnConfig(BaseModel):
-    """Configuration for spawning a Pi0 model server"""
-    host: str = "localhost"
-    port: int = 8000
-    config: Pi0Config
 
 
 class Pi0(ActionModel):
@@ -458,7 +549,7 @@ class Pi0(ActionModel):
 
 class Pi0TrainerConfig(BaseTrainerConfig):
     """Pi0 trainer configuration."""
-    model_type = "pi0"
+    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0", "custom"] = "pi0"
     training_params: TrainingParamsPi0 | None = None
 
 
