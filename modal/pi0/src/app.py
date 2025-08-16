@@ -67,7 +67,7 @@ HOURS = 60 * MINUTES
 FUNCTION_IMAGE = pi0_image
 FUNCTION_TIMEOUT_TRAINING = 12 * HOURS
 FUNCTION_TIMEOUT_INFERENCE = 60 * 5  # 5 minutes
-FUNCTION_GPU_TRAINING = list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
+FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0-server")
