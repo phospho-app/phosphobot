@@ -37,7 +37,7 @@ const faqData: FAQItem[] = [
   {
     question: "I bought a phosphobot starter pack. Do I have phospho pro?",
     answer:
-      "Yes, you have access to phospho pro. Please reach out at contact@phospho.ai with your phospho account email and your Discord username.",
+      "Yes, you have access to 1 month of free phospho pro. Please reach out at contact@phospho.ai with your order details and we'll help you set up your account.",
   },
 ];
 
