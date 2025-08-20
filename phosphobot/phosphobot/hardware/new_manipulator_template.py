@@ -109,7 +109,9 @@ class NewRobotTemplate(BaseManipulator):
         """
         Read the position of all motors of the robot.
         """
-        pass
+        raise NotImplementedError(
+            "This method is not implemented. Please implement it in the subclass."
+        )
 
     def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
         """
@@ -137,7 +139,7 @@ class NewRobotTemplate(BaseManipulator):
         This method has to be called multiple time, moving the robot to the same position as in the simulation beforehand.
         """
 
-        pass
+        return "success", "Calibration not implemented yet."
 
     def calibrate_motors(self, **kwargs) -> None:
         """

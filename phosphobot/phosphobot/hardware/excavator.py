@@ -104,7 +104,7 @@ class ExcavatorHardware(BaseManipulator):
         """
         Read the position of all motors of the robot.
         """
-        pass
+        return np.zeros(len(self.SERVO_IDS), dtype=np.int32)
 
     def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
         """
@@ -132,7 +132,7 @@ class ExcavatorHardware(BaseManipulator):
         This method has to be called multiple time, moving the robot to the same position as in the simulation beforehand.
         """
 
-        pass
+        return "success", "Calibration not implemented yet."
 
     def calibrate_motors(self, **kwargs) -> None:
         """
