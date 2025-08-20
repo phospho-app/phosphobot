@@ -40,6 +40,13 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
       <div className="mb-2 flex justify-end">
         <Button
           variant="outline"
+          className="ml-2"
+          onClick={() => setIsZMQModalOpen(true)}
+        >
+          Add ZMQ Camera
+        </Button>
+        <Button
+          variant="outline"
           onClick={() => {
             setIsRefreshing(true);
             fetchWithBaseUrl("/cameras/refresh", "POST").then(() => {
@@ -54,15 +61,8 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
             <RotateCw
               className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
-            Refresh camera list
+            Rescan cameras...
           </div>
-        </Button>
-        <Button 
-          variant="outline" 
-          className="ml-2"
-          onClick={() => setIsZMQModalOpen(true)}
-        >
-          Add ZMQ Camera
         </Button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">

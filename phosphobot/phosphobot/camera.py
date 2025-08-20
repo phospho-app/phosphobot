@@ -929,28 +929,21 @@ class ZMQCamera(VideoCamera):
     socket: Optional[zmq.Socket] = None
     poller: Optional[zmq.Poller] = None
 
-    def __init__(
-        self,
-        connect_to: str = "tcp://localhost:5555",
-        disable: bool = False,
-    ):
-        # We will manage the ZMQ connection ourselves, so pass video=None to the parent.
-        super().__init__(video=None, disable=disable, camera_id=None)
-
+    def __init__(self, connect_to: str = "tcp://localhost:5555", disable: bool = False):
         self.connect_to = connect_to
-        # Flag to check if we've received the first frame
         self.stream_initialized = False
 
-        if not disable:
-            # Re-evaluate is_active after our custom init
-            self.is_active = self.init_camera()
-            if self.is_active:
-                # Ensure threading attributes are present
-                if not hasattr(self, "lock"):
-                    self.lock = threading.Lock()
-                if not hasattr(self, "_stop_event"):
-                    self._stop_event = threading.Event()
-                self.start()  # Start the background frame-grabbing thread
+        # Now call the parent constructor. It will safely call our overridden init_camera.
+        super().__init__(video=None, disable=disable, camera_id=None)
+
+        # The rest of the original __init__ logic is now redundant because
+        # super().__init__() handles the call to init_camera and starting the thread.
+        # It's kept here for clarity of the logic flow.
+        if not disable and not self.is_active:
+            # If the parent failed to activate, log it.
+            logger.warning(
+                f"{self.camera_name} failed to become active during initialization."
+            )
 
     @property
     def camera_name(self) -> str:
