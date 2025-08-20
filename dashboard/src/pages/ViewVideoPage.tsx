@@ -1,3 +1,4 @@
+import { AddZMQCameraModal } from "@/components/common/add-zmq-camera-modal";
 import { CameraStreamCard } from "@/components/common/camera-stream-card";
 import { Button } from "@/components/ui/button";
 import { useCameraControls } from "@/lib/hooks";
@@ -10,6 +11,7 @@ import useSWR from "swr";
 export function ViewVideoPage({ labelText }: { labelText?: string }) {
   if (!labelText) labelText = "Camera Stream";
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isZMQModalOpen, setIsZMQModalOpen] = useState(false);
 
   const { data: serverStatus, mutate: mutateStatus } = useSWR<ServerStatus>(
     ["/status"],
@@ -38,6 +40,13 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
       <div className="mb-2 flex justify-end">
         <Button
           variant="outline"
+          className="ml-2"
+          onClick={() => setIsZMQModalOpen(true)}
+        >
+          Add ZMQ Camera
+        </Button>
+        <Button
+          variant="outline"
           onClick={() => {
             setIsRefreshing(true);
             fetchWithBaseUrl("/cameras/refresh", "POST").then(() => {
@@ -52,7 +61,7 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
             <RotateCw
               className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
-            Refresh camera list
+            Rescan cameras...
           </div>
         </Button>
       </div>
@@ -83,6 +92,10 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
             );
           })}
       </div>
+      <AddZMQCameraModal
+        open={isZMQModalOpen}
+        onOpenChange={setIsZMQModalOpen}
+      />
     </>
   );
 }

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from typing import Dict, Optional
 
@@ -11,7 +12,8 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from phosphobot.camera import AllCameras, get_all_cameras
+from phosphobot.camera import AllCameras, get_all_cameras, ZMQCamera
+from phosphobot.models import AddZMQCameraRequest
 
 router = APIRouter(tags=["camera"])
 
@@ -171,3 +173,30 @@ async def refresh_camera_list(
     """
     cameras.refresh()
     return {"message": "Camera list refreshed successfully"}
+
+
+@router.post(
+    "/cameras/add-zmq",
+    response_model=dict,
+    description="Add a camera feed from a ZMQ publisher. ",
+)
+async def add_zmq_camera_feed(
+    query: AddZMQCameraRequest,
+    cameras: AllCameras = Depends(get_all_cameras),
+):
+    """
+    Add a camera feed from a ZMQ publisher.
+    This allows the application to receive camera frames from a ZMQ publisher.
+    """
+    try:
+        zmq_camera = ZMQCamera(connect_to=query.tcp_address)
+        await asyncio.sleep(0.1)  # Allow some time for the camera to initialize
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to connect to ZMQ publisher at {query.tcp_address}: {str(e)}",
+        )
+
+    # Add to cameras
+    cameras.add_custom_camera(zmq_camera)
+    return {"message": "ZMQ camera added successfully"}

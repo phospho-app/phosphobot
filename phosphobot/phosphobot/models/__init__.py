@@ -1164,3 +1164,16 @@ class RobotConnectionRequest(BaseModel):
         ...,
         description="Connection details for the robot. These are passed to the class constructor. This can include IP address, port, and other connection parameters.",
     )
+
+
+class AddZMQCameraRequest(BaseModel):
+    """
+    Request model for adding a ZMQ camera feed.
+    """
+
+    tcp_address: str = Field(
+        ...,
+        description="TCP address of the ZMQ publisher. "
+        + "Format: 'tcp://<host>:<port>'.",
+        examples=["tcp://localhost:5555"],
+    )

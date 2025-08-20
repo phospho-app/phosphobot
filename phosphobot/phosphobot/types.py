@@ -21,6 +21,7 @@ CameraTypes = Literal[
     "dummy",
     "dummy_stereo",
     "unknown",
+    "zmq",
 ]
 
 
