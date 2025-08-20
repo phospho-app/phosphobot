@@ -190,7 +190,6 @@ async def add_zmq_camera_feed(
     """
     try:
         zmq_camera = ZMQCamera(connect_to=query.tcp_address)
-        zmq_camera.start()
         asyncio.sleep(0.1)  # Allow some time for the camera to initialize
     except Exception as e:
         raise HTTPException(
@@ -200,3 +199,4 @@ async def add_zmq_camera_feed(
 
     # Add to cameras
     cameras.add_custom_camera(zmq_camera)
+    return {"message": "ZMQ camera added successfully"}

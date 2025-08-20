@@ -936,15 +936,6 @@ class ZMQCamera(VideoCamera):
         # Now call the parent constructor. It will safely call our overridden init_camera.
         super().__init__(video=None, disable=disable, camera_id=None)
 
-        # The rest of the original __init__ logic is now redundant because
-        # super().__init__() handles the call to init_camera and starting the thread.
-        # It's kept here for clarity of the logic flow.
-        if not disable and not self.is_active:
-            # If the parent failed to activate, log it.
-            logger.warning(
-                f"{self.camera_name} failed to become active during initialization."
-            )
-
     @property
     def camera_name(self) -> str:
         return f"ZMQCamera {self.connect_to}"
