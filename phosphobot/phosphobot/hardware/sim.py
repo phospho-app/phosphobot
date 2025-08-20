@@ -220,6 +220,10 @@ class PyBulletSimulation:
             # Consider only revolute joints
             if joint_type in [p.JOINT_REVOLUTE]:
                 actuated_joints.append(i)
+            else:
+                logger.warning(
+                    f"Joint {i} is not revolute, type: {joint_type} - skipping"
+                )
 
         # Store robot info
         self.robots[robot_id] = {

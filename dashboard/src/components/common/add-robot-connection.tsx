@@ -60,7 +60,6 @@ const ROBOT_TYPES = [
     image: placeholderSvg,
     fields: [{ name: "device_name", label: "USB Port", type: "device_name" }],
   },
-
   {
     id: "lekiwi",
     name: "LeKiwi",
@@ -70,6 +69,13 @@ const ROBOT_TYPES = [
       { name: "ip", label: "IP Address", type: "ip" },
       { name: "port", label: "Port", type: "number", default: 5555 },
     ],
+  },
+  {
+    id: "simple_excavator",
+    name: "Simple Excavator",
+    category: "manipulator",
+    image: placeholderSvg,
+    fields: [],
   },
 ];
 
