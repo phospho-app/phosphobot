@@ -1444,7 +1444,7 @@ class AllCameras:
             return None
 
         for camera in self.cameras:
-            if camera.camera_id == id:
+            if hasattr(camera, "camera_id") and camera.camera_id == id:
                 return camera
 
         logger.warning(f"Camera with id {id} not available in {self.camera_ids}")

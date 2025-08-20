@@ -692,7 +692,7 @@ async def read_joints(
     Read joint position.
     """
     if request is None:
-        request = JointsReadRequest(unit="rad", joints_ids=None)
+        request = JointsReadRequest(unit="rad", joints_ids=None, source="robot")
 
     robot = await rcm.get_robot(robot_id)
 
