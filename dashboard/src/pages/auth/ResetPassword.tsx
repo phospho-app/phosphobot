@@ -58,7 +58,7 @@ export function ResetPassword() {
 
     if (response) {
       toast.success("Password reset successfully! Redirecting to login...");
-      setTimeout(() => navigate("/auth"), 2000);
+      setTimeout(() => navigate("/sign-in"), 2000);
     }
 
     setIsLoading(false);
@@ -111,11 +111,6 @@ export function ResetPassword() {
               )}
             </Button>
           </form>
-          <p className="text-sm text-muted-foreground text-center">
-            <a href="/auth" className="text-blue-500 hover:underline">
-              Back to login
-            </a>
-          </p>
         </CardContent>
       </Card>
     </div>

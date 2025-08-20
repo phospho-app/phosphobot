@@ -64,7 +64,7 @@ export function ForgotPassword() {
             </Button>
           </form>
           <p className="text-sm text-muted-foreground text-center">
-            <a href="/auth" className="underline cursor-pointer">
+            <a href="/sign-in" className="underline cursor-pointer">
               Back to login
             </a>
           </p>

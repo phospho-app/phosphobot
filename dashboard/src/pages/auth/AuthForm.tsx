@@ -19,11 +19,10 @@ export function AuthForm() {
   // Determine the title based on the current path
   const getTitle = () => {
     if (location.pathname.includes("sign-in")) {
-      return "Sign In";
-    } else if (location.pathname.includes("sign-up")) {
-      return "Sign Up";
-    } else {
-      return "Get Started";
+      return "Sign in to your phosphobot account";
+    }
+    if (location.pathname.includes("sign-up")) {
+      return "Create a new phosphobot account";
     }
   };
 
@@ -73,6 +72,10 @@ export function AuthForm() {
           <CardTitle className="text-2xl font-semibold text-center">
             {getTitle()}
           </CardTitle>
+          <p className="text-sm text-muted-foreground text-center">
+            {location.pathname.includes("sign-up") &&
+              "Create an account to enable the AI features in phosphobot."}
+          </p>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -117,7 +120,20 @@ export function AuthForm() {
               href="/auth/forgot-password"
               className="underline cursor-pointer"
             >
-              Forgot Password?
+              Forgot password?
+            </a>
+          </p>
+          <p className="text-sm text-muted-foreground text-center">
+            {location.pathname.includes("sign-in")
+              ? "Don't have an account?"
+              : "Already have an account?"}{" "}
+            <a
+              href={
+                location.pathname.includes("sign-in") ? "/sign-up" : "/sign-in"
+              }
+              className="underline cursor-pointer"
+            >
+              {location.pathname.includes("sign-in") ? "Sign Up" : "Sign In"}
             </a>
           </p>
         </CardContent>

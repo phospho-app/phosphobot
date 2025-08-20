@@ -10,7 +10,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!session) {
-    return <Navigate to="/auth" />;
+    return <Navigate to="/sign-up" />;
   }
 
   return <>{children}</>;
