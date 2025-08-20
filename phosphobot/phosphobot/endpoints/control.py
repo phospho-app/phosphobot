@@ -703,7 +703,7 @@ async def read_joints(
         )
 
     current_units_position = robot.read_joints_position(
-        unit=request.unit, joints_ids=request.joints_ids
+        unit=request.unit, joints_ids=request.joints_ids, source=request.source
     )
     # Replace NaN values with None and convert to list
     current_units_position = [

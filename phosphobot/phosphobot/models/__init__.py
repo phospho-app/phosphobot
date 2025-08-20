@@ -312,6 +312,10 @@ class JointsReadRequest(BaseModel):
         None,
         description="If set, only read the joints with these ids. If None, read all joints.",
     )
+    source: Literal["sim", "robot"] = Field(
+        "robot",
+        description="Source of the joint angles. 'sim' means the angles are read from the simulation, 'robot' means the angles are read from the hardware.",
+    )
 
 
 class JointsWriteRequest(BaseModel):
