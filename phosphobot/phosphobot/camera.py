@@ -1,16 +1,17 @@
 import asyncio
 import atexit
-from functools import lru_cache
 import platform
 import subprocess
 import threading
 import time
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Literal, Optional, Tuple, cast
 
 import cv2
 import numpy as np
+import zmq
 from fastapi import Request
 from loguru import logger
 
@@ -915,10 +916,158 @@ except ImportError:
             raise ImportError("Install pyrealsense2 to add RealSense camera support.")
 
 
+class ZMQCamera(VideoCamera):
+    """
+    A camera class that subscribes to a ZeroMQ PUB socket to receive video frames.
+    It dynamically detects stream properties (width, height) from the first frame received.
+    """
+
+    camera_type: CameraTypes = "zmq"
+    connect_to: str
+    stream_initialized: bool = False
+    context: Optional[zmq.Context] = None
+    socket: Optional[zmq.Socket] = None
+    poller: Optional[zmq.Poller] = None
+
+    def __init__(
+        self,
+        camera_id: int,
+        connect_to: str = "tcp://localhost:5555",
+        disable: bool = False,
+    ):
+        # We will manage the ZMQ connection ourselves, so pass video=None to the parent.
+        super().__init__(video=None, disable=disable, camera_id=camera_id)
+
+        self.connect_to = connect_to
+        # Flag to check if we've received the first frame
+        self.stream_initialized = False
+
+        if not disable:
+            # Re-evaluate is_active after our custom init
+            self.is_active = self.init_camera()
+            if self.is_active:
+                # Ensure threading attributes are present
+                if not hasattr(self, "lock"):
+                    self.lock = threading.Lock()
+                if not hasattr(self, "_stop_event"):
+                    self._stop_event = threading.Event()
+                self.start()  # Start the background frame-grabbing thread
+
+    @property
+    def camera_name(self) -> str:
+        return f"ZMQCamera {self.camera_id}"
+
+    def init_camera(self) -> bool:
+        """
+        Overrides the parent method to initialize a ZMQ connection.
+        Sets width and height to 0, as they are unknown until the first frame arrives.
+        """
+        try:
+            logger.info(
+                f"{self.camera_name}: Connecting to ZMQ publisher at {self.connect_to}"
+            )
+            self.context = zmq.Context()
+            self.socket = self.context.socket(zmq.SUB)
+            # Set a timeout for receiving messages to prevent blocking indefinitely
+            self.socket.setsockopt(zmq.RCVTIMEO, 2000)
+            self.socket.connect(self.connect_to)
+            self.socket.setsockopt(zmq.SUBSCRIBE, b"")
+
+            self.poller = zmq.Poller()
+            self.poller.register(self.socket, zmq.POLLIN)
+
+            # Initialize properties as unknown. They will be updated by the run() thread.
+            self.width = 0
+            self.height = 0
+            self.fps = 30  # Keep a default, or it could also be sent by the publisher
+
+            logger.success(
+                f"{self.camera_name}: ZMQ connection established. Waiting for first frame..."
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                f"{self.camera_name}: Failed to initialize ZMQ connection: {e}"
+            )
+            return False
+
+    def run(self) -> None:
+        """
+        Overrides the thread's run method.
+        This loop polls the ZMQ socket for new frames and initializes stream properties from the first frame.
+        """
+        if not self.is_active or not self.socket or not self.context or not self.poller:
+            return
+
+        while not self._stop_event.is_set():
+            # Poll the socket with a timeout to allow the stop event to be checked
+            socks = dict(self.poller.poll(timeout=100))
+
+            if self.socket in socks and socks[self.socket] == zmq.POLLIN:
+                try:
+                    data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
+
+                    # --- DYNAMIC INITIALIZATION LOGIC ---
+                    if not self.stream_initialized:
+                        shape = data["shape"]
+                        # Update the camera's properties from the received metadata
+                        self.height, self.width, _ = shape
+                        self.stream_initialized = True
+                        logger.success(
+                            f"{self.camera_name}: Stream properties detected from first frame: {self.width}x{self.height}"
+                        )
+                    # --- END DYNAMIC INITIALIZATION LOGIC ---
+
+                    # Reconstruct the numpy array from the received bytes and metadata
+                    frame = np.frombuffer(
+                        data["frame_bytes"], dtype=np.dtype(data["dtype"])
+                    )
+                    reconstructed_frame = frame.reshape(data["shape"])
+
+                    with self.lock:
+                        # The parent VideoCamera expects a BGR frame from OpenCV. Since our stream
+                        # is RGB, we must convert it before storing it in self.last_frame.
+                        self.last_frame = cv2.cvtColor(
+                            reconstructed_frame, cv2.COLOR_RGB2BGR
+                        )
+
+                except zmq.Again:
+                    # No message was ready to be received, continue polling
+                    continue
+                except (KeyError, IndexError, TypeError) as e:
+                    logger.warning(
+                        f"{self.camera_name}: Received malformed or unexpected data packet. Error: {e}"
+                    )
+                except Exception as e:
+                    logger.warning(f"{self.camera_name}: Error receiving frame: {e}")
+
+        logger.info(f"{self.camera_name}: Thread stopped.")
+
+    def stop(self) -> None:
+        """
+        Extends the parent stop method to gracefully close ZMQ resources.
+        """
+        if not self.is_active:
+            return
+
+        logger.debug(f"{self.camera_name}: Stopping...")
+        super().stop()  # This sets the _stop_event
+
+        # Clean up ZMQ resources
+        try:
+            if self.socket:
+                self.socket.close()
+            if self.context:
+                self.context.term()
+        except Exception as e:
+            logger.error(f"{self.camera_name}: Error during ZMQ cleanup: {e}")
+
+
 class AllCameras:
     disabled_cameras: list[int] | None
     video_cameras: List[VideoCamera]
     realsense_cameras: List[RealSenseCamera]
+    zmq_cameras: List[ZMQCamera]
 
     camera_ids: List[int]
     camera_names: List[str]
@@ -959,6 +1108,7 @@ class AllCameras:
         self.camera_names = []
         self._cameras_ids_to_record = []
         self.realsense_cameras = []
+        self.zmq_cameras = []
 
         if not config.ENABLE_CAMERAS:
             logger.warning("Cameras are disabled")
@@ -1069,6 +1219,45 @@ class AllCameras:
 
         self._cameras_ids_to_record = self.camera_ids
         self._is_detecting = False
+
+    def add_custom_camera(self, camera: BaseCamera):
+        """
+        Manually adds an initialized custom camera instance to the list of active cameras.
+        This is useful for adding virtual or non-discoverable cameras like ZMQCamera.
+
+        Args:
+            camera: An instance of a class that inherits from BaseCamera.
+        """
+
+        if not hasattr(camera, "camera_id"):
+            raise ValueError("Custom camera instance must have a 'camera_id' attribute")
+
+        if camera.camera_id in self.camera_ids or camera.camera_id is None:
+            # Change the id to be the next available one
+            max_id = max(self.camera_ids) if self.camera_ids else -1
+            camera.camera_id = max_id + 1
+            logger.warning(
+                f"Camera with id {camera.camera_id} already exists, changing to {camera.camera_id}"
+            )
+
+        # According to the camera type, add it to the appropriate list
+        if isinstance(camera, VideoCamera):
+            self.video_cameras.append(camera)
+        elif isinstance(camera, RealSenseCamera):
+            self.realsense_cameras.append(camera)
+        elif isinstance(camera, ZMQCamera):
+            self.zmq_cameras.append(camera)
+        else:
+            raise ValueError(
+                "Custom camera must be an instance of VideoCamera, RealSenseCamera, or ZMQCamera"
+            )
+
+        # Add the camera to the list of camera IDs and names
+        self.camera_ids.append(camera.camera_id)
+        self.camera_names.append(camera.camera_name)
+        logger.info(
+            f"Custom camera {camera.camera_name} added with id {camera.camera_id}"
+        )
 
     def refresh(self) -> None:
         """

@@ -18,6 +18,7 @@ export type SingleCameraStatus = {
     | "realsense"
     | "dummy"
     | "dummy_stereo"
+    | "zmq"
     | "unknown";
   width: number;
   height: number;
