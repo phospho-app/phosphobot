@@ -12,13 +12,14 @@ from serial.tools.list_ports_common import ListPortInfo
 from phosphobot.configs import config
 from phosphobot.hardware import (
     BaseRobot,
+    ExcavatorHardware,
     KochHardware,
     LeKiwi,
     PiperHardware,
+    RemotePhosphobot,
     SO100Hardware,
     UnitreeGo2,
     WX250SHardware,
-    RemotePhosphobot,
     get_sim,
 )
 from phosphobot.models import RobotConfigStatus
@@ -34,6 +35,7 @@ robot_name_to_class = {
     LeKiwi.name: LeKiwi,
     PiperHardware.name: PiperHardware,
     RemotePhosphobot.name: RemotePhosphobot,
+    ExcavatorHardware.name: ExcavatorHardware,
 }
 
 

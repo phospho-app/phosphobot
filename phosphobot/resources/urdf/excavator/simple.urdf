@@ -1,0 +1,162 @@
+<?xml version="1.0"?>
+<robot name="excavator">
+
+  <!-- Materials -->
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1"/>
+  </material>
+  <material name="yellow">
+    <color rgba="1 1 0 1"/>
+  </material>
+
+  <!-- ===================================================================== -->
+  <!--                                LINKS                                  -->
+  <!-- ===================================================================== -->
+
+  <!-- Base Link -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.2" radius="0.5"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.2" radius="0.5"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <!-- Turret Link -->
+  <link name="turret_link">
+    <visual>
+      <geometry>
+        <box size="0.6 0.6 0.4"/>
+      </geometry>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.6 0.6 0.4"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5"/>
+      <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <!-- Boom Link (Length = 1.5) -->
+  <link name="boom_link">
+    <visual>
+      <!-- The origin is half the length of the boom -->
+      <origin xyz="0.75 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- The size of the boom box -->
+        <box size="1.5 0.2 0.2"/>
+      </geometry>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <origin xyz="0.75 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.5 0.2 0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="3"/>
+      <origin xyz="0.75 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <!-- Stick Link (Length = 1.0) -->
+  <link name="stick_link">
+    <visual>
+      <!-- The origin is half the length of the stick -->
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- The size of the stick box -->
+        <box size="1.0 0.15 0.15"/>
+      </geometry>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.0 0.15 0.15"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="2"/>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <!-- Bucket Link -->
+  <link name="bucket_link">
+    <visual>
+      <origin xyz="0.2 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.4 0.4 0.2"/>
+      </geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0.2 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.4 0.4 0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1"/>
+      <origin xyz="0.2 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+
+  <!-- ===================================================================== -->
+  <!--                                JOINTS                                 -->
+  <!-- ===================================================================== -->
+
+  <joint name="turret_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="turret_link"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.15" upper="3.15" effort="1000" velocity="0.5"/>
+  </joint>
+
+  <joint name="boom_joint" type="revolute">
+    <parent link="turret_link"/>
+    <child link="boom_link"/>
+    <origin xyz="0.3 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.2" upper="0" effort="1000" velocity="0.5"/>
+  </joint>
+
+  <joint name="stick_joint" type="revolute">
+    <parent link="boom_link"/>
+    <child link="stick_link"/>
+    <!-- This origin must be at the full length of the boom -->
+    <origin xyz="1.5 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0" upper="1.9" effort="1000" velocity="0.5"/>
+  </joint>
+
+  <joint name="bucket_joint" type="revolute">
+    <parent link="stick_link"/>
+    <child link="bucket_link"/>
+    <!-- This origin must be at the full length of the stick -->
+    <origin xyz="1.0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="1000" velocity="0.5"/>
+  </joint>
+
+</robot>

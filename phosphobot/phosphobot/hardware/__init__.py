@@ -8,3 +8,4 @@ from .piper import PiperHardware
 from .so100 import SO100Hardware
 from .wx250s import WX250SHardware
 from .phosphobot import RemotePhosphobot
+from .excavator import ExcavatorHardware
