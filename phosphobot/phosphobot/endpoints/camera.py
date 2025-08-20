@@ -188,10 +188,8 @@ async def add_zmq_camera_feed(
     Add a camera feed from a ZMQ publisher.
     This allows the application to receive camera frames from a ZMQ publisher.
     """
-    # Camera id is length of cameras + 1
-    camera_id = max(cameras.camera_ids) + 1 if cameras.camera_ids else 0
     try:
-        zmq_camera = ZMQCamera(connect_to=query.tcp_address, camera_id=camera_id)
+        zmq_camera = ZMQCamera(connect_to=query.tcp_address)
         zmq_camera.start()
         asyncio.sleep(0.1)  # Allow some time for the camera to initialize
     except Exception as e:
@@ -201,4 +199,4 @@ async def add_zmq_camera_feed(
         )
 
     # Add to cameras
-    cameras.add_custom_camera(zmq_camera, camera_id=camera_id)
+    cameras.add_custom_camera(zmq_camera)

@@ -931,12 +931,11 @@ class ZMQCamera(VideoCamera):
 
     def __init__(
         self,
-        camera_id: int,
         connect_to: str = "tcp://localhost:5555",
         disable: bool = False,
     ):
         # We will manage the ZMQ connection ourselves, so pass video=None to the parent.
-        super().__init__(video=None, disable=disable, camera_id=camera_id)
+        super().__init__(video=None, disable=disable, camera_id=None)
 
         self.connect_to = connect_to
         # Flag to check if we've received the first frame
@@ -955,7 +954,7 @@ class ZMQCamera(VideoCamera):
 
     @property
     def camera_name(self) -> str:
-        return f"ZMQCamera {self.camera_id}"
+        return f"ZMQCamera {self.connect_to}"
 
     def init_camera(self) -> bool:
         """
@@ -1091,6 +1090,32 @@ class AllCameras:
 
         # Add atexit hook to stop the cameras
         atexit.register(self.stop)
+
+    @property
+    def cameras(self) -> List[BaseCamera]:
+        """
+        Returns a list of all cameras ordered as: video cameras by camera_id,
+        realsense cameras by device_index, then zmq cameras in order added.
+        """
+        all_cameras: List[BaseCamera] = []
+
+        # Video cameras first, ordered by camera_id
+        sorted_video_cameras = sorted(
+            self.video_cameras,
+            key=lambda cam: cam.camera_id if cam.camera_id is not None else 0,
+        )
+        all_cameras.extend(sorted_video_cameras)
+
+        # RealSense cameras second, ordered by device_index
+        sorted_realsense_cameras = sorted(
+            self.realsense_cameras, key=lambda cam: cam.device_index
+        )
+        all_cameras.extend(sorted_realsense_cameras)
+
+        # ZMQ cameras last, in order they were added
+        all_cameras.extend(self.zmq_cameras)
+
+        return all_cameras
 
     def detect_cameras(self):
         """
@@ -1229,20 +1254,11 @@ class AllCameras:
             camera: An instance of a class that inherits from BaseCamera.
         """
 
-        if not hasattr(camera, "camera_id"):
-            raise ValueError("Custom camera instance must have a 'camera_id' attribute")
-
-        if camera.camera_id in self.camera_ids or camera.camera_id is None:
-            # Change the id to be the next available one
-            max_id = max(self.camera_ids) if self.camera_ids else -1
-            camera.camera_id = max_id + 1
-            logger.warning(
-                f"Camera with id {camera.camera_id} already exists, changing to {camera.camera_id}"
-            )
-
         # According to the camera type, add it to the appropriate list
         if isinstance(camera, VideoCamera):
             self.video_cameras.append(camera)
+            if camera.camera_id is not None:
+                self.camera_ids.append(camera.camera_id)
         elif isinstance(camera, RealSenseCamera):
             self.realsense_cameras.append(camera)
         elif isinstance(camera, ZMQCamera):
@@ -1252,11 +1268,10 @@ class AllCameras:
                 "Custom camera must be an instance of VideoCamera, RealSenseCamera, or ZMQCamera"
             )
 
-        # Add the camera to the list of camera IDs and names
-        self.camera_ids.append(camera.camera_id)
+        # Add the camera name to the list
         self.camera_names.append(camera.camera_name)
         logger.info(
-            f"Custom camera {camera.camera_name} added with id {camera.camera_id}"
+            f"Custom camera added: {camera.camera_name} Type: {camera.camera_type}"
         )
 
     def refresh(self) -> None:
@@ -1275,7 +1290,7 @@ class AllCameras:
         """
         Return True if at least one camera is active. False otherwise.
         """
-        return any(camera.is_active for camera in self.video_cameras)
+        return any(camera.is_active for camera in self.cameras)
 
     def initialize_realsense_camera(self, max_retries: int = 3) -> None:
         """
@@ -1389,9 +1404,7 @@ class AllCameras:
         )
 
     def stop(self):
-        for camera in self.video_cameras:
-            camera.stop()
-        for camera in self.realsense_cameras:
+        for camera in self.cameras:
             camera.stop()
 
     def get_camera_by_id(self, id: int) -> Optional[VideoCamera]:

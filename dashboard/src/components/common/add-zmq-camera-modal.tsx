@@ -29,7 +29,11 @@ export function AddZMQCameraModal({
   const [tcpAddress, setTcpAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    
+    if (isSubmitting) return; // Prevent double submission
+    
     if (!tcpAddress.trim()) {
       toast.error("Please enter a TCP address");
       return;
@@ -84,23 +88,30 @@ export function AddZMQCameraModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="tcp-address">TCP Address</Label>
-            <Input
-              id="tcp-address"
-              type="text"
-              placeholder="tcp://localhost:5555"
-              value={tcpAddress}
-              onChange={(e) => setTcpAddress(e.target.value)}
-              disabled={isSubmitting}
-            />
-            <p className="text-sm text-muted-foreground">
-              Format: tcp://&lt;host&gt;:&lt;port&gt; (e.g.,
-              tcp://localhost:5555)
-            </p>
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="tcp-address">TCP Address</Label>
+              <Input
+                id="tcp-address"
+                type="text"
+                placeholder="tcp://localhost:5555"
+                value={tcpAddress}
+                onChange={(e) => setTcpAddress(e.target.value)}
+                disabled={isSubmitting}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isSubmitting) {
+                    handleSubmit(e);
+                  }
+                }}
+              />
+              <p className="text-sm text-muted-foreground">
+                Format: tcp://&lt;host&gt;:&lt;port&gt; (e.g.,
+                tcp://localhost:5555)
+              </p>
+            </div>
           </div>
-        </div>
+        </form>
 
         <DialogFooter>
           <Button
