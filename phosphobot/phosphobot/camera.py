@@ -929,12 +929,17 @@ class ZMQCamera(VideoCamera):
     socket: Optional[zmq.Socket] = None
     poller: Optional[zmq.Poller] = None
 
-    def __init__(self, connect_to: str = "tcp://localhost:5555", disable: bool = False):
+    def __init__(
+        self,
+        connect_to: str = "tcp://localhost:5555",
+        disable: bool = False,
+        camera_id: Optional[int] = None,
+    ):
         self.connect_to = connect_to
         self.stream_initialized = False
 
         # Now call the parent constructor. It will safely call our overridden init_camera.
-        super().__init__(video=None, disable=disable, camera_id=None)
+        super().__init__(video=None, disable=disable, camera_id=camera_id)
 
     @property
     def camera_name(self) -> str:
@@ -1240,13 +1245,55 @@ class AllCameras:
 
         # According to the camera type, add it to the appropriate list
         if isinstance(camera, VideoCamera):
+            # Assign camera_id if not already set
+            if camera.camera_id is None:
+                max_id = max(self.camera_ids) if self.camera_ids else -1
+                camera.camera_id = max_id + 1
+
             self.video_cameras.append(camera)
-            if camera.camera_id is not None:
-                self.camera_ids.append(camera.camera_id)
+            self.camera_ids.append(camera.camera_id)
+
         elif isinstance(camera, RealSenseCamera):
             self.realsense_cameras.append(camera)
+
+            # Create virtual cameras for the RealSense device if it's active
+            if camera.is_connected and camera.is_active:
+                # Generate unique camera IDs for virtual cameras
+                max_id = max(self.camera_ids) if self.camera_ids else -1
+                virtual_rgb_id = max_id + 1
+                virtual_depth_id = max_id + 2
+
+                # Create virtual cameras for this RealSense device
+                virtual_rgb = RealSenseVirtualCamera(
+                    camera,
+                    "rgb",
+                    virtual_rgb_id,
+                    disable=False,
+                )
+                virtual_depth = RealSenseVirtualCamera(
+                    camera,
+                    "depth",
+                    virtual_depth_id,
+                    disable=False,
+                )
+
+                # Add to video cameras and camera IDs
+                self.video_cameras.extend([virtual_rgb, virtual_depth])
+                self.camera_ids.extend([virtual_rgb_id, virtual_depth_id])
+
+                logger.info(
+                    f"Added virtual cameras for RealSense device (RGB: {virtual_rgb_id}, Depth: {virtual_depth_id})"
+                )
+
         elif isinstance(camera, ZMQCamera):
+            # Assign camera_id if not already set
+            if camera.camera_id is None:
+                max_id = max(self.camera_ids) if self.camera_ids else -1
+                camera.camera_id = max_id + 1
+
             self.zmq_cameras.append(camera)
+            self.camera_ids.append(camera.camera_id)
+
         else:
             raise ValueError(
                 "Custom camera must be an instance of VideoCamera, RealSenseCamera, or ZMQCamera"
@@ -1255,7 +1302,7 @@ class AllCameras:
         # Add the camera name to the list
         self.camera_names.append(camera.camera_name)
         logger.info(
-            f"Custom camera added: {camera.camera_name} Type: {camera.camera_type}"
+            f"Custom camera added: {camera.camera_name} Type: {camera.camera_type} ID: {getattr(camera, 'camera_id', 'N/A')}"
         )
 
     def refresh(self) -> None:
@@ -1371,7 +1418,7 @@ class AllCameras:
             video_cameras_ids=self.camera_ids,
             realsense_available=realsense_available,
             is_stereo_camera_available=any(
-                camera.camera_type == "stereo" for camera in self.video_cameras
+                camera.camera_type == "stereo" for camera in self.cameras
             ),
             cameras_status=[
                 SingleCameraStatus(
@@ -1382,8 +1429,8 @@ class AllCameras:
                     height=camera.height,
                     fps=camera.fps,
                 )
-                for camera in self.video_cameras
-                if camera.camera_id is not None
+                for camera in self.cameras
+                if hasattr(camera, "camera_id") and camera.camera_id is not None
             ],
         )
 
@@ -1391,12 +1438,12 @@ class AllCameras:
         for camera in self.cameras:
             camera.stop()
 
-    def get_camera_by_id(self, id: int) -> Optional[VideoCamera]:
+    def get_camera_by_id(self, id: int) -> Optional[BaseCamera]:
         if id not in self.camera_ids:
             logger.warning(f"Camera with id {id} not available in {self.camera_ids}")
             return None
 
-        for camera in self.video_cameras:
+        for camera in self.cameras:
             if camera.camera_id == id:
                 return camera
 
