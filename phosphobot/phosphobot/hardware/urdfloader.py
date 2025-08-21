@@ -1,7 +1,3 @@
-"""
-This file is a template for a new manipulator robot.
-"""
-
 from typing import Literal
 
 import numpy as np
@@ -13,30 +9,28 @@ from phosphobot.utils import get_resources_path
 from phosphobot.models import RobotConfigStatus
 
 
-class NewRobotTemplate(BaseManipulator):
-    name = "simple_excavator"
+class URDFLoader(BaseManipulator):
+    name = "urdf_loader"
 
-    URDF_FILE_PATH = str(get_resources_path() / "urdf" / "excavator" / "simple.urdf")
+    RESOLUTION = 4096  # unused for now
 
-    AXIS_ORIENTATION = [0, 0, 0, 1]
+    def __init__(
+        self,
+        urdf_path: str,
+        end_effector_link_index: int,
+        gripper_joint_index: int,
+        axis_orientation: list[float] | None = None,
+    ):
+        self.URDF_FILE_PATH = urdf_path
+        self.END_EFFECTOR_LINK_INDEX = end_effector_link_index
+        self.GRIPPER_JOINT_INDEX = gripper_joint_index
 
-    # Control commands (refer to the Feetech SCServo manual)
-    TORQUE_ENABLE = 0x01
-    TORQUE_DISABLE = 0
+        if axis_orientation is not None:
+            self.AXIS_ORIENTATION = axis_orientation
+        else:
+            self.AXIS_ORIENTATION = [0, 0, 0, 1]
 
-    TORQUE_ADDRESS = 0x40
-
-    COMMAND_WRITE = 0x03
-    COMMAND_READ = 0x02
-
-    END_EFFECTOR_LINK_INDEX = 3
-    GRIPPER_JOINT_INDEX = 3
-
-    CALIBRATION_POSITION = [0, 0, 0, 0]
-    SLEEP_POSITION = [0, 0, 0, 0]
-
-    SERVO_IDS = [1, 2, 3, 4]
-    RESOLUTION = 4096
+        super().__init__()
 
     async def connect(self):
         """
@@ -109,9 +103,7 @@ class NewRobotTemplate(BaseManipulator):
         """
         Read the position of all motors of the robot.
         """
-        raise NotImplementedError(
-            "This method is not implemented. Please implement it in the subclass."
-        )
+        return np.zeros(len(self.SERVO_IDS), dtype=np.int32)
 
     def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
         """
@@ -128,7 +120,7 @@ class NewRobotTemplate(BaseManipulator):
     def status(self) -> RobotConfigStatus:
         return RobotConfigStatus(
             name=self.name,
-            device_name="excavator",
+            device_name=self.URDF_FILE_PATH,
             temperature=None,
         )
 

@@ -12,7 +12,7 @@ from serial.tools.list_ports_common import ListPortInfo
 from phosphobot.configs import config
 from phosphobot.hardware import (
     BaseRobot,
-    ExcavatorHardware,
+    URDFLoader,
     KochHardware,
     LeKiwi,
     PiperHardware,
@@ -35,7 +35,7 @@ robot_name_to_class = {
     LeKiwi.name: LeKiwi,
     PiperHardware.name: PiperHardware,
     RemotePhosphobot.name: RemotePhosphobot,
-    ExcavatorHardware.name: ExcavatorHardware,
+    URDFLoader.name: URDFLoader,
 }
 
 

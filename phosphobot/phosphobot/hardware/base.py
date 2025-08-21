@@ -211,14 +211,6 @@ class BaseManipulator(BaseRobot):
         if axis is None:
             axis = axis_robot.new_position()
 
-        # When creating a new robot, you should add default values for these
-        # These values depends on the hardware
-        assert (
-            self.CALIBRATION_POSITION is not None
-        ), "CALIBRATION_POSITION must be defined in the class"
-        assert self.RESOLUTION is not None, "RESOLUTION must be defined in the class"
-        assert self.SERVO_IDS is not None, "SERVO_IDS must be defined in the class"
-
         if serial_id is not None:
             self.SERIAL_ID = serial_id
         else:
@@ -248,6 +240,23 @@ class BaseManipulator(BaseRobot):
         )
 
         self.actuated_joints = actuated_joints
+
+        # Infer SERVO_IDS and CALIBRATION_POSITION from the actuated joints if not set
+        if not hasattr(self, "SERVO_IDS"):
+            self.SERVO_IDS = list(range(1, len(self.actuated_joints) + 1))
+            logger.warning(
+                f"{self.__class__.__name__}.SERVO_IDS not set, using default: {self.SERVO_IDS}"
+            )
+        if not hasattr(self, "CALIBRATION_POSITION"):
+            self.CALIBRATION_POSITION = [0] * len(self.SERVO_IDS)
+            logger.warning(
+                f"{self.__class__.__name__}.CALIBRATION_POSITION not set, using default: {self.CALIBRATION_POSITION}"
+            )
+        if not hasattr(self, "SLEEP_POSITION"):
+            self.SLEEP_POSITION = [0] * len(self.SERVO_IDS)
+            logger.warning(
+                f"{self.__class__.__name__}.SLEEP_POSITION not set, using default: {self.SLEEP_POSITION}"
+            )
 
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,

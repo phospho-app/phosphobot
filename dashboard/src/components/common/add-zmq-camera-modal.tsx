@@ -26,14 +26,14 @@ export function AddZMQCameraModal({
   open,
   onOpenChange,
 }: AddZMQCameraModalProps) {
-  const [tcpAddress, setTcpAddress] = useState("");
+  const [tcpAddress, setTcpAddress] = useState("tcp://localhost:5555");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    
+
     if (isSubmitting) return; // Prevent double submission
-    
+
     if (!tcpAddress.trim()) {
       toast.error("Please enter a TCP address");
       return;
@@ -100,7 +100,7 @@ export function AddZMQCameraModal({
                 onChange={(e) => setTcpAddress(e.target.value)}
                 disabled={isSubmitting}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !isSubmitting) {
+                  if (e.key === "Enter" && !isSubmitting) {
                     handleSubmit(e);
                   }
                 }}

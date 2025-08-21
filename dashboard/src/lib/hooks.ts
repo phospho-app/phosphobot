@@ -61,6 +61,14 @@ interface GlobalStore {
   setSelectedDataset: (dataset: string) => void;
   selectedCameraId: number;
   setSelectedCameraId: (cameraId: number) => void;
+  urdfPath: string;
+  setUrdfPath: (path: string) => void;
+  urdfPathHistory: string[];
+  addUrdfPathToHistory: (path: string) => void;
+  endEffectorLinkIndex: number;
+  setEndEffectorLinkIndex: (index: number) => void;
+  gripperJointIndex: number;
+  setGripperJointIndex: (index: number) => void;
 }
 
 const useGlobalStore = create(
@@ -128,6 +136,29 @@ const useGlobalStore = create(
       setSelectedCameraId: (cameraId: number) =>
         set(() => ({
           selectedCameraId: cameraId,
+        })),
+      urdfPath: "",
+      setUrdfPath: (path: string) =>
+        set(() => ({
+          urdfPath: path,
+        })),
+      urdfPathHistory: [],
+      addUrdfPathToHistory: (path: string) =>
+        set((state) => {
+          const newHistory = [path, ...state.urdfPathHistory.filter(p => p !== path)].slice(0, 5);
+          return {
+            urdfPathHistory: newHistory,
+          };
+        }),
+      endEffectorLinkIndex: 0,
+      setEndEffectorLinkIndex: (index: number) =>
+        set(() => ({
+          endEffectorLinkIndex: index,
+        })),
+      gripperJointIndex: 0,
+      setGripperJointIndex: (index: number) =>
+        set(() => ({
+          gripperJointIndex: index,
         })),
     }),
 
