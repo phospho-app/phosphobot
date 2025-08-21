@@ -20,7 +20,7 @@ import {
   Play,
   Sliders,
 } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 
 export function AppSidebar() {
   const location = useLocation();
@@ -35,10 +35,10 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={currentPath === "/"}>
-                  <a href="/">
+                  <Link to="/">
                     <Home className="h-5 w-5" />
                     <span>Dashboard</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -54,10 +54,10 @@ export function AppSidebar() {
                   asChild
                   isActive={currentPath === "/control"}
                 >
-                  <a href="/control">
+                  <Link to="/control">
                     <Play className="h-5 w-5 text-green-500" />
                     <span>Control Robot</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -65,10 +65,10 @@ export function AppSidebar() {
                   asChild
                   isActive={currentPath.startsWith("/browse")}
                 >
-                  <a href="/browse">
+                  <Link to="/browse">
                     <FolderOpen className="h-5 w-5" />
                     <span>Browse Datasets</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -76,10 +76,10 @@ export function AppSidebar() {
                   asChild
                   isActive={currentPath === "/calibration"}
                 >
-                  <a href="/calibration">
+                  <Link to="/calibration">
                     <Sliders className="h-5 w-5" />
                     <span>Calibration</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -92,10 +92,10 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={currentPath === "/train"}>
-                  <a href="/train">
+                  <Link to="/train">
                     <Dumbbell className="h-5 w-5" />
                     <span>AI Training</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -103,10 +103,10 @@ export function AppSidebar() {
                   asChild
                   isActive={currentPath === "/inference"}
                 >
-                  <a href="/inference">
+                  <Link to="/inference">
                     <BrainCircuit className="h-5 w-5" />
                     <span>AI Control</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -119,26 +119,26 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={currentPath === "/admin"}>
-                  <a href="/admin">
+                  <Link to="/admin">
                     <FileCog className="h-5 w-5" />
                     <span>Admin Configuration</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={currentPath === "/docs"}>
-                  <a href="/docs">
+                  <Link to="/docs">
                     <Code className="h-5 w-5" />
                     <span>API Documentation</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={currentPath === "/viz"}>
-                  <a href="/viz">
+                  <Link to="/viz">
                     <Camera className="h-5 w-5" />
                     <span>Camera Overview</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -146,10 +146,10 @@ export function AppSidebar() {
                   asChild
                   isActive={currentPath === "/network"}
                 >
-                  <a href="/network">
+                  <Link to="/network">
                     <Network className="h-5 w-5" />
                     <span>Network Management</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

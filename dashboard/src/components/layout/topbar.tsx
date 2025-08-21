@@ -27,6 +27,7 @@ import {
   TestTubeDiagonal,
 } from "lucide-react";
 import useSWR from "swr";
+import { useNavigate } from "react-router-dom";
 
 const routeMap = [
   { path: "/", title: "Dashboard" },
@@ -220,6 +221,7 @@ export function AccountTopBar() {
 export function TopBar() {
   const currentPath = window.location.pathname;
   const { session } = useAuth();
+  const navigate = useNavigate();
 
   const matchedRoute = routeMap.find(({ path, isPrefix }) =>
     isPrefix ? currentPath.startsWith(path) : currentPath === path,
@@ -269,7 +271,7 @@ export function TopBar() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  window.location.href = "/sign-in";
+                  navigate("/sign-in");
                 }}
               >
                 Sign in
@@ -277,7 +279,7 @@ export function TopBar() {
               <Button
                 variant="default"
                 onClick={() => {
-                  window.location.href = "/sign-up";
+                  navigate("/sign-up");
                 }}
               >
                 Sign up
