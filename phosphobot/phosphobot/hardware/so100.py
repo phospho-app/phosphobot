@@ -120,6 +120,9 @@ class SO100Hardware(BaseManipulator):
     def enable_torque(self) -> None:
         if not self.is_connected:
             return None
+        if self.config is None:
+            logger.warning("Robot config is not initialized. Cannot enable torque.")
+            return None
 
         try:
             self.motors_bus.write("Torque_Enable", 1)
@@ -137,8 +140,13 @@ class SO100Hardware(BaseManipulator):
         # Disable torque
         if not self.is_connected:
             return None
-
-        self.motors_bus.write("Torque_Enable", 0)
+        try:
+            self.motors_bus.write("Torque_Enable", 0)
+            self.motor_communication_errors = 0
+        except Exception as e:
+            logger.warning(f"Error disabling torque: {e}")
+            self.update_motor_errors()
+            return None
 
     def _set_pid_gains_motors(
         self, servo_id: int, p_gain: int = 32, i_gain: int = 0, d_gain: int = 32
