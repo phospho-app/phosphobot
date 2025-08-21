@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List, Literal, Optional
 
 import numpy as np
 from loguru import logger
@@ -29,7 +29,7 @@ class URDFLoader(BaseManipulator):
         else:
             self.AXIS_ORIENTATION = [0, 0, 0, 1]
 
-        super().__init__()
+        super().__init__(only_simulation=True)
 
     async def connect(self):
         """
@@ -47,7 +47,10 @@ class URDFLoader(BaseManipulator):
         """
         This config is used for PID tuning, motors offsets, and other parameters.
         """
-        self.config = BaseRobotConfig(
+        self.config = self.get_default_base_robot_config()
+
+    def get_default_base_robot_config(self, **kwargs) -> BaseRobotConfig:
+        return BaseRobotConfig(
             name=self.name,
             servos_voltage=6.0,
             servos_offsets=[0] * len(self.SERVO_IDS),
@@ -77,6 +80,23 @@ class URDFLoader(BaseManipulator):
         :param d_gain: Derivative gain (0-255)
         """
         pass
+
+    def read_joints_position(
+        self,
+        unit: Literal["rad", "motor_units", "degrees", "other"] = "rad",
+        source: Literal["sim", "robot"] = "robot",
+        joints_ids: Optional[List[int]] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+    ) -> np.ndarray:
+        # Override the joint position to always read from the simulation
+        return super().read_joints_position(
+            unit=unit,
+            source="sim",
+            joints_ids=joints_ids,
+            min_value=min_value,
+            max_value=max_value,
+        )
 
     def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
         """
