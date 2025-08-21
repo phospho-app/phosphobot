@@ -49,7 +49,9 @@ class URDFLoader(BaseManipulator):
         """
         self.config = self.get_default_base_robot_config()
 
-    def get_default_base_robot_config(self, **kwargs) -> BaseRobotConfig:
+    def get_default_base_robot_config(
+        self, voltage: str, raise_if_none: bool = False
+    ) -> BaseRobotConfig:
         return BaseRobotConfig(
             name=self.name,
             servos_voltage=6.0,
