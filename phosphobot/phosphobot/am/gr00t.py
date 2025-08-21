@@ -861,7 +861,7 @@ class Gr00tN1(ActionModel):
                             (target_position - current_position + 180) % 360 - 180
                         )
 
-                    elif unit == "radians":
+                    elif unit == "rad":
                         # The last joint is the gripper, which can open/close
                         max_transition_angles = np.array([np.pi / 2] * 5 + [np.pi])
                         current_to_target_diff = np.abs(
