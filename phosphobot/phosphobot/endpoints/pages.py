@@ -93,6 +93,7 @@ async def get_admin_settings():
         video_size=config.DEFAULT_VIDEO_SIZE,
         task_instruction=config.DEFAULT_TASK_INSTRUCTION,
         cameras_to_record=config.DEFAULT_CAMERAS_TO_RECORD,
+        private_mode=config.HF_PRIVATE_MODE,
     )
 
 

@@ -1008,6 +1008,7 @@ class SessionReponse(BaseModel):
 class AuthResponse(BaseModel):
     authenticated: bool
     session: Session | None = None
+    is_pro_user: bool | None = None
 
 
 class FeedbackRequest(BaseModel):

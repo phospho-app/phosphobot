@@ -105,11 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const validateSession = async () => {
     try {
-      const response: { authenticated: boolean; session: Session } =
-        await fetchWithBaseUrl("/auth/check_auth", "GET");
+      const response: {
+        authenticated: boolean;
+        session: Session;
+        is_pro_user: boolean;
+      } = await fetchWithBaseUrl("/auth/check-auth", "GET");
       if (!response.authenticated) {
         logout();
       }
+      // Update pro user status
+      setProUser(response.is_pro_user);
     } catch (e) {
       console.error("Session validation failed:", e);
       logout();

@@ -642,6 +642,8 @@ It's compatible with LeRobot and RLDS.
                 self.HF_API.repo_info(repo_id=dataset_repo_name, repo_type="dataset")
                 logger.info(f"Repository {dataset_repo_name} already exists.")
             except Exception:
+                from phosphobot.configs import config
+
                 logger.info(
                     f"Repository {dataset_repo_name} does not exist. Creating it..."
                 )
@@ -650,6 +652,7 @@ It's compatible with LeRobot and RLDS.
                     repo_type="dataset",
                     exist_ok=True,
                     token=True,
+                    private=config.HF_PRIVATE_MODE,
                 )
                 logger.info(f"Repository {dataset_repo_name} created.")
                 create_2_1_branch = True
