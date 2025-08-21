@@ -5,3 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "~=3.8"
 dependencies = ["pybullet>=3.2.7"]
+
+
+[tool.uv.sources]
+# Troubleshooting: on MacOS Silicon, you may need to compile pybullet from source.
+# If so, follow the guide in the README.md file and uncomment the line below to run make prod_gui
+# pybullet = { path = "../../../phosphobot/bullet3", editable = true }

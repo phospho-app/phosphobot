@@ -150,6 +150,15 @@ source phosphobot/.venv/bin/activate
 pybullet = { path = "../bullet3", editable = true } # <-- uncomment!
 ```
 
+(Optionnal) Also edit `phosphobot/simulation/pybullet/pyproject.toml`to uncomment the following line if you want to use the `make prod_gui` command
+
+```bash
+[tool.uv.sources]
+# Troubleshooting: on MacOS Silicon, you may need to compile pybullet from source.
+# If so, follow the guide in the README.md file and uncomment the line below to run make prod_gui
+pybullet = { path = "../../../phosphobot/bullet3", editable = true } # <-- uncomment!
+```
+
 6. Run `make` again. You should now see logs similar to this. Note that the pybullet version is now tagged as `phospho version`. The date and time should also match.
 
 ```bash
