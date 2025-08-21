@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,9 +20,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useAuth } from "@/context/AuthContext";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import { AdminSettings, AdminTokenSettings } from "@/types";
-import { Camera, CircleCheck, Database, Key, Play } from "lucide-react";
+import {
+  Camera,
+  CircleCheck,
+  Database,
+  HelpCircle,
+  Key,
+  Play,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
@@ -30,6 +45,7 @@ export function AdminPage() {
     Record<string, string>
   >({});
   const isInitialMount = useRef(true);
+  const { proUser } = useAuth();
 
   const { data: adminSettings, mutate } = useSWR<AdminSettings>(
     "/admin/settings",
@@ -93,7 +109,7 @@ export function AdminPage() {
   if (!adminSettings) return <LoadingPage />;
 
   return (
-    <div>
+    <div className="mb-8">
       {/* API Keys */}
       <Card className="mb-4">
         <CardHeader>
@@ -131,78 +147,90 @@ export function AdminPage() {
             <CardDescription>Configure data recording</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="freq">Recording Frequency (Hz)</Label>
-              <Input
-                id="freq"
-                type="number"
-                value={adminSettings.freq}
-                onChange={(e) => handleSettingChange("freq", +e.target.value)}
-              />
-              {validationErrors.freq && (
-                <p className="text-red-500 text-sm">{validationErrors.freq}</p>
-              )}
+            <div className="flex flex-row gap-4 justify-between">
+              <div className="space-y-2">
+                <Label>Video Size</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Width"
+                    value={adminSettings.video_size[0]}
+                    onChange={(e) =>
+                      handleSettingChange("video_size", [
+                        +e.target.value,
+                        adminSettings.video_size[1],
+                      ])
+                    }
+                  />
+                  <Input
+                    placeholder="Height"
+                    value={adminSettings.video_size[1]}
+                    onChange={(e) =>
+                      handleSettingChange("video_size", [
+                        adminSettings.video_size[0],
+                        +e.target.value,
+                      ])
+                    }
+                  />
+                </div>
+                {validationErrors.video_size && (
+                  <p className="text-red-500 text-sm">
+                    {validationErrors.video_size}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="freq">Recording Frequency (Hz)</Label>
+                <Input
+                  id="freq"
+                  type="number"
+                  value={adminSettings.freq}
+                  onChange={(e) => handleSettingChange("freq", +e.target.value)}
+                />
+                {validationErrors.freq && (
+                  <p className="text-red-500 text-sm">
+                    {validationErrors.freq}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Video Codec</Label>
-              <Select
-                value={adminSettings.video_codec}
-                onValueChange={(v) => handleSettingChange("video_codec", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select codec" />
-                </SelectTrigger>
-                <SelectContent>
-                  {["mp4v", "avc1", "hev1", "hvc1", "avc3", "av01", "vp09"].map(
-                    (c) => (
+            <div className="flex flex-row gap-4 jusitfy-between items-end">
+              <div className="space-y-2">
+                <Label>Video Codec</Label>
+                <Select
+                  value={adminSettings.video_codec}
+                  onValueChange={(v) => handleSettingChange("video_codec", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select codec" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      "mp4v",
+                      "avc1",
+                      "hev1",
+                      "hvc1",
+                      "avc3",
+                      "av01",
+                      "vp09",
+                    ].map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
-                    ),
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Video Size</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Width"
-                  value={adminSettings.video_size[0]}
-                  onChange={(e) =>
-                    handleSettingChange("video_size", [
-                      +e.target.value,
-                      adminSettings.video_size[1],
-                    ])
-                  }
-                />
-                <Input
-                  placeholder="Height"
-                  value={adminSettings.video_size[1]}
-                  onChange={(e) =>
-                    handleSettingChange("video_size", [
-                      adminSettings.video_size[0],
-                      +e.target.value,
-                    ])
-                  }
-                />
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              {validationErrors.video_size && (
-                <p className="text-red-500 text-sm">
-                  {validationErrors.video_size}
-                </p>
-              )}
+              <Button
+                variant="outline"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.href = "/viz";
+                }}
+              >
+                <Camera className="size-4 mr-2" />
+                Camera Settings
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = "/viz";
-              }}
-            >
-              <Camera className="size-4 mr-2" />
-              Camera Settings
-            </Button>
           </CardContent>
         </Card>
 
@@ -239,27 +267,69 @@ export function AdminPage() {
                 onChange={(e) =>
                   handleSettingChange("task_instruction", e.target.value)
                 }
-                className="min-h-[80px] resize-y"
+                className="min-h-[50px] resize-y"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Episode Format</Label>
-              <Select
-                value={adminSettings.episode_format}
-                onValueChange={(v) =>
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  handleSettingChange("episode_format", v as any)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lerobot_v2.1">lerobot_v2.1</SelectItem>
-                  <SelectItem value="lerobot_v2">lerobot_v2</SelectItem>
-                  <SelectItem value="json">json</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-row gap-4 justify-between">
+              <div className="space-y-2">
+                <Label>Episode Format</Label>
+                <Select
+                  value={adminSettings.episode_format}
+                  onValueChange={(v) =>
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    handleSettingChange("episode_format", v as any)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lerobot_v2.1">lerobot_v2.1</SelectItem>
+                    <SelectItem value="lerobot_v2">lerobot_v2</SelectItem>
+                    <SelectItem value="json">json</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-4">
+                  <Checkbox
+                    id="hf_private_mode"
+                    checked={adminSettings.hf_private_mode}
+                    onCheckedChange={(checked) =>
+                      handleSettingChange("hf_private_mode", checked as boolean)
+                    }
+                    disabled={!proUser}
+                    className={!proUser ? "opacity-50" : ""}
+                  />
+                  <Label
+                    htmlFor="hf_private_mode"
+                    className={`text-sm ${!proUser ? "text-muted-foreground" : ""}`}
+                  >
+                    Store datasets as private on Hugging Face
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          By default, datasets are stored as public on Hugging
+                          Face.
+                        </p>
+                        <p>
+                          Get a <b>phospho pro</b> account to save datasets as
+                          private by default.
+                        </p>
+                        <p>
+                          Note: private datasets are <b>not visible</b> in the
+                          LeRobot dataset viewer and AI training may not work.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

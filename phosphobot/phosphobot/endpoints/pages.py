@@ -93,6 +93,7 @@ async def get_admin_settings():
         video_size=config.DEFAULT_VIDEO_SIZE,
         task_instruction=config.DEFAULT_TASK_INSTRUCTION,
         cameras_to_record=config.DEFAULT_CAMERAS_TO_RECORD,
+        hf_private_mode=config.DEFAULT_HF_PRIVATE_MODE,
     )
 
 
@@ -374,6 +375,7 @@ async def submit_wandb_token(query: WandBTokenRequest):
 @router.post("/admin/form/usersettings")
 async def submit_user_settings(user_settings: AdminSettingsRequest):
     try:
+        logger.debug(f"User Settings submission: {user_settings.model_dump()}")
         config.save_user_settings(user_settings.model_dump())
 
         return {"status": "success", "message": "User settings saved successfully!"}

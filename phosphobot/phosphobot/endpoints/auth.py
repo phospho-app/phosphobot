@@ -272,7 +272,7 @@ async def verify_email_token(
         raise HTTPException(status_code=500, detail=f"Email verification failed: {e}")
 
 
-@router.get("/auth/check_auth", response_model=AuthResponse)
+@router.get("/auth/check-auth", response_model=AuthResponse)
 async def is_authenticated() -> AuthResponse:
     """
     Check if the user is authenticated by validating the session with Supabase.
@@ -291,8 +291,11 @@ async def is_authenticated() -> AuthResponse:
         if session.user.email is None:
             # If the user email is not set, treat as unauthenticated
             return AuthResponse(authenticated=False)
+        # Check if the user is a Pro user
+        is_pro_user = await check_pro_user(session.user.id)
         return AuthResponse(
             authenticated=True,
+            is_pro_user=is_pro_user,
             session=Session(
                 user_id=session.user.id,
                 user_email=session.user.email,

@@ -591,11 +591,13 @@ task_categories:
 
 # {dataset_name}
 
-**This dataset was generated using a [phospho starter pack](https://robots.phospho.ai).**
+**This dataset was generated using [phosphobot](https://docs.phospho.ai).**
 
 This dataset contains a series of episodes recorded with a robot and multiple cameras. \
 It can be directly used to train a policy using imitation learning. \
-It's compatible with LeRobot and RLDS.
+It's compatible with LeRobot.
+
+To get started in robotics, [get your own phospho starter pack.](https://robots.phospho.ai).
 """
 
     def push_dataset_to_hub(self, branch_path: str | None = None):
@@ -642,6 +644,8 @@ It's compatible with LeRobot and RLDS.
                 self.HF_API.repo_info(repo_id=dataset_repo_name, repo_type="dataset")
                 logger.info(f"Repository {dataset_repo_name} already exists.")
             except Exception:
+                from phosphobot.configs import config
+
                 logger.info(
                     f"Repository {dataset_repo_name} does not exist. Creating it..."
                 )
@@ -650,6 +654,7 @@ It's compatible with LeRobot and RLDS.
                     repo_type="dataset",
                     exist_ok=True,
                     token=True,
+                    private=config.DEFAULT_HF_PRIVATE_MODE,
                 )
                 logger.info(f"Repository {dataset_repo_name} created.")
                 create_2_1_branch = True
