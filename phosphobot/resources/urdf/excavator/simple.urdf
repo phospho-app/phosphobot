@@ -136,27 +136,27 @@
   <joint name="boom_joint" type="revolute">
     <parent link="turret_link"/>
     <child link="boom_link"/>
-    <origin xyz="0.3 0 0.2" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-1.2" upper="0" effort="1000" velocity="0.5"/>
+    <origin xyz="0.3 0 0.2" rpy="0 -0.46 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="-0.587" upper="0.587" effort="1000" velocity="0.5"/>
   </joint>
 
   <joint name="stick_joint" type="revolute">
     <parent link="boom_link"/>
     <child link="stick_link"/>
     <!-- This origin must be at the full length of the boom -->
-    <origin xyz="1.5 0 0" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="0" upper="1.9" effort="1000" velocity="0.5"/>
+    <origin xyz="1.5 0 0" rpy="0 1.5 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="-1.2" upper="1.5" effort="1000" velocity="0.5"/>
   </joint>
 
   <joint name="bucket_joint" type="revolute">
     <parent link="stick_link"/>
     <child link="bucket_link"/>
     <!-- This origin must be at the full length of the stick -->
-    <origin xyz="1.0 0 0" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1000" velocity="0.5"/>
+    <origin xyz="1.0 0 0" rpy="0 1.916 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="0.5" upper="2" effort="1000" velocity="0.5"/>
   </joint>
 
 </robot>
