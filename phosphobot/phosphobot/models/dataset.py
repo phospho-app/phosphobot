@@ -591,11 +591,13 @@ task_categories:
 
 # {dataset_name}
 
-**This dataset was generated using a [phospho starter pack](https://robots.phospho.ai).**
+**This dataset was generated using [phosphobot](https://docs.phospho.ai).**
 
 This dataset contains a series of episodes recorded with a robot and multiple cameras. \
 It can be directly used to train a policy using imitation learning. \
-It's compatible with LeRobot and RLDS.
+It's compatible with LeRobot.
+
+To get started in robotics, [get your own phospho starter pack.](https://robots.phospho.ai).
 """
 
     def push_dataset_to_hub(self, branch_path: str | None = None):

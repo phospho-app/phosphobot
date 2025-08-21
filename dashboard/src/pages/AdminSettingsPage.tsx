@@ -318,8 +318,12 @@ export function AdminPage() {
                           Face.
                         </p>
                         <p>
-                          Get a <b>phospho pro</b> account to have private
-                          datasets by default.
+                          Get a <b>phospho pro</b> account to save datasets as
+                          private by default.
+                        </p>
+                        <p>
+                          Note: private datasets are <b>not visible</b> in the
+                          LeRobot dataset viewer and AI training may not work.
                         </p>
                       </TooltipContent>
                     </Tooltip>

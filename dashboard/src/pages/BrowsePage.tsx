@@ -590,7 +590,7 @@ export function BrowsePage() {
 
         <Button variant="outline" onClick={() => setOpenDownloadModal(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Add dataset from hub 🤗
+          Add dataset from Hub 🤗
         </Button>
       </div>
       {data.tokenError && (
@@ -994,8 +994,8 @@ export function BrowsePage() {
       <Modal
         open={openDownloadModal}
         onOpenChange={setOpenDownloadModal}
-        title="Download dataset"
-        description="Enter the Hugging Face dataset name to download: should be hf_name/dataset_name"
+        title="Download dataset from the Hugging Face Hub 🤗"
+        description="The dataset should be available as public on the Hugging Face Hub."
         confirmLabel={loading ? "Downloading..." : "Download"}
         isLoading={loading}
         onConfirm={async () => {
@@ -1030,7 +1030,7 @@ export function BrowsePage() {
                 setHFDatasetName(value);
               }
             }}
-            placeholder="Enter the name of the dataset to download"
+            placeholder="hf_username/dataset_name"
             className="w-full"
           />
         </div>
