@@ -5,7 +5,6 @@ from loguru import logger
 
 from phosphobot.hardware.base import BaseManipulator
 from phosphobot.models.robot import BaseRobotConfig, BaseRobotPIDGains
-from phosphobot.utils import get_resources_path
 from phosphobot.models import RobotConfigStatus
 
 
@@ -19,7 +18,7 @@ class URDFLoader(BaseManipulator):
         urdf_path: str,
         end_effector_link_index: int,
         gripper_joint_index: int,
-        axis_orientation: list[float] | None = None,
+        axis_orientation: list[int] | None = None,
     ):
         self.URDF_FILE_PATH = urdf_path
         self.END_EFFECTOR_LINK_INDEX = end_effector_link_index
