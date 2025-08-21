@@ -128,7 +128,10 @@ class SO100Hardware(BaseManipulator):
             self.motors_bus.write("Torque_Enable", 1)
             for servo_id, c in enumerate(self.config.pid_gains):
                 self._set_pid_gains_motors(
-                    servo_id + 1, p_gain=c.p_gain, i_gain=c.i_gain, d_gain=c.d_gain
+                    servo_id + 1,
+                    p_gain=int(c.p_gain),
+                    i_gain=int(c.i_gain),
+                    d_gain=int(c.d_gain),
                 )
             self.motor_communication_errors = 0
         except Exception as e:
