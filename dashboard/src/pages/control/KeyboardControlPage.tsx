@@ -50,23 +50,23 @@ export function KeyboardControl() {
   const [selectedRobotName, setSelectedRobotName] = useState<string | null>(
     null,
   );
-  const [selectedSpeed, setSelectedSpeed] = useState<number>(0.8); // State for speed
+  const [selectedSpeed, setSelectedSpeed] = useState<number>(0.8);
 
   // Refs to manage our control loop and state
   const keysPressedRef = useRef(new Set<string>());
+  const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
   const lastExecutionTimeRef = useRef(0);
   // open state is continuous between 0 (fully closed) and 1 (fully open)
   const openStateRef = useRef(1);
-  const lastSentOpenStateRef = useRef(1);
 
-  // How long it takes to fully close the gripper at speed = 1.
-  const FULL_CLOSE_MS = 400;
+  // Time in milliseconds to go from fully open to fully closed at speed = 1.
+  const FULL_TRANSITION_MS = 500;
 
   // Configuration constants
   const BASE_URL = `http://${window.location.hostname}:${window.location.port}/`;
-  const STEP_SIZE = 1; // in centimeters
-  const LOOP_INTERVAL = 15; // ms, a bit slower is fine and reduces load
-  const INSTRUCTIONS_PER_SECOND = 30;
+  const STEP_SIZE = 1;
+  const LOOP_INTERVAL = 10; // ms, target loop frequency
+  const INSTRUCTIONS_PER_SECOND = 30; // Max command send rate
   const DEBOUNCE_INTERVAL = 1000 / INSTRUCTIONS_PER_SECOND;
 
   interface RobotMovement {
@@ -90,12 +90,12 @@ export function KeyboardControl() {
     g: { x: 0, y: 0, z: 0, rz: 0, rx: -STEP_SIZE * 3.14, ry: 0 },
     b: { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: STEP_SIZE * 3.14 },
     c: { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: -STEP_SIZE * 3.14 },
-    " ": { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: 0 },
+    " ": { x: 0, y: 0, z: 0, rz: 0, rx: 0, ry: 0 }, // Placeholder, logic handled separately
   };
 
   const robotIDFromName = (name?: string | null) => {
     if (name === undefined || name === null || !serverStatus?.robot_status) {
-      return 0; // Default to the first robot
+      return 0;
     }
     const index = serverStatus.robot_status.findIndex(
       (robot) => robot.device_name === name,
@@ -114,35 +114,67 @@ export function KeyboardControl() {
         }
       }
 
-      await fetch(newUrl, {
+      const response = await fetch(newUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
       });
+      if (!response.ok) {
+        throw new Error(`Network response was not ok: ${response.statusText}`);
+      }
+      return await response.json();
     } catch (error) {
       console.error("Error posting data:", error);
     }
   };
 
-  // Keyboard event listeners
+  // Effect for handling keyboard inputs
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       setActiveKey(event.key);
+      const keyLower = event.key.toLowerCase();
 
-      const key = event.key === " " ? " " : event.key.toLowerCase();
-      if (KEY_MAPPINGS[key] || KEY_MAPPINGS[event.key]) {
-        keysPressedRef.current.add(KEY_MAPPINGS[key] ? key : event.key);
+      const isSpace = event.key === " ";
+      if (isSpace) {
+        // UX Feature: If gripper is not fully open, a single press will fully open it.
+        if (openStateRef.current < 0.99) {
+          openStateRef.current = 1;
+          // Send an immediate command to ensure responsiveness
+          const data = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, open: 1 };
+          postData(BASE_URL + "move/relative", data, {
+            robot_id: robotIDFromName(selectedRobotName),
+          });
+          // Consume this keydown; don't add " " to keysPressedRef.
+          return;
+        }
+        keysPressedRef.current.add(" ");
+        return;
+      }
+
+      if (KEY_MAPPINGS[keyLower]) {
+        keysPressedRef.current.add(keyLower);
+      } else if (KEY_MAPPINGS[event.key]) {
+        keysPressedRef.current.add(event.key);
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
       setActiveKey(null);
-      const key = event.key === " " ? " " : event.key.toLowerCase();
-      keysPressedRef.current.delete(key);
-      keysPressedRef.current.delete(event.key);
+      const keyLower = event.key.toLowerCase();
+
+      if (event.key === " ") {
+        keysPressedRef.current.delete(" ");
+        return;
+      }
+
+      if (KEY_MAPPINGS[keyLower]) {
+        keysPressedRef.current.delete(keyLower);
+      } else if (KEY_MAPPINGS[event.key]) {
+        keysPressedRef.current.delete(event.key);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -151,8 +183,9 @@ export function KeyboardControl() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []); // Empty dependency array means this runs only once
+  }, [selectedRobotName, serverStatus]);
 
+  // Effect for setting the default selected robot
   useEffect(() => {
     if (
       !selectedRobotName &&
@@ -164,71 +197,69 @@ export function KeyboardControl() {
     }
   }, [serverStatus, selectedRobotName]);
 
-  // Main control loop - runs continuously
+  // The main, always-on control loop
   useEffect(() => {
     const controlRobot = () => {
       const currentTime = Date.now();
-      if (currentTime - lastExecutionTimeRef.current < DEBOUNCE_INTERVAL) {
-        return; // Debounce
+      const deltaT_ms = currentTime - lastExecutionTimeRef.current;
+
+      if (deltaT_ms < DEBOUNCE_INTERVAL) {
+        return; // Throttle command sending to avoid overwhelming the server
       }
 
-      // --- 1. HANDLE GRIPPER ---
-      const gripperChangePerSecond = 1 / (FULL_CLOSE_MS / 1000);
-      const timeSinceLastFrame =
-        (currentTime - lastExecutionTimeRef.current) / 1000;
-      const deltaOpen =
-        gripperChangePerSecond * selectedSpeed * timeSinceLastFrame;
+      const lastOpenState = openStateRef.current;
+      let openStateChanged = false;
+
+      // --- 1. Gripper State Calculation (Always Active) ---
+      const gripperChangePerMs = (1.0 / FULL_TRANSITION_MS) * selectedSpeed;
+      const gripperChangeAmount = gripperChangePerMs * deltaT_ms;
 
       if (keysPressedRef.current.has(" ")) {
-        // Space is held -> close gripper
-        openStateRef.current = Math.max(0, openStateRef.current - deltaOpen);
+        openStateRef.current -= gripperChangeAmount; // Close gripper
       } else {
-        // Space is not held -> open gripper
-        openStateRef.current = Math.min(1, openStateRef.current + deltaOpen);
+        openStateRef.current += gripperChangeAmount; // Open gripper
+      }
+      openStateRef.current = Math.max(0, Math.min(1, openStateRef.current)); // Clamp to [0, 1]
+
+      if (Math.abs(openStateRef.current - lastOpenState) > 0.001) {
+        openStateChanged = true;
       }
 
-      // --- 2. HANDLE ARM MOVEMENT (only if isMoving) ---
+      // --- 2. Robot Movement Calculation (Active only if `isMoving`) ---
       let deltaX = 0,
         deltaY = 0,
         deltaZ = 0,
         deltaRZ = 0,
         deltaRX = 0,
         deltaRY = 0;
+      let hasMovement = false;
 
       if (isMoving) {
         keysPressedRef.current.forEach((key) => {
-          if (key !== " " && KEY_MAPPINGS[key]) {
-            deltaX += KEY_MAPPINGS[key].x;
-            deltaY += KEY_MAPPINGS[key].y;
-            deltaZ += KEY_MAPPINGS[key].z;
-            deltaRZ += KEY_MAPPINGS[key].rz;
-            deltaRX += KEY_MAPPINGS[key].rx;
-            deltaRY += KEY_MAPPINGS[key].ry;
+          const move = KEY_MAPPINGS[key];
+          if (move && key !== " ") {
+            deltaX += move.x;
+            deltaY += move.y;
+            deltaZ += move.z;
+            deltaRZ += move.rz;
+            deltaRX += move.rx;
+            deltaRY += move.ry;
           }
         });
-        // Apply speed scaling
-        deltaX *= selectedSpeed;
-        deltaY *= selectedSpeed;
-        deltaZ *= selectedSpeed;
-        deltaRX *= selectedSpeed;
-        deltaRY *= selectedSpeed;
-        deltaRZ *= selectedSpeed;
+
+        if (deltaX || deltaY || deltaZ || deltaRZ || deltaRX || deltaRY) {
+          hasMovement = true;
+          deltaX *= selectedSpeed;
+          deltaY *= selectedSpeed;
+          deltaZ *= selectedSpeed;
+          deltaRX *= selectedSpeed;
+          deltaRY *= selectedSpeed;
+          deltaRZ *= selectedSpeed;
+        }
       }
 
-      // --- 3. SEND COMMAND IF NEEDED ---
-      const armIsMoving =
-        deltaX !== 0 ||
-        deltaY !== 0 ||
-        deltaZ !== 0 ||
-        deltaRZ !== 0 ||
-        deltaRX !== 0 ||
-        deltaRY !== 0;
-
-      // Use an epsilon to avoid floating point issues
-      const gripperStateChanged =
-        Math.abs(openStateRef.current - lastSentOpenStateRef.current) > 0.001;
-
-      if (armIsMoving || gripperStateChanged) {
+      // --- 3. Send Command if Needed ---
+      if (hasMovement || openStateChanged) {
         const data = {
           x: deltaX,
           y: deltaY,
@@ -241,24 +272,36 @@ export function KeyboardControl() {
         postData(BASE_URL + "move/relative", data, {
           robot_id: robotIDFromName(selectedRobotName),
         });
-        lastSentOpenStateRef.current = openStateRef.current;
       }
 
       lastExecutionTimeRef.current = currentTime;
     };
 
-    const intervalId = setInterval(controlRobot, LOOP_INTERVAL);
-    return () => clearInterval(intervalId); // Cleanup on unmount
-  }, [isMoving, selectedSpeed, serverStatus, selectedRobotName]); // Rerun setup if these change
+    intervalIdRef.current = setInterval(controlRobot, LOOP_INTERVAL);
 
-  // UI-controlled hold start (mouse / touch)
+    return () => {
+      if (intervalIdRef.current) {
+        clearInterval(intervalIdRef.current);
+      }
+    };
+  }, [isMoving, selectedSpeed, serverStatus, selectedRobotName]);
+
+  // UI button handlers for space (mouse/touch)
   const startSpacePressFromUI = (e?: React.MouseEvent | React.TouchEvent) => {
     e?.preventDefault();
+    // Same UX as keyboard: single press on a non-open gripper opens it.
+    if (openStateRef.current < 0.99) {
+      openStateRef.current = 1;
+      const data = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, open: 1 };
+      postData(BASE_URL + "move/relative", data, {
+        robot_id: robotIDFromName(selectedRobotName),
+      });
+      return;
+    }
     keysPressedRef.current.add(" ");
     setActiveKey(" ");
   };
 
-  // UI-controlled hold end (mouse up / touch end / leave)
   const endSpacePressFromUI = () => {
     keysPressedRef.current.delete(" ");
     setActiveKey(null);
@@ -269,17 +312,14 @@ export function KeyboardControl() {
       await postData(
         BASE_URL + "move/init",
         {},
-        {
-          robot_id: robotIDFromName(selectedRobotName),
-        },
+        { robot_id: robotIDFromName(selectedRobotName) },
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const initData = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, open: 1 };
       await postData(BASE_URL + "move/absolute", initData, {
         robot_id: robotIDFromName(selectedRobotName),
       });
-      openStateRef.current = 1;
-      lastSentOpenStateRef.current = 1;
+      openStateRef.current = 1; // Sync local state
     } catch (error) {
       console.error("Error during init:", error);
     }
@@ -297,32 +337,32 @@ export function KeyboardControl() {
   const controls = [
     {
       key: "ArrowUp",
-      description: "Move forward",
+      description: "Move in the positive X direction",
       icon: <ArrowUp className="size-6" />,
     },
     {
       key: "ArrowDown",
-      description: "Move backward",
+      description: "Move in the negative X direction",
       icon: <ArrowDown className="size-6" />,
     },
     {
       key: "ArrowLeft",
-      description: "Yaw left",
+      description: "Rotate Z counter-clockwise (yaw)",
       icon: <ArrowLeft className="size-6" />,
     },
     {
       key: "ArrowRight",
-      description: "Yaw right",
+      description: "Rotate Z clockwise (yaw)",
       icon: <ArrowRight className="size-6" />,
     },
     {
       key: "F",
-      description: "Move up",
+      description: "Increase Z (move up)",
       icon: <ChevronUp className="size-6" />,
     },
     {
       key: "V",
-      description: "Move down",
+      description: "Decrease Z (move down)",
       icon: <ChevronDown className="size-6" />,
     },
     {
@@ -347,7 +387,8 @@ export function KeyboardControl() {
     },
     {
       key: " ",
-      description: "Hold to close gripper, release to open",
+      description:
+        "Hold to close gripper, release to open. Press once to fully open.",
       icon: <Space className="size-6" />,
     },
   ];
@@ -450,17 +491,30 @@ export function KeyboardControl() {
                     control.key === " " ? endSpacePressFromUI : undefined
                   }
                   onClick={() => {
-                    // Clicks on movement keys will simulate a short keypress
-                    if (isMoving && control.key !== " ") {
-                      const K = KEY_MAPPINGS[control.key.toLowerCase()]
-                        ? control.key.toLowerCase()
-                        : control.key;
-                      keysPressedRef.current.add(K);
+                    // Clicks on spacebar are handled by press/release events above
+                    if (control.key === " ") return;
+
+                    if (!isMoving) {
+                      // For non-spacebar clicks, simulate a quick key press
+                      const move =
+                        KEY_MAPPINGS[control.key.toLowerCase()] ||
+                        KEY_MAPPINGS[control.key];
+                      if (move) {
+                        const data = {
+                          x: move.x * selectedSpeed,
+                          y: move.y * selectedSpeed,
+                          z: move.z * selectedSpeed,
+                          rx: move.rx * selectedSpeed,
+                          ry: move.ry * selectedSpeed,
+                          rz: move.rz * selectedSpeed,
+                          open: openStateRef.current,
+                        };
+                        postData(BASE_URL + "move/relative", data, {
+                          robot_id: robotIDFromName(selectedRobotName),
+                        });
+                      }
                       setActiveKey(control.key);
-                      setTimeout(() => {
-                        keysPressedRef.current.delete(K);
-                        setActiveKey(null);
-                      }, 200); // Duration of simulated press
+                      setTimeout(() => setActiveKey(null), 200);
                     }
                   }}
                 >
