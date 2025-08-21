@@ -21,8 +21,8 @@ class URDFLoader(BaseManipulator):
         axis_orientation: list[int] | None = None,
     ):
         self.URDF_FILE_PATH = urdf_path
-        self.END_EFFECTOR_LINK_INDEX = end_effector_link_index
-        self.GRIPPER_JOINT_INDEX = gripper_joint_index
+        self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
+        self.GRIPPER_JOINT_INDEX = int(gripper_joint_index)
 
         if axis_orientation is not None:
             self.AXIS_ORIENTATION = axis_orientation
