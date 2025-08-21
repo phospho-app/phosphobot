@@ -90,7 +90,7 @@ class SO100Hardware(BaseManipulator):
             return robot
         return None
 
-    async def connect(self):
+    async def connect(self) -> None:
         """
         Connect to the robot.
         """
@@ -98,7 +98,7 @@ class SO100Hardware(BaseManipulator):
             logger.warning(
                 "Can't connect: no plugged robot detected (no device_name). Please plug the robot, then restart the server."
             )
-            return
+            return None
 
         # Create serial connection
         self.motors_bus = FeetechMotorsBus(port=self.device_name, motors=self.motors)
@@ -107,7 +107,7 @@ class SO100Hardware(BaseManipulator):
         self.init_config()
         self._max_temperature_cache: dict = {}
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """
         Disconnect the robot.
         """
@@ -117,9 +117,12 @@ class SO100Hardware(BaseManipulator):
             logger.warning(f"Error disconnecting motors: {e}")
         self.is_connected = False
 
-    def enable_torque(self):
+    def enable_torque(self) -> None:
         if not self.is_connected:
-            return
+            return None
+        if self.config is None:
+            logger.warning("Robot config is not initialized. Cannot enable torque.")
+            return None
 
         try:
             self.motors_bus.write("Torque_Enable", 1)
@@ -131,18 +134,23 @@ class SO100Hardware(BaseManipulator):
         except Exception as e:
             logger.warning(f"Error enabling torque: {e}")
             self.update_motor_errors()
-            return
+            return None
 
-    def disable_torque(self):
+    def disable_torque(self) -> None:
         # Disable torque
         if not self.is_connected:
-            return
-
-        self.motors_bus.write("Torque_Enable", 0)
+            return None
+        try:
+            self.motors_bus.write("Torque_Enable", 0)
+            self.motor_communication_errors = 0
+        except Exception as e:
+            logger.warning(f"Error disabling torque: {e}")
+            self.update_motor_errors()
+            return None
 
     def _set_pid_gains_motors(
         self, servo_id: int, p_gain: int = 32, i_gain: int = 0, d_gain: int = 32
-    ):
+    ) -> None:
         """
         Set the PID gains for the Feetech servo.
 
