@@ -21,21 +21,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [proUser, setProUser] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const storedSession = localStorage.getItem("session");
-    if (storedSession) {
-      setSession(JSON.parse(storedSession));
-    }
-    const storedProUser = localStorage.getItem("proUser");
-    if (storedProUser) {
-      setProUser(JSON.parse(storedProUser));
-    }
-    setIsLoading(false);
-  }, []);
+  const [session, setSession] = useState<Session | null>(() => {
+    const stored = localStorage.getItem("session");
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [proUser, setProUser] = useState<boolean | null>(() => {
+    const stored = localStorage.getItem("proUser");
+    return stored ? JSON.parse(stored) : null;
+  });
 
   const login = async (
     email: string,
@@ -104,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const validateSession = async () => {
+    setIsLoading(true);
     try {
       const response: {
         authenticated: boolean;
@@ -118,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("Session validation failed:", e);
       logout();
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -125,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session) {
       validateSession();
     }
-  }, [isLoading, session]);
+  }, [session]);
 
   return (
     <AuthContext.Provider
