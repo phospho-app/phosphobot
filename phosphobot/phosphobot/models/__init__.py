@@ -762,6 +762,7 @@ class AdminSettingsRequest(BaseModel):
     video_size: List[int]  # size 2
     task_instruction: str
     cameras_to_record: List[int] | None = None
+    hf_private_mode: bool = False
 
 
 class AdminSettingsResponse(BaseModel):
@@ -776,6 +777,7 @@ class AdminSettingsResponse(BaseModel):
     video_size: List[int]  # size 2
     task_instruction: str
     cameras_to_record: List[int] | None
+    hf_private_mode: bool
 
 
 class AdminSettingsTokenResponse(BaseModel):

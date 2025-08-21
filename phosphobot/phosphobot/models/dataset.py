@@ -652,7 +652,7 @@ It's compatible with LeRobot and RLDS.
                     repo_type="dataset",
                     exist_ok=True,
                     token=True,
-                    private=config.HF_PRIVATE_MODE,
+                    private=config.DEFAULT_HF_PRIVATE_MODE,
                 )
                 logger.info(f"Repository {dataset_repo_name} created.")
                 create_2_1_branch = True

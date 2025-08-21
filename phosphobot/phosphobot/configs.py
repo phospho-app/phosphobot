@@ -64,7 +64,7 @@ class Configuration(BaseModel):
     HF_TOKEN_VALID: bool = False
 
     # Private mode
-    HF_PRIVATE_MODE: bool = False
+    DEFAULT_HF_PRIVATE_MODE: bool = False
 
     # These fields will be set after loading the user config
     DEFAULT_DATASET_NAME: str = "example_dataset"
