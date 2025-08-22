@@ -2,6 +2,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from supabase import AuthInvalidCredentialsError, AuthWeakPasswordError
 
 from phosphobot.models import (
     AuthResponse,
@@ -110,6 +111,9 @@ async def signup(
     except HTTPException as http_exc:
         # Re-raise HTTP exceptions to maintain the status code and detail
         raise http_exc
+    except (AuthInvalidCredentialsError, AuthWeakPasswordError) as e:
+        # Handle specific authentication errors
+        raise HTTPException(status_code=400, detail=f"Invalid credentials: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signup failed: {e}")
 
