@@ -27,7 +27,7 @@ export default function ComparisonTable() {
       pro: true,
     },
     { name: "Trainings per month", free: "3", pro: "100" },
-    { name: "Max training duration", free: "1h", pro: "2h" },
+    { name: "Max training duration", free: "1h", pro: "3h" },
     { name: "Max number of parallel AI trainings", free: "1", pro: "8" },
     {
       name: "Private channel on Discord with the team",

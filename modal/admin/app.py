@@ -701,9 +701,9 @@ def fastapi_app():
         if user_plan == "pro" or user_id in id_whitelist:
             # Pro users or whitelisted users get a longer timeout
             logger.info(
-                f"User {user_id} is a PRO user or whitelisted, extending timeout to 2 hours"
+                f"User {user_id} is a PRO user or whitelisted, extending timeout to 3 hours"
             )
-            timeout_seconds = 3 * 60 * 60  # 2 hours in seconds
+            timeout_seconds = 3 * 60 * 60  # 3 hours in seconds
 
         if user_id in id_whitelist:
             logger.info(f"User {user_id} is launching a training")
