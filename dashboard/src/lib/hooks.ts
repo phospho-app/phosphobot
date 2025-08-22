@@ -145,7 +145,10 @@ const useGlobalStore = create(
       urdfPathHistory: [],
       addUrdfPathToHistory: (path: string) =>
         set((state) => {
-          const newHistory = [path, ...state.urdfPathHistory.filter(p => p !== path)].slice(0, 5);
+          const newHistory = [
+            path,
+            ...state.urdfPathHistory.filter((p) => p !== path),
+          ].slice(0, 5);
           return {
             urdfPathHistory: newHistory,
           };
@@ -265,4 +268,43 @@ export function useIsMobile() {
   return isMobile;
 }
 
-export { useGlobalStore };
+/**
+ * A custom hook to manage state that is persisted in localStorage.
+ * It syncs the state with localStorage on every change and loads the
+ * initial state from localStorage on mount.
+ *
+ * @param key The key to use in localStorage.
+ * @param defaultValue The default value to use if nothing is in localStorage.
+ * @returns A state and a setter function, like React.useState.
+ */
+function useLocalStorageState<T>(
+  key: string,
+  defaultValue: T,
+): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    // Check if running on the client side
+    if (typeof window === "undefined") {
+      return defaultValue;
+    }
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (error) {
+      console.error("Error reading from localStorage", error);
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    // This effect runs only on the client side
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error("Error writing to localStorage", error);
+    }
+  }, [key, value]);
+
+  return [value, setValue];
+}
+
+export { useGlobalStore, useLocalStorageState };

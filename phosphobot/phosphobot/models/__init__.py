@@ -1180,3 +1180,8 @@ class AddZMQCameraRequest(BaseModel):
         + "Format: 'tcp://<host>:<port>'.",
         examples=["tcp://localhost:5555"],
     )
+    topic: str | None = Field(
+        None,
+        description="Topic to subscribe to. If None, will subscribes to all messages on the given TCP address.",
+        examples=["camera", "wrist_camera"],
+    )

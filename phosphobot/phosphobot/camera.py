@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import pickle
 import platform
 import subprocess
 import threading
@@ -918,12 +919,16 @@ except ImportError:
 
 class ZMQCamera(VideoCamera):
     """
-    A camera class that subscribes to a ZeroMQ PUB socket to receive video frames.
-    It dynamically detects stream properties (width, height) from the first frame received.
+    A camera subscribing to a ZMQ publisher with two distinct operating modes.
+
+    - Topic Mode (default): Subscribes to a specific topic and expects multipart messages.
+    - Legacy Mode (topic=None): Subscribes to all messages and expects single-part
+      Python objects (`recv_pyobj`).
     """
 
     camera_type: CameraTypes = "zmq"
     connect_to: str
+    topic: Optional[str]
     stream_initialized: bool = False
     context: Optional[zmq.Context] = None
     socket: Optional[zmq.Socket] = None
@@ -932,46 +937,54 @@ class ZMQCamera(VideoCamera):
     def __init__(
         self,
         connect_to: str = "tcp://localhost:5555",
+        topic: Optional[str] = None,
         disable: bool = False,
         camera_id: Optional[int] = None,
     ):
+        if topic == "":
+            logger.debug(
+                "ZMQCamera: Empty topic provided, defaulting to None (subscribe to all messages)"
+            )
+            topic = None
+
         self.connect_to = connect_to
+        self.topic = topic
         self.stream_initialized = False
 
-        # Now call the parent constructor. It will safely call our overridden init_camera.
         super().__init__(video=None, disable=disable, camera_id=camera_id)
 
     @property
     def camera_name(self) -> str:
-        return f"ZMQCamera {self.connect_to}"
+        if self.topic is not None:
+            return f"ZMQCamera(addr='{self.connect_to}', topic='{self.topic}')"
+        return f"ZMQCamera(addr='{self.connect_to}', mode=legacy)"
 
     def init_camera(self) -> bool:
-        """
-        Overrides the parent method to initialize a ZMQ connection.
-        Sets width and height to 0, as they are unknown until the first frame arrives.
-        """
+        """Initializes the ZMQ subscription based on the selected mode."""
         try:
-            logger.info(
-                f"{self.camera_name}: Connecting to ZMQ publisher at {self.connect_to}"
-            )
+            logger.info(f"{self.camera_name}: Connecting to ZMQ publisher...")
             self.context = zmq.Context()
             self.socket = self.context.socket(zmq.SUB)
-            # Set a timeout for receiving messages to prevent blocking indefinitely
             self.socket.setsockopt(zmq.RCVTIMEO, 2000)
             self.socket.connect(self.connect_to)
-            self.socket.setsockopt(zmq.SUBSCRIBE, b"")
+
+            if self.topic is not None:
+                # New logic: Subscribe to a specific topic
+                self.socket.setsockopt_string(zmq.SUBSCRIBE, self.topic)
+                logger.info(f"{self.camera_name}: Subscribed to topic '{self.topic}'.")
+            else:
+                # Old logic: Subscribe to everything
+                self.socket.setsockopt(zmq.SUBSCRIBE, b"")
+                logger.info(
+                    f"{self.camera_name}: Subscribed to all messages (legacy mode)."
+                )
 
             self.poller = zmq.Poller()
             self.poller.register(self.socket, zmq.POLLIN)
+            self.width, self.height = 0, 0
+            self.fps = 30
 
-            # Initialize properties as unknown. They will be updated by the run() thread.
-            self.width = 0
-            self.height = 0
-            self.fps = 30  # Keep a default, or it could also be sent by the publisher
-
-            logger.success(
-                f"{self.camera_name}: ZMQ connection established. Waiting for first frame..."
-            )
+            logger.success(f"{self.camera_name}: ZMQ connection established.")
             return True
         except Exception as e:
             logger.error(
@@ -979,69 +992,68 @@ class ZMQCamera(VideoCamera):
             )
             return False
 
+    def _process_frame_data(self, data: dict) -> None:
+        """Helper function to process a received data dictionary and update the frame."""
+        # Dynamically initialize stream properties from the first valid frame
+        if not self.stream_initialized:
+            shape = data["shape"]
+            self.height, self.width, _ = shape
+            self.stream_initialized = True
+            logger.success(
+                f"{self.camera_name}: Stream properties detected: {self.width}x{self.height}"
+            )
+
+        # Reconstruct the numpy array from bytes and metadata
+        frame = np.frombuffer(data["frame_bytes"], dtype=np.dtype(data["dtype"]))
+        reconstructed_frame = frame.reshape(data["shape"])
+
+        with self.lock:
+            # Convert RGB from stream to BGR for OpenCV compatibility
+            self.last_frame = cv2.cvtColor(reconstructed_frame, cv2.COLOR_RGB2BGR)
+
     def run(self) -> None:
         """
-        Overrides the thread's run method.
-        This loop polls the ZMQ socket for new frames and initializes stream properties from the first frame.
+        Polls the ZMQ socket. The receiving logic is split based on whether a
+        topic was specified during initialization.
         """
-        if not self.is_active or not self.socket or not self.context or not self.poller:
+        if not self.is_active or not self.socket or not self.poller:
             return
 
         while not self._stop_event.is_set():
-            # Poll the socket with a timeout to allow the stop event to be checked
             socks = dict(self.poller.poll(timeout=100))
-
             if self.socket in socks and socks[self.socket] == zmq.POLLIN:
                 try:
-                    data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
+                    if self.topic is not None:
+                        # NEW LOGIC: Expects [topic, data_bytes]
+                        message_parts = self.socket.recv_multipart(flags=zmq.NOBLOCK)
+                        if not message_parts or len(message_parts) < 2:
+                            continue  # Ignore malformed message
+                        data_bytes = message_parts[1]
+                        data = pickle.loads(data_bytes)
+                    else:
+                        # OLD LOGIC: Expects a single Python object
+                        data = self.socket.recv_pyobj(flags=zmq.NOBLOCK)
 
-                    # --- DYNAMIC INITIALIZATION LOGIC ---
-                    if not self.stream_initialized:
-                        shape = data["shape"]
-                        # Update the camera's properties from the received metadata
-                        self.height, self.width, _ = shape
-                        self.stream_initialized = True
-                        logger.success(
-                            f"{self.camera_name}: Stream properties detected from first frame: {self.width}x{self.height}"
-                        )
-                    # --- END DYNAMIC INITIALIZATION LOGIC ---
-
-                    # Reconstruct the numpy array from the received bytes and metadata
-                    frame = np.frombuffer(
-                        data["frame_bytes"], dtype=np.dtype(data["dtype"])
-                    )
-                    reconstructed_frame = frame.reshape(data["shape"])
-
-                    with self.lock:
-                        # The parent VideoCamera expects a BGR frame from OpenCV. Since our stream
-                        # is RGB, we must convert it before storing it in self.last_frame.
-                        self.last_frame = cv2.cvtColor(
-                            reconstructed_frame, cv2.COLOR_RGB2BGR
-                        )
+                    # Process the received data dictionary using the helper method
+                    self._process_frame_data(data)
 
                 except zmq.Again:
-                    # No message was ready to be received, continue polling
                     continue
-                except (KeyError, IndexError, TypeError) as e:
+                except (pickle.UnpicklingError, KeyError, IndexError, TypeError) as e:
                     logger.warning(
-                        f"{self.camera_name}: Received malformed or unexpected data packet. Error: {e}"
+                        f"{self.camera_name}: Malformed data packet. Error: {e}"
                     )
                 except Exception as e:
-                    logger.warning(f"{self.camera_name}: Error receiving frame: {e}")
+                    logger.error(f"{self.camera_name}: Error processing frame: {e}")
 
         logger.info(f"{self.camera_name}: Thread stopped.")
 
     def stop(self) -> None:
-        """
-        Extends the parent stop method to gracefully close ZMQ resources.
-        """
+        """Extends the parent stop method to gracefully close ZMQ resources."""
         if not self.is_active:
             return
-
         logger.debug(f"{self.camera_name}: Stopping...")
-        super().stop()  # This sets the _stop_event
-
-        # Clean up ZMQ resources
+        super().stop()
         try:
             if self.socket:
                 self.socket.close()

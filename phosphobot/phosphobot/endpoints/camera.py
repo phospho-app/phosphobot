@@ -189,7 +189,7 @@ async def add_zmq_camera_feed(
     This allows the application to receive camera frames from a ZMQ publisher.
     """
     try:
-        zmq_camera = ZMQCamera(connect_to=query.tcp_address)
+        zmq_camera = ZMQCamera(connect_to=query.tcp_address, topic=query.topic)
         await asyncio.sleep(0.1)  # Allow some time for the camera to initialize
     except Exception as e:
         raise HTTPException(

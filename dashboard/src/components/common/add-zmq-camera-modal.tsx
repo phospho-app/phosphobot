@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl } from "@/lib/utils";
 import { Loader2, Video } from "lucide-react";
 import { useState } from "react";
@@ -26,20 +27,25 @@ export function AddZMQCameraModal({
   open,
   onOpenChange,
 }: AddZMQCameraModalProps) {
-  const [tcpAddress, setTcpAddress] = useState("tcp://localhost:5555");
+  // --- STATE ---
+  // The form state is now persisted in localStorage.
+  const [tcpAddress, setTcpAddress] = useLocalStorageState(
+    "add_zmq_tcp_address",
+    "tcp://localhost:5555",
+  );
+  const [topic, setTopic] = useLocalStorageState("add_zmq_topic", "camera");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (isSubmitting) return;
 
-    if (isSubmitting) return; // Prevent double submission
-
+    // --- VALIDATION ---
+    // TCP address is required, but topic can be an empty string.
     if (!tcpAddress.trim()) {
       toast.error("Please enter a TCP address");
       return;
     }
-
-    // Basic validation for TCP address format
     if (!tcpAddress.startsWith("tcp://")) {
       toast.error("TCP address must start with 'tcp://'");
       return;
@@ -48,7 +54,9 @@ export function AddZMQCameraModal({
     setIsSubmitting(true);
 
     const payload = {
+      // We still trim the values before sending to the backend
       tcp_address: tcpAddress.trim(),
+      topic: topic.trim(),
     };
 
     const response = await fetchWithBaseUrl(
@@ -59,20 +67,15 @@ export function AddZMQCameraModal({
 
     if (response) {
       toast.success("ZMQ camera has been added successfully.");
-
-      // Close modal on success
-      onOpenChange(false);
-
-      // Reset form
-      setTcpAddress("");
-
-      // Refresh status and settings
+      onOpenChange(false); // Close modal on success
       mutate("/status");
       mutate("/admin/settings");
     }
 
     setIsSubmitting(false);
   };
+
+  const isFormInvalid = !tcpAddress.trim();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -83,13 +86,14 @@ export function AddZMQCameraModal({
             Add ZMQ Camera
           </DialogTitle>
           <DialogDescription>
-            Add a new ZMQ camera feed by entering the TCP address of the ZMQ
-            publisher.
+            Enter the TCP address and topic for the ZMQ publisher. Your entries
+            will be saved for next time.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-6 py-4">
+            {/* TCP Address Input */}
             <div className="space-y-2">
               <Label htmlFor="tcp-address">TCP Address</Label>
               <Input
@@ -99,15 +103,31 @@ export function AddZMQCameraModal({
                 value={tcpAddress}
                 onChange={(e) => setTcpAddress(e.target.value)}
                 disabled={isSubmitting}
+              />
+              <p className="text-sm text-muted-foreground">
+                Format: tcp://&lt;host&gt;:&lt;port&gt;
+              </p>
+            </div>
+
+            {/* Topic Input Field */}
+            <div className="space-y-2">
+              <Label htmlFor="topic">Topic</Label>
+              <Input
+                id="topic"
+                type="text"
+                placeholder="camera"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                disabled={isSubmitting}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !isSubmitting) {
+                  if (e.key === "Enter" && !isSubmitting && !isFormInvalid) {
                     handleSubmit(e);
                   }
                 }}
               />
               <p className="text-sm text-muted-foreground">
-                Format: tcp://&lt;host&gt;:&lt;port&gt; (e.g.,
-                tcp://localhost:5555)
+                The topic to subscribe to. Leave empty to subscribe to all
+                topics (for legacy publishers).
               </p>
             </div>
           </div>
@@ -123,7 +143,7 @@ export function AddZMQCameraModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !tcpAddress.trim()}
+            disabled={isSubmitting || isFormInvalid}
             className="min-w-[120px]"
           >
             {isSubmitting ? (
