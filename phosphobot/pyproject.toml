@@ -5,7 +5,7 @@ description = "The AI-ready robotics dev kit, with built-in remote control and V
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = [
     "dynamixel-sdk>=3.7.31",
     "fastapi[standard]>=0.115.5",
@@ -15,7 +15,7 @@ dependencies = [
     "numpy>=1.26.4",
     "pybullet>=3.2.7",
     "pydantic>=2.10.2",
-    "scipy>=1.14.1",
+    "scipy>=1.13.0",
     "uvicorn>=0.32.1",
     "opencv-python-headless>=4.0",
     # "openpi-client>=0.1.0",
@@ -43,7 +43,7 @@ dependencies = [
     "pyrealsense2-macosx>=2.54; platform_system == 'Darwin'",
     "fastparquet>=2024.11.0",
     "httpx[socks]>=0.28.1",
-    "go2-webrtc-connect>=0.2.0",
+    "go2-webrtc-connect>=0.2.1",
     "scapy>=2.6.1",
     "netifaces-plus>=0.12.0",
     "wasmtime>=33.0.0",
