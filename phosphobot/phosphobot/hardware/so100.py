@@ -600,7 +600,7 @@ class SO100Hardware(BaseManipulator):
 
         # Main control loop
         while control_signal.is_in_loop():
-            start_time = time.time()
+            start_time = time.perf_counter()
 
             # Get leader's current joint positions
             pos_rad = self.read_joints_position(unit="rad")
@@ -626,7 +626,7 @@ class SO100Hardware(BaseManipulator):
             self.write_joint_positions(theta_des_rad, unit="rad")
 
             # Maintain loop frequency
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             sleep_time = max(0, loop_period - elapsed)
             await asyncio.sleep(sleep_time)
 
