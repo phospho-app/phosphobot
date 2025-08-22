@@ -50,6 +50,11 @@ dependencies = [
     "async-property>=0.2.2",
 ]
 
+[project.optional-dependencies]
+smolvla = [
+    "lerobot[smolvla]>=0.9.0",
+]
+
 [dependency-groups]
 dev = [
     "pyinstrument>=5.0.0",
