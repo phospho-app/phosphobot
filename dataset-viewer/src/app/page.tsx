@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { redirect } from "next/navigation";
@@ -7,8 +7,9 @@ import { redirect } from "next/navigation";
 export default function Home({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | undefined }>;
 }) {
+  const params = use(searchParams);
   // Redirect to the first episode of the dataset if REPO_ID is defined
   if (process.env.REPO_ID) {
     const episodeN = process.env.EPISODES
@@ -19,20 +20,20 @@ export default function Home({
     redirect(`/${process.env.REPO_ID}/episode_${episodeN}`);
   }
   // sync with hf.co/spaces URL params
-  if (searchParams.path) {
-    redirect(searchParams.path);
+  if (params.path) {
+    redirect(params.path);
   }
 
   // legacy sync with hf.co/spaces URL params
   let redirectUrl: string | null = null;
-  if (searchParams?.dataset && searchParams?.episode) {
-    redirectUrl = `/${searchParams.dataset}/episode_${searchParams.episode}`;
-  } else if (searchParams?.dataset) {
-    redirectUrl = `/${searchParams.dataset}`;
+  if (params?.dataset && params?.episode) {
+    redirectUrl = `/${params.dataset}/episode_${params.episode}`;
+  } else if (params?.dataset) {
+    redirectUrl = `/${params.dataset}`;
   }
 
-  if (redirectUrl && searchParams?.t) {
-    redirectUrl += `?t=${searchParams.t}`;
+  if (redirectUrl && params?.t) {
+    redirectUrl += `?t=${params.t}`;
   }
 
   if (redirectUrl) {
