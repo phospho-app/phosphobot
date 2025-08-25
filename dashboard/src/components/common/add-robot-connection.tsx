@@ -27,8 +27,28 @@ import { useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 
-// Data model for robot types
-const ROBOT_TYPES = [
+type FieldValue = string | number | { value: string; label: string };
+
+interface FormValues {
+  [key: string]: FieldValue;
+}
+
+interface FormField {
+  name: string;
+  label: string;
+  type: "ip" | "number" | "device_name" | "urdf_path" | "text";
+  default?: string | number;
+}
+
+interface RobotType {
+  id: string;
+  name: string;
+  category: "manipulator" | "mobile";
+  image: string;
+  fields: FormField[];
+}
+
+const ROBOT_TYPES: RobotType[] = [
   {
     id: "phosphobot",
     name: "Remote phosphobot server",
@@ -88,6 +108,18 @@ const ROBOT_TYPES = [
         label: "Gripper Joint Index",
         type: "number",
       },
+      {
+        name: "zmq_server_url",
+        label: "ZMQ Server URL",
+        type: "text",
+        default: "tcp://localhost:5555",
+      },
+      {
+        name: "zmq_topic",
+        label: "ZMQ Topic",
+        type: "text",
+        default: "urdf_commands",
+      },
     ],
   },
 ];
@@ -117,14 +149,14 @@ interface LocalResponse {
   devices: LocalDevice[];
 }
 
+// --- Component ---
 export function RobotConfigModal({
   open,
   onOpenChange,
 }: RobotConfigModalProps) {
   const [selectedRobotType, setSelectedRobotType] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formValues, setFormValues] = useState<FormValues>({});
 
   const {
     urdfPath,
@@ -135,19 +167,21 @@ export function RobotConfigModal({
     setEndEffectorLinkIndex,
     gripperJointIndex,
     setGripperJointIndex,
+    zmqServerUrl,
+    setZmqServerUrl,
+    zmqTopic,
+    setZmqTopic,
   } = useGlobalStore();
 
   const selectedRobot = ROBOT_TYPES.find(
     (robot) => robot.id === selectedRobotType,
   );
 
-  // Fetch IP addresses for autocomplete
   const { data: networkDevices, isLoading: isLoadingDevices } =
     useSWR<NetworkReponse>(["/network/scan-devices"], ([endpoint]) =>
       fetcher(endpoint, "POST"),
     );
 
-  // Fetch USB ports for autocomplete
   const { data: usbPorts, isLoading: isLoadingUsb } = useSWR<LocalResponse>(
     ["/local/scan-devices"],
     ([endpoint]) => fetcher(endpoint, "POST"),
@@ -155,53 +189,58 @@ export function RobotConfigModal({
 
   const handleRobotTypeChange = (value: string) => {
     setSelectedRobotType(value);
-    // Initialize form values with defaults when robot type changes
     const robot = ROBOT_TYPES.find((r) => r.id === value);
+
     if (robot) {
-      const defaultValues = robot.fields.reduce(
-        (acc, field) => {
-          if (field.default !== undefined) {
-            acc[field.name] = field.default;
-          } else if (field.name === "urdf_path" && urdfPath) {
-            // Pre-populate URDF path from store
-            acc[field.name] = urdfPath;
-          } else if (field.name === "end_effector_link_index") {
-            // Pre-populate end effector link index from store
-            acc[field.name] = endEffectorLinkIndex;
-          } else if (field.name === "gripper_joint_index") {
-            // Pre-populate gripper joint index from store
-            acc[field.name] = gripperJointIndex;
-          }
-          return acc;
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {} as Record<string, any>,
-      );
+      const defaultValues = robot.fields.reduce((acc, field) => {
+        // Pre-populate from global store if available
+        if (field.name === "urdf_path") acc[field.name] = urdfPath;
+        else if (field.name === "end_effector_link_index")
+          acc[field.name] = endEffectorLinkIndex;
+        else if (field.name === "gripper_joint_index")
+          acc[field.name] = gripperJointIndex;
+        else if (field.name === "zmq_server_url")
+          acc[field.name] = zmqServerUrl;
+        else if (field.name === "zmq_topic") acc[field.name] = zmqTopic;
+        // Fallback to field default
+        else if (field.default !== undefined) {
+          acc[field.name] = field.default;
+        }
+        return acc;
+      }, {} as FormValues);
       setFormValues(defaultValues);
     } else {
       setFormValues({});
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleFieldChange = (fieldName: string, value: any) => {
+  const handleFieldChange = (fieldName: string, value: FieldValue) => {
     setFormValues((prev) => ({
       ...prev,
       [fieldName]: value,
     }));
 
-    // Also persist to store for specific fields
-    if (fieldName === "end_effector_link_index") {
-      setEndEffectorLinkIndex(parseInt(value) || 1);
-    } else if (fieldName === "gripper_joint_index") {
-      setGripperJointIndex(parseInt(value) || 1);
+    // Persist to global store for specific fields
+    const valueToStore = typeof value === "object" ? value.value : value;
+    switch (fieldName) {
+      case "end_effector_link_index":
+        setEndEffectorLinkIndex(parseInt(String(valueToStore)) || 1);
+        break;
+      case "gripper_joint_index":
+        setGripperJointIndex(parseInt(String(valueToStore)) || 1);
+        break;
+      case "zmq_server_url":
+        setZmqServerUrl(String(valueToStore));
+        break;
+      case "zmq_topic":
+        setZmqTopic(String(valueToStore));
+        break;
     }
   };
 
   const handleSubmit = async () => {
     if (!selectedRobot) return;
 
-    // Check if all required fields are filled
     const missingFields = selectedRobot.fields.filter(
       (field) =>
         formValues[field.name] === undefined && field.default === undefined,
@@ -215,20 +254,14 @@ export function RobotConfigModal({
     }
     setIsSubmitting(true);
 
-    // Create the proper form:
-    // {ip: formValues.ip, port: formValues.port, ...}
     const connectionDetails = selectedRobot.fields.reduce(
       (acc, field) => {
-        // Use form value if provided, otherwise use default if available
-        const fieldValue =
-          formValues[field.name] !== undefined
-            ? formValues[field.name]
-            : field.default;
+        const formValue = formValues[field.name];
+        const fieldValue = formValue !== undefined ? formValue : field.default;
 
         if (fieldValue !== undefined) {
-          // if fieldValue is also an object with a value property, get that
           acc[field.name] =
-            typeof fieldValue === "object" && fieldValue.value
+            typeof fieldValue === "object" && "value" in fieldValue
               ? fieldValue.value
               : fieldValue;
         }
@@ -236,16 +269,15 @@ export function RobotConfigModal({
       },
       {} as Record<string, string | number>,
     );
+
     console.log("Connection details:", connectionDetails);
 
     try {
-      // Prepare payload
       const payload = {
         robot_name: selectedRobotType,
         connection_details: connectionDetails,
       };
 
-      // Call API to add robot
       const response = await fetchWithBaseUrl(
         "/robot/add-connection",
         "POST",
@@ -257,19 +289,13 @@ export function RobotConfigModal({
           `${selectedRobot.name} robot has been added successfully.`,
         );
 
-        // Add URDF path to history if it's a URDF loader
         if (selectedRobotType === "urdf_loader" && urdfPath) {
           addUrdfPathToHistory(urdfPath);
         }
 
-        // Close modal on success
         onOpenChange(false);
-
-        // Reset form
         setSelectedRobotType("");
         setFormValues({});
-
-        // mutate /status endpoint
         mutate("/status");
       }
     } catch (error) {
@@ -357,7 +383,11 @@ export function RobotConfigModal({
                           label: `${device.ip} (${device.mac})`,
                         })) || []
                       }
-                      value={formValues[field.name]}
+                      value={
+                        formValues[field.name] as
+                          | { value: string; label: string }
+                          | undefined
+                      }
                       onValueChange={(value) =>
                         handleFieldChange(field.name, value)
                       }
@@ -373,23 +403,18 @@ export function RobotConfigModal({
                       options={
                         usbPorts?.devices.map((device) => {
                           let label = `${device.device}`;
-                          if (device.serial_number) {
+                          if (device.serial_number)
                             label += ` (${device.serial_number}`;
-                          }
-                          if (device.pid) {
-                            label += ` | ${device.pid}`;
-                          }
-                          // add closing parenthesis if it was opened
-                          if (label.includes("(")) {
-                            label += ")";
-                          }
-                          return {
-                            value: device.device,
-                            label: label,
-                          };
+                          if (device.pid) label += ` | ${device.pid}`;
+                          if (label.includes("(")) label += ")";
+                          return { value: device.device, label: label };
                         }) || []
                       }
-                      value={formValues[field.name]}
+                      value={
+                        formValues[field.name] as
+                          | { value: string; label: string }
+                          | undefined
+                      }
                       onValueChange={(value) =>
                         handleFieldChange(field.name, value)
                       }
@@ -422,20 +447,16 @@ export function RobotConfigModal({
                     />
                   )}
 
-                  {field.type === "number" && (
+                  {(field.type === "number" || field.type === "text") && (
                     <Input
                       id={field.name}
-                      type="number"
+                      type={field.type}
                       placeholder={
                         field.default !== undefined
                           ? `Default: ${field.default}`
-                          : "Enter number"
+                          : `Enter ${field.label}`
                       }
-                      value={
-                        formValues[field.name] !== undefined
-                          ? formValues[field.name]
-                          : ""
-                      }
+                      value={String(formValues[field.name] ?? "")}
                       onChange={(e) =>
                         handleFieldChange(field.name, e.target.value)
                       }
