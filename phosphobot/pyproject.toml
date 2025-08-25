@@ -33,7 +33,6 @@ dependencies = [
     "posthog>=6.0.0",
     "piper-sdk>=0.4.1",
     "supabase>=2.18.1",
-    "zmq>=0.0.0",
     "toml>=0.10.2",
     "av>=12.0.0",
     "tyro>=0.9.20",
@@ -48,6 +47,7 @@ dependencies = [
     "netifaces-plus>=0.12.0",
     "wasmtime>=33.0.0",
     "async-property>=0.2.2",
+    "pyzmq>=27.0.2",
 ]
 
 [dependency-groups]
@@ -71,7 +71,6 @@ rerun = ["rerun-sdk>=0.23.0"]
 
 [tool.uv]
 default-groups = ["dev"]
-
 
 [tool.uv.sources]
 # Troubleshooting: on MacOS Silicon, you may need to compile pybullet from source.

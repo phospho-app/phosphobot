@@ -69,6 +69,13 @@ interface GlobalStore {
   setEndEffectorLinkIndex: (index: number) => void;
   gripperJointIndex: number;
   setGripperJointIndex: (index: number) => void;
+  // New fields for ZMQ server configuration
+  zmqServerUrl: string;
+  setZmqServerUrl: (url: string) => void;
+  zmqTopic: string;
+  setZmqTopic: (topic: string) => void;
+  urdfUseZmq: boolean;
+  setUrdfUseZmq: (useZmq: boolean) => void;
 }
 
 const useGlobalStore = create(
@@ -76,7 +83,6 @@ const useGlobalStore = create(
     (set) => ({
       leaderArmSerialIds: [],
       setLeaderArmSerialIds: (ids) => set(() => ({ leaderArmSerialIds: ids })),
-      // add one if not already presentx
       addLeaderArmSerialId: (armId) =>
         set((state) => ({
           leaderArmSerialIds: state.leaderArmSerialIds.includes(armId)
@@ -163,6 +169,12 @@ const useGlobalStore = create(
         set(() => ({
           gripperJointIndex: index,
         })),
+      zmqServerUrl: "tcp://localhost:5555",
+      setZmqServerUrl: (url: string) => set({ zmqServerUrl: url }),
+      zmqTopic: "observations",
+      setZmqTopic: (topic: string) => set({ zmqTopic: topic }),
+      urdfUseZmq: false,
+      setUrdfUseZmq: (useZmq: boolean) => set({ urdfUseZmq: useZmq }),
     }),
 
     {

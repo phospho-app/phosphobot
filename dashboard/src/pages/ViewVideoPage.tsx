@@ -37,7 +37,7 @@ export function ViewVideoPage({ labelText }: { labelText?: string }) {
 
   return (
     <>
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex justify-end gap-x-2">
         <Button
           variant="outline"
           className="ml-2"
