@@ -88,6 +88,12 @@ class URDFLoader(BaseManipulator):
         """
         Runs in a background thread, listening for and processing ZMQ messages.
         """
+        if not self.zmq_context or not self.zmq_socket:
+            logger.error(
+                "ZMQ context or socket not initialized. Exiting listener thread."
+            )
+            return
+
         poller = zmq.Poller()
         poller.register(self.zmq_socket, zmq.POLLIN)
 
