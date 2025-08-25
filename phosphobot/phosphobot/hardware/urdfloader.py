@@ -1,4 +1,4 @@
-import json
+import pickle
 import threading
 from typing import List, Literal, Optional
 
@@ -28,6 +28,12 @@ class URDFLoader(BaseManipulator):
         self.URDF_FILE_PATH = urdf_path
         self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
         self.GRIPPER_JOINT_INDEX = int(gripper_joint_index)
+
+        if zmq_server_url.strip() == "":
+            zmq_server_url = None
+        if zmq_topic.strip() == "":
+            zmq_topic = None
+
         self.zmq_server_url = zmq_server_url
         self.zmq_topic = zmq_topic
 
@@ -50,34 +56,52 @@ class URDFLoader(BaseManipulator):
 
     def _zmq_listen_loop(self) -> None:
         """
-        This method runs in a separate thread, continuously listening for ZMQ messages.
+        Runs in a background thread, listening for ZMQ messages containing a
+        full observation dictionary, and extracts the joint states.
+
+        - sent data: a pickled dictionary with 'joints' key containing joint positions.
+        - expected format: {'joints': np.ndarray of shape (num_joints,)}
         """
         poller = zmq.Poller()
         poller.register(self.zmq_socket, zmq.POLLIN)
 
         while not self.stop_event.is_set():
-            # Wait for a message with a timeout of 100ms
-            # This allows the loop to periodically check the stop_event
             socks = dict(poller.poll(100))
             if self.zmq_socket in socks:
                 try:
                     topic, msg_bytes = self.zmq_socket.recv_multipart()
-                    joint_data = json.loads(msg_bytes.decode("utf-8"))
 
-                    if isinstance(joint_data, list) and len(joint_data) == len(
-                        self.SERVO_IDS
+                    # Deserialize the pickled dictionary
+                    obs_dict = pickle.loads(msg_bytes)
+
+                    # Validate the payload and extract 'joints'
+                    if not isinstance(obs_dict, dict):
+                        logger.warning(
+                            f"ZMQ payload is not a dictionary: got {type(obs_dict)}"
+                        )
+                        continue
+
+                    if "joints" not in obs_dict:
+                        logger.warning(
+                            "'joints' key not found in ZMQ observation dictionary."
+                        )
+                        continue
+
+                    joint_data = obs_dict["joints"]
+
+                    if isinstance(joint_data, np.ndarray) and joint_data.shape == (
+                        len(self.SERVO_IDS),
                     ):
-                        # Safely update the shared data
                         with self.data_lock:
-                            self.zmq_latest_joint_positions = np.array(
-                                joint_data, dtype=np.float32
-                            )
+                            self.latest_joint_positions = joint_data.astype(np.float32)
                     else:
-                        logger.warning(f"Received malformed ZMQ data: {joint_data}")
-                except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                    logger.warning(f"Error decoding ZMQ message: {e}")
+                        logger.warning(
+                            f"Received malformed 'joints' data: {joint_data}"
+                        )
+
+                except pickle.UnpicklingError as e:
+                    logger.warning(f"Error unpickling ZMQ message: {e}")
                 except Exception as e:
-                    # Catch other potential ZMQ errors if the context is terminated
                     if not self.stop_event.is_set():
                         logger.error(f"Error in ZMQ listen loop: {e}")
 
