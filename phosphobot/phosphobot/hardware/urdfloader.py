@@ -189,8 +189,8 @@ class URDFLoader(BaseManipulator):
         # --- Kinematics and Return ---
         state = np.full(6, np.nan)
         if do_forward:
-            effector_position, effector_orientation_euler_rad = self.forward_kinematics(
-                q=joints_position
+            effector_position, effector_orientation_euler_rad = (
+                self.forward_kinematics()
             )
             state = np.concatenate((effector_position, effector_orientation_euler_rad))
 
