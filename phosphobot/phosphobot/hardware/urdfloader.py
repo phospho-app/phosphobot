@@ -77,7 +77,7 @@ class URDFLoader(BaseManipulator):
                 target=self._zmq_listen_loop, daemon=True
             )
             self.zmq_thread.start()
-            logger.info("ZMQ listener thread started successfully.")
+            logger.success("ZMQ listener thread started successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize ZMQ subscriber: {e}")
             # Ensure we don't try to use a partially initialized connection
@@ -91,9 +91,22 @@ class URDFLoader(BaseManipulator):
         poller = zmq.Poller()
         poller.register(self.zmq_socket, zmq.POLLIN)
 
+        logger.debug("ZMQ listener thread started. Waiting for messages...")
+
         while not self.stop_event.is_set():
             socks = dict(poller.poll(100))
+
+            if not socks:
+                # This block will run if the poller times out (no messages received)
+                # If you see this log continuously, it confirms the slow joiner problem
+                # or a fundamental connection issue.
+                logger.error(
+                    "Poller timed out. No ZMQ messages received in the last 100ms."
+                )
+                continue
+
             if self.zmq_socket in socks:
+                logger.debug("ZMQ message received, processing...")
                 try:
                     topic, msg_bytes = self.zmq_socket.recv_multipart()
                     obs_dict = pickle.loads(msg_bytes)
@@ -162,6 +175,13 @@ class URDFLoader(BaseManipulator):
             with self.data_lock:
                 if self.zmq_latest_joint_positions is not None:
                     joints_position = self.zmq_latest_joint_positions.copy()
+                else:
+                    logger.warning(
+                        "ZMQ latest joint positions not available, falling back to simulation state."
+                    )
+                    joints_position = self.read_joints_position(
+                        unit="rad", source="sim"
+                    )
         else:
             # Fallback to simulation state if ZMQ is not initialized
             joints_position = self.read_joints_position(unit="rad", source="sim")
