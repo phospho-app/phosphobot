@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 
-export default function DatasetRootPage({
+export default async function DatasetRootPage({
   params,
 }: {
-  params: { org: string; dataset: string };
+  params: Promise<{ org: string; dataset: string }>;
 }) {
+  const { org, dataset } = await params;
   const episodeN = process.env.EPISODES
     ?.split(/\s+/)
     .map((x) => parseInt(x.trim(), 10))
     .filter((x) => !isNaN(x))[0] ?? 0;
 
-  redirect(`/${params.org}/${params.dataset}/episode_${episodeN}`);
+  redirect(`/${org}/${dataset}/episode_${episodeN}`);
 }

@@ -33,9 +33,6 @@ export async function getEpisodeData(
     const episode_chunk = Math.floor(0 / 1000);
     const jsonUrl = `${DATASET_URL}/${repoId}/resolve/main/meta/info.json`;
 
-    // print the 3 first characters of the HF_TOKEN
-    console.log("jsonUrl", HF_TOKEN?.slice(0, 3));
-
     // Fetch with authentication
     const info = await fetch(jsonUrl, {
       headers: getAuthHeaders(),
