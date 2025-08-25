@@ -189,24 +189,25 @@ class RobotConnectionManager:
                     break  # stop trying other classes on this port
 
         # Detect CAN-based Agilex Piper robots
-        for can_name in self.available_can_ports:
-            logger.info(f"Attempting to connect to Agilex Piper on {can_name}")
-            try:
-                robot = PiperHardware.from_can_port(can_name=can_name)
-                if robot is None:
-                    logger.debug(
-                        f"Failed to create PiperHardware from {can_name}. Skipping."
+        if config.ENABLE_CAN:
+            for can_name in self.available_can_ports:
+                logger.info(f"Attempting to connect to Agilex Piper on {can_name}")
+                try:
+                    robot = PiperHardware.from_can_port(can_name=can_name)
+                    if robot is None:
+                        logger.debug(
+                            f"Failed to create PiperHardware from {can_name}. Skipping."
+                        )
+                        continue
+                    await robot.connect()
+                except Exception as e:
+                    logger.warning(
+                        f"Error connecting to Agilex Piper on {can_name}: {e}. Skipping."
                     )
                     continue
-                await robot.connect()
-            except Exception as e:
-                logger.warning(
-                    f"Error connecting to Agilex Piper on {can_name}: {e}. Skipping."
-                )
-                continue
-            if robot is not None:
-                self._all_robots.append(robot)
-                logger.success(f"Connected to Agilex Piper on {can_name}")
+                if robot is not None:
+                    self._all_robots.append(robot)
+                    logger.success(f"Connected to Agilex Piper on {can_name}")
 
         # Add manually added robots
         self._all_robots.extend(self._manually_added_robots)
