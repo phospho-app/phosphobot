@@ -4,6 +4,23 @@ This dataset viewer is a fork of the [LeRobot Dataset Visualizer](https://huggin
 
 ## Setup
 
+```bash
+npm install
+```
+
+Get a Huggingface token from https://huggingface.co/settings/tokens
+Create a `.env.local` file:
+
+```
+NEXT_PUBLIC_HUGGINGFACE_TOKEN=your_hf_token_here
+```
+
+Run dev server:
+
+```bash
+npm run dev
+```
+
 ## Security
 
 WARNING: This is for local use only. It's not meant to be deployed as it can expose your Huggingface token to the public.

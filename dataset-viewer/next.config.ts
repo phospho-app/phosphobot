@@ -13,7 +13,6 @@ const nextConfig: NextConfig = {
 
   // Expose environment variables to server components
   env: {
-    HF_TOKEN: process.env.HF_TOKEN,
     DATASET_URL: process.env.DATASET_URL,
   },
 };

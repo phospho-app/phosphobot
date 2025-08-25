@@ -7,7 +7,7 @@ import {
 } from "@/utils/parquetUtils";
 import { pick } from "@/utils/pick";
 
-const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
+const HF_TOKEN = process.env.NEXT_PUBLIC_HUGGINGFACE_TOKEN;
 
 const DATASET_URL =
   process.env.DATASET_URL || "https://huggingface.co/datasets";
