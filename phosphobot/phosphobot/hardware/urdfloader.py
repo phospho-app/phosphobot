@@ -1,3 +1,4 @@
+import json
 import pickle
 import threading
 from typing import List, Literal, Optional
@@ -28,115 +29,91 @@ class URDFLoader(BaseManipulator):
         self.URDF_FILE_PATH = urdf_path
         self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
         self.GRIPPER_JOINT_INDEX = int(gripper_joint_index)
-
-        # Sanitize inputs: treat empty strings as None
         self.zmq_server_url = (
             zmq_server_url if zmq_server_url and zmq_server_url.strip() else None
         )
         self.zmq_topic = zmq_topic if zmq_topic and zmq_topic.strip() else None
-
-        # --- ZMQ Attributes ---
         self.zmq_context: zmq.Context | None = None
         self.zmq_socket: zmq.Socket | None = None
         self.zmq_latest_joint_positions: np.ndarray | None = None
         self.zmq_thread: threading.Thread | None = None
-
-        # --- Lazy-loading and Thread-safety Mechanisms ---
         self._zmq_initialized = False
         self._zmq_init_lock = threading.Lock()
         self.data_lock = threading.Lock()
         self.stop_event = threading.Event()
-
-        if axis_orientation is not None:
-            self.AXIS_ORIENTATION = axis_orientation
-        else:
-            self.AXIS_ORIENTATION = [0, 0, 0, 1]
-
+        self.AXIS_ORIENTATION = (
+            axis_orientation if axis_orientation is not None else [0, 0, 0, 1]
+        )
         super().__init__(only_simulation=True)
 
     def _initialize_zmq(self) -> None:
-        """
-        Initializes the ZMQ context, socket, and starts the listener thread.
-        This method is designed to be called only once.
-        """
+        """Initializes the ZMQ PULL socket and starts the listener thread."""
         if not self.zmq_server_url or not self.zmq_topic:
             logger.warning("ZMQ server URL or topic not set. Skipping initialization.")
             return
 
         logger.info(
-            f"Lazily initializing ZMQ connection to {self.zmq_server_url} on topic '{self.zmq_topic}'"
+            f"Lazily initializing ZMQ PULL connection to {self.zmq_server_url} for topic '{self.zmq_topic}'"
         )
         try:
             self.zmq_context = zmq.Context()
-            self.zmq_socket = self.zmq_context.socket(zmq.SUB)
+            self.zmq_socket = self.zmq_context.socket(zmq.PULL)
             self.zmq_socket.connect(self.zmq_server_url)
-            self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, self.zmq_topic)
 
             self.stop_event.clear()
             self.zmq_thread = threading.Thread(
                 target=self._zmq_listen_loop, daemon=True
             )
             self.zmq_thread.start()
-            logger.success("ZMQ listener thread started successfully.")
+            logger.success("ZMQ PULL listener thread started successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize ZMQ subscriber: {e}")
-            # Ensure we don't try to use a partially initialized connection
+            logger.error(f"Failed to initialize ZMQ PULL socket: {e}")
             self.zmq_context = None
             self.zmq_socket = None
 
     def _zmq_listen_loop(self) -> None:
-        """
-        Runs in a background thread, listening for and processing ZMQ messages.
-        """
-        if not self.zmq_context or not self.zmq_socket:
-            logger.error(
-                "ZMQ context or socket not initialized. Exiting listener thread."
-            )
+        """Runs in a background thread, listening for and processing ZMQ messages."""
+        if not self.zmq_socket:
+            logger.error("ZMQ socket not initialized. Exiting listener thread.")
             return
 
         poller = zmq.Poller()
         poller.register(self.zmq_socket, zmq.POLLIN)
-
         logger.debug("ZMQ listener thread started. Waiting for messages...")
 
         while not self.stop_event.is_set():
             socks = dict(poller.poll(100))
-
             if not socks:
-                # This block will run if the poller times out (no messages received)
-                # If you see this log continuously, it confirms the slow joiner problem
-                # or a fundamental connection issue.
-                logger.error(
-                    "Poller timed out. No ZMQ messages received in the last 100ms."
-                )
+                # This is now an expected state if no messages for this topic are sent
                 continue
 
             if self.zmq_socket in socks:
-                logger.debug("ZMQ message received, processing...")
                 try:
-                    topic, msg_bytes = self.zmq_socket.recv_multipart()
-                    obs_dict = pickle.loads(msg_bytes)
+                    topic_bytes, msg_bytes = self.zmq_socket.recv_multipart()
+
+                    if topic_bytes.decode() != self.zmq_topic:
+                        continue  # Ignore messages not intended for this subscriber
+
+                    json_string = msg_bytes.decode("utf-8")
+                    obs_dict = json.loads(json_string)
 
                     if isinstance(obs_dict, dict) and "joints" in obs_dict:
-                        joint_data = obs_dict["joints"]
-                        if isinstance(joint_data, np.ndarray) and joint_data.shape == (
-                            len(self.SERVO_IDS),
-                        ):
+                        joint_data = np.array(obs_dict["joints"], dtype=np.float32)
+
+                        if joint_data.shape == (len(self.SERVO_IDS),):
                             with self.data_lock:
-                                self.zmq_latest_joint_positions = joint_data.astype(
-                                    np.float32
-                                )
+                                self.zmq_latest_joint_positions = joint_data
                         else:
                             logger.warning(
-                                f"Received malformed 'joints' data: {joint_data}"
+                                f"Received malformed 'joints' data shape: {joint_data.shape}"
                             )
                     else:
                         logger.warning(
                             f"ZMQ payload is not a valid observation dictionary: {obs_dict}"
                         )
 
-                except pickle.UnpicklingError as e:
-                    logger.warning(f"Error unpickling ZMQ message: {e}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Error decoding ZMQ JSON message: {e}")
                 except Exception as e:
                     if not self.stop_event.is_set():
                         logger.error(f"Error in ZMQ listen loop: {e}")
