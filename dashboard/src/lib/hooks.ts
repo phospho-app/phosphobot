@@ -74,6 +74,8 @@ interface GlobalStore {
   setZmqServerUrl: (url: string) => void;
   zmqTopic: string;
   setZmqTopic: (topic: string) => void;
+  urdfUseZmq: boolean;
+  setUrdfUseZmq: (useZmq: boolean) => void;
 }
 
 const useGlobalStore = create(
@@ -171,6 +173,8 @@ const useGlobalStore = create(
       setZmqServerUrl: (url: string) => set({ zmqServerUrl: url }),
       zmqTopic: "observations",
       setZmqTopic: (topic: string) => set({ zmqTopic: topic }),
+      urdfUseZmq: false,
+      setUrdfUseZmq: (useZmq: boolean) => set({ urdfUseZmq: useZmq }),
     }),
 
     {

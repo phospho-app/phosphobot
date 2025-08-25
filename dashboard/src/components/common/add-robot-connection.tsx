@@ -3,6 +3,7 @@
 import placeholderSvg from "@/assets/placeholder.svg";
 import { AutoComplete } from "@/components/common/autocomplete";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -28,18 +29,15 @@ import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 
 type FieldValue = string | number | { value: string; label: string };
-
 interface FormValues {
   [key: string]: FieldValue;
 }
-
 interface FormField {
   name: string;
   label: string;
   type: "ip" | "number" | "device_name" | "urdf_path" | "text";
   default?: string | number;
 }
-
 interface RobotType {
   id: string;
   name: string;
@@ -118,7 +116,7 @@ const ROBOT_TYPES: RobotType[] = [
         name: "zmq_topic",
         label: "ZMQ Topic",
         type: "text",
-        default: "urdf_commands",
+        default: "excavator_state",
       },
     ],
   },
@@ -132,11 +130,9 @@ interface NetworkDevice {
   ip: string;
   mac: string;
 }
-
 interface NetworkReponse {
   devices: NetworkDevice[];
 }
-
 interface LocalDevice {
   name: string;
   device: string;
@@ -144,7 +140,6 @@ interface LocalDevice {
   pid?: number;
   interface?: string;
 }
-
 interface LocalResponse {
   devices: LocalDevice[];
 }
@@ -171,6 +166,8 @@ export function RobotConfigModal({
     setZmqServerUrl,
     zmqTopic,
     setZmqTopic,
+    urdfUseZmq,
+    setUrdfUseZmq,
   } = useGlobalStore();
 
   const selectedRobot = ROBOT_TYPES.find(
@@ -193,7 +190,6 @@ export function RobotConfigModal({
 
     if (robot) {
       const defaultValues = robot.fields.reduce((acc, field) => {
-        // Pre-populate from global store if available
         if (field.name === "urdf_path") acc[field.name] = urdfPath;
         else if (field.name === "end_effector_link_index")
           acc[field.name] = endEffectorLinkIndex;
@@ -202,7 +198,6 @@ export function RobotConfigModal({
         else if (field.name === "zmq_server_url")
           acc[field.name] = zmqServerUrl;
         else if (field.name === "zmq_topic") acc[field.name] = zmqTopic;
-        // Fallback to field default
         else if (field.default !== undefined) {
           acc[field.name] = field.default;
         }
@@ -220,7 +215,6 @@ export function RobotConfigModal({
       [fieldName]: value,
     }));
 
-    // Persist to global store for specific fields
     const valueToStore = typeof value === "object" ? value.value : value;
     switch (fieldName) {
       case "end_effector_link_index":
@@ -241,7 +235,15 @@ export function RobotConfigModal({
   const handleSubmit = async () => {
     if (!selectedRobot) return;
 
-    const missingFields = selectedRobot.fields.filter(
+    // Adjust required fields based on the ZMQ checkbox state
+    let requiredFields = selectedRobot.fields;
+    if (selectedRobot.id === "urdf_loader" && !urdfUseZmq) {
+      requiredFields = selectedRobot.fields.filter(
+        (f) => !f.name.startsWith("zmq"),
+      );
+    }
+
+    const missingFields = requiredFields.filter(
       (field) =>
         formValues[field.name] === undefined && field.default === undefined,
     );
@@ -254,7 +256,7 @@ export function RobotConfigModal({
     }
     setIsSubmitting(true);
 
-    const connectionDetails = selectedRobot.fields.reduce(
+    const connectionDetails = requiredFields.reduce(
       (acc, field) => {
         const formValue = formValues[field.name];
         const fieldValue = formValue !== undefined ? formValue : field.default;
@@ -267,8 +269,14 @@ export function RobotConfigModal({
         }
         return acc;
       },
-      {} as Record<string, string | number>,
+      {} as Record<string, string | number | null>, // Allow null
     );
+
+    // If URDF loader and ZMQ is disabled, explicitly set fields to null
+    if (selectedRobot.id === "urdf_loader" && !urdfUseZmq) {
+      connectionDetails.zmq_server_url = null;
+      connectionDetails.zmq_topic = null;
+    }
 
     console.log("Connection details:", connectionDetails);
 
@@ -305,6 +313,94 @@ export function RobotConfigModal({
     }
   };
 
+  // Separate fields for conditional rendering
+  const isUrdfLoader = selectedRobot?.id === "urdf_loader";
+  const regularFields = isUrdfLoader
+    ? selectedRobot.fields.filter((f) => !f.name.startsWith("zmq"))
+    : selectedRobot?.fields || [];
+  const zmqFields = isUrdfLoader
+    ? selectedRobot.fields.filter((f) => f.name.startsWith("zmq"))
+    : [];
+
+  const renderField = (field: FormField) => (
+    <div key={field.name} className="space-y-2">
+      <Label htmlFor={field.name}>{field.label}</Label>
+      {field.type === "ip" && (
+        <AutoComplete
+          options={
+            networkDevices?.devices.map((device) => ({
+              value: device.ip,
+              label: `${device.ip} (${device.mac})`,
+            })) || []
+          }
+          value={
+            formValues[field.name] as
+              | { value: string; label: string }
+              | undefined
+          }
+          onValueChange={(value) => handleFieldChange(field.name, value)}
+          isLoading={isLoadingDevices}
+          placeholder="Select or enter IP address"
+          emptyMessage="No IP addresses found"
+          allowCustomValue={true}
+        />
+      )}
+      {field.type === "device_name" && (
+        <AutoComplete
+          options={
+            usbPorts?.devices.map((device) => {
+              let label = `${device.device}`;
+              if (device.serial_number) label += ` (${device.serial_number}`;
+              if (device.pid) label += ` | ${device.pid}`;
+              if (label.includes("(")) label += ")";
+              return { value: device.device, label: label };
+            }) || []
+          }
+          value={
+            formValues[field.name] as
+              | { value: string; label: string }
+              | undefined
+          }
+          onValueChange={(value) => handleFieldChange(field.name, value)}
+          isLoading={isLoadingUsb}
+          placeholder="Select USB port"
+          emptyMessage="No USB ports detected"
+          allowCustomValue={true}
+        />
+      )}
+      {field.type === "urdf_path" && (
+        <AutoComplete
+          options={urdfPathHistory.map((path) => ({
+            value: path,
+            label: path,
+          }))}
+          value={urdfPath ? { value: urdfPath, label: urdfPath } : undefined}
+          onValueChange={(option) => {
+            const path = option.value;
+            setUrdfPath(path);
+            handleFieldChange(field.name, path);
+          }}
+          placeholder="Enter or select URDF path"
+          emptyMessage="No recent URDF paths"
+          allowCustomValue={true}
+        />
+      )}
+      {(field.type === "number" || field.type === "text") && (
+        <Input
+          id={field.name}
+          type={field.type}
+          placeholder={
+            field.default !== undefined
+              ? `Default: ${field.default}`
+              : `Enter ${field.label}`
+          }
+          value={String(formValues[field.name] ?? "")}
+          onChange={(e) => handleFieldChange(field.name, e.target.value)}
+        />
+      )}
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
@@ -331,7 +427,9 @@ export function RobotConfigModal({
         </DialogHeader>
 
         <div className="grid gap-6 py-2">
-          <div className="grid grid-cols-[2fr_1fr] gap-4 items-start">
+          {/* Robot Type Selector */}
+          <div className="grid grid-cols-[2fr_1fr] items-start gap-4">
+            {/* ... (unchanged) ... */}
             <div className="space-y-2">
               <Label htmlFor="robot-type">Robot Type</Label>
               <Select
@@ -350,7 +448,6 @@ export function RobotConfigModal({
                 </SelectContent>
               </Select>
             </div>
-
             {selectedRobot && (
               <div className="flex flex-col items-center justify-center">
                 <div className="relative h-[120px] w-[120px] rounded-md border overflow-hidden">
@@ -369,101 +466,31 @@ export function RobotConfigModal({
             )}
           </div>
 
+          {/* Dynamic Form Fields */}
           {selectedRobot && (
             <div className="space-y-4">
-              {selectedRobot.fields.map((field) => (
-                <div key={field.name} className="space-y-2">
-                  <Label htmlFor={field.name}>{field.label}</Label>
+              {/* Render regular fields */}
+              {regularFields.map(renderField)}
 
-                  {field.type === "ip" && (
-                    <AutoComplete
-                      options={
-                        networkDevices?.devices.map((device) => ({
-                          value: device.ip,
-                          label: `${device.ip} (${device.mac})`,
-                        })) || []
-                      }
-                      value={
-                        formValues[field.name] as
-                          | { value: string; label: string }
-                          | undefined
-                      }
-                      onValueChange={(value) =>
-                        handleFieldChange(field.name, value)
-                      }
-                      isLoading={isLoadingDevices}
-                      placeholder="Select or enter IP address"
-                      emptyMessage="No IP addresses found"
-                      allowCustomValue={true}
+              {/* Conditionally render ZMQ fields for URDF Loader */}
+              {isUrdfLoader && (
+                <div className="space-y-4 rounded-md border bg-muted/50 p-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="use-zmq"
+                      checked={urdfUseZmq}
+                      onCheckedChange={(checked) => setUrdfUseZmq(!!checked)}
                     />
-                  )}
-
-                  {field.type === "device_name" && (
-                    <AutoComplete
-                      options={
-                        usbPorts?.devices.map((device) => {
-                          let label = `${device.device}`;
-                          if (device.serial_number)
-                            label += ` (${device.serial_number}`;
-                          if (device.pid) label += ` | ${device.pid}`;
-                          if (label.includes("(")) label += ")";
-                          return { value: device.device, label: label };
-                        }) || []
-                      }
-                      value={
-                        formValues[field.name] as
-                          | { value: string; label: string }
-                          | undefined
-                      }
-                      onValueChange={(value) =>
-                        handleFieldChange(field.name, value)
-                      }
-                      isLoading={isLoadingUsb}
-                      placeholder="Select USB port"
-                      emptyMessage="No USB ports detected"
-                      allowCustomValue={true}
-                    />
-                  )}
-
-                  {field.type === "urdf_path" && (
-                    <AutoComplete
-                      options={urdfPathHistory.map((path) => ({
-                        value: path,
-                        label: path,
-                      }))}
-                      value={
-                        urdfPath
-                          ? { value: urdfPath, label: urdfPath }
-                          : undefined
-                      }
-                      onValueChange={(option) => {
-                        const path = option.value;
-                        setUrdfPath(path);
-                        handleFieldChange(field.name, path);
-                      }}
-                      placeholder="Enter or select URDF path"
-                      emptyMessage="No recent URDF paths"
-                      allowCustomValue={true}
-                    />
-                  )}
-
-                  {(field.type === "number" || field.type === "text") && (
-                    <Input
-                      id={field.name}
-                      type={field.type}
-                      placeholder={
-                        field.default !== undefined
-                          ? `Default: ${field.default}`
-                          : `Enter ${field.label}`
-                      }
-                      value={String(formValues[field.name] ?? "")}
-                      onChange={(e) =>
-                        handleFieldChange(field.name, e.target.value)
-                      }
-                    />
-                  )}
+                    <Label
+                      htmlFor="use-zmq"
+                      className="font-semibold leading-none"
+                    >
+                      Use ZMQ Subscriber
+                    </Label>
+                  </div>
+                  {urdfUseZmq && zmqFields.map(renderField)}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

@@ -29,23 +29,23 @@ class URDFLoader(BaseManipulator):
         self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
         self.GRIPPER_JOINT_INDEX = int(gripper_joint_index)
 
-        if zmq_server_url.strip() == "":
-            zmq_server_url = None
-        if zmq_topic.strip() == "":
-            zmq_topic = None
+        # Sanitize inputs: treat empty strings as None
+        self.zmq_server_url = (
+            zmq_server_url if zmq_server_url and zmq_server_url.strip() else None
+        )
+        self.zmq_topic = zmq_topic if zmq_topic and zmq_topic.strip() else None
 
-        self.zmq_server_url = zmq_server_url
-        self.zmq_topic = zmq_topic
-
-        # --- Threading and ZMQ Attributes ---
+        # --- ZMQ Attributes ---
         self.zmq_context: zmq.Context | None = None
         self.zmq_socket: zmq.Socket | None = None
         self.zmq_latest_joint_positions: np.ndarray | None = None
-
-        # Thread-safe mechanisms
-        self.data_lock = threading.Lock()  # To safely write/read joint positions
-        self.stop_event = threading.Event()  # To signal the thread to stop
         self.zmq_thread: threading.Thread | None = None
+
+        # --- Lazy-loading and Thread-safety Mechanisms ---
+        self._zmq_initialized = False
+        self._zmq_init_lock = threading.Lock()
+        self.data_lock = threading.Lock()
+        self.stop_event = threading.Event()
 
         if axis_orientation is not None:
             self.AXIS_ORIENTATION = axis_orientation
@@ -54,13 +54,39 @@ class URDFLoader(BaseManipulator):
 
         super().__init__(only_simulation=True)
 
+    def _initialize_zmq(self) -> None:
+        """
+        Initializes the ZMQ context, socket, and starts the listener thread.
+        This method is designed to be called only once.
+        """
+        if not self.zmq_server_url or not self.zmq_topic:
+            logger.warning("ZMQ server URL or topic not set. Skipping initialization.")
+            return
+
+        logger.info(
+            f"Lazily initializing ZMQ connection to {self.zmq_server_url} on topic '{self.zmq_topic}'"
+        )
+        try:
+            self.zmq_context = zmq.Context()
+            self.zmq_socket = self.zmq_context.socket(zmq.SUB)
+            self.zmq_socket.connect(self.zmq_server_url)
+            self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, self.zmq_topic)
+
+            self.stop_event.clear()
+            self.zmq_thread = threading.Thread(
+                target=self._zmq_listen_loop, daemon=True
+            )
+            self.zmq_thread.start()
+            logger.info("ZMQ listener thread started successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize ZMQ subscriber: {e}")
+            # Ensure we don't try to use a partially initialized connection
+            self.zmq_context = None
+            self.zmq_socket = None
+
     def _zmq_listen_loop(self) -> None:
         """
-        Runs in a background thread, listening for ZMQ messages containing a
-        full observation dictionary, and extracts the joint states.
-
-        - sent data: a pickled dictionary with 'joints' key containing joint positions.
-        - expected format: {'joints': np.ndarray of shape (num_joints,)}
+        Runs in a background thread, listening for and processing ZMQ messages.
         """
         poller = zmq.Poller()
         poller.register(self.zmq_socket, zmq.POLLIN)
@@ -70,33 +96,24 @@ class URDFLoader(BaseManipulator):
             if self.zmq_socket in socks:
                 try:
                     topic, msg_bytes = self.zmq_socket.recv_multipart()
-
-                    # Deserialize the pickled dictionary
                     obs_dict = pickle.loads(msg_bytes)
 
-                    # Validate the payload and extract 'joints'
-                    if not isinstance(obs_dict, dict):
-                        logger.warning(
-                            f"ZMQ payload is not a dictionary: got {type(obs_dict)}"
-                        )
-                        continue
-
-                    if "joints" not in obs_dict:
-                        logger.warning(
-                            "'joints' key not found in ZMQ observation dictionary."
-                        )
-                        continue
-
-                    joint_data = obs_dict["joints"]
-
-                    if isinstance(joint_data, np.ndarray) and joint_data.shape == (
-                        len(self.SERVO_IDS),
-                    ):
-                        with self.data_lock:
-                            self.latest_joint_positions = joint_data.astype(np.float32)
+                    if isinstance(obs_dict, dict) and "joints" in obs_dict:
+                        joint_data = obs_dict["joints"]
+                        if isinstance(joint_data, np.ndarray) and joint_data.shape == (
+                            len(self.SERVO_IDS),
+                        ):
+                            with self.data_lock:
+                                self.zmq_latest_joint_positions = joint_data.astype(
+                                    np.float32
+                                )
+                        else:
+                            logger.warning(
+                                f"Received malformed 'joints' data: {joint_data}"
+                            )
                     else:
                         logger.warning(
-                            f"Received malformed 'joints' data: {joint_data}"
+                            f"ZMQ payload is not a valid observation dictionary: {obs_dict}"
                         )
 
                 except pickle.UnpicklingError as e:
@@ -107,72 +124,49 @@ class URDFLoader(BaseManipulator):
 
     async def connect(self) -> None:
         """
-        Connect to the robot and initialize the ZMQ subscriber in a background thread.
+        Marks the robot as connected. ZMQ initialization is deferred to get_observation.
         """
-        if not self.zmq_server_url or not self.zmq_topic:
-            self.is_connected = True
-            return
-
-        logger.info(
-            f"Connecting to ZMQ server at {self.zmq_server_url} with topic '{self.zmq_topic}'"
-        )
-        try:
-            self.zmq_context = zmq.Context()
-            self.zmq_socket = self.zmq_context.socket(zmq.SUB)
-            self.zmq_socket.connect(self.zmq_server_url)
-            self.zmq_socket.setsockopt_string(zmq.SUBSCRIBE, self.zmq_topic)
-
-            # Start the background listening thread
-            self.stop_event.clear()
-            self.zmq_thread = threading.Thread(
-                target=self._zmq_listen_loop, daemon=True
-            )
-            self.zmq_thread.start()
-
-            self.is_connected = True
-            logger.info(
-                "Successfully connected to ZMQ server and started listener thread."
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize ZMQ subscriber: {e}")
-            self.is_connected = False
+        self.is_connected = True
 
     def disconnect(self) -> None:
         """
-        Disconnect the robot and gracefully shut down the ZMQ thread.
+        Gracefully shuts down the ZMQ thread and cleans up resources if they were initialized.
         """
-        # Signal the thread to stop
-        self.stop_event.set()
-
-        # Wait for the thread to finish
-        if self.zmq_thread and self.zmq_thread.is_alive():
-            self.zmq_thread.join(timeout=1.0)
-
-        # Clean up ZMQ resources
-        if self.zmq_socket:
-            self.zmq_socket.close()
-        if self.zmq_context:
-            self.zmq_context.term()
-
+        if self._zmq_initialized:
+            self.stop_event.set()
+            if self.zmq_thread and self.zmq_thread.is_alive():
+                self.zmq_thread.join(timeout=1.0)
+            if self.zmq_socket:
+                self.zmq_socket.close()
+            if self.zmq_context:
+                self.zmq_context.term()
+            logger.info("ZMQ listener stopped and resources released.")
         self.is_connected = False
-        logger.info("ZMQ listener thread stopped and resources released.")
 
     def get_observation(
         self, do_forward: bool = False
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Get the observation of the robot by reading the latest data from the ZMQ thread.
+        Gets the robot's observation. If ZMQ is configured, it will initialize the
+        connection on the first call and then read the latest data from the listener thread.
         """
-        if not self.zmq_server_url or not self.zmq_topic:
-            # If no ZMQ connection is set, fallback to the base class method
-            return super().get_observation(do_forward=do_forward)
+        if self.zmq_server_url and self.zmq_topic:
+            # Lazy initialization of ZMQ (if possible)
+            with self._zmq_init_lock:
+                if not self._zmq_initialized:
+                    self._initialize_zmq()
+                    self._zmq_initialized = True
 
-        # If a ZMQ connection is active, try to use its latest data
-        with self.data_lock:
-            if self.zmq_latest_joint_positions is not None:
-                # Use a copy to ensure thread safety
-                joints_position = self.zmq_latest_joint_positions.copy()
+        # If ZMQ has provided data, overwrite the simulation state
+        if self._zmq_initialized:
+            with self.data_lock:
+                if self.zmq_latest_joint_positions is not None:
+                    joints_position = self.zmq_latest_joint_positions.copy()
+        else:
+            # Fallback to simulation state if ZMQ is not initialized
+            joints_position = self.read_joints_position(unit="rad", source="sim")
 
+        # --- Kinematics and Return ---
         state = np.full(6, np.nan)
         if do_forward:
             effector_position, effector_orientation_euler_rad = self.forward_kinematics(
