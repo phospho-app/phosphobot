@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import base64
+import binascii
 import json
 import platform
 import subprocess
@@ -1017,19 +1018,17 @@ class ZMQCamera(VideoCamera):
 
                     received_topic = message_parts[0].decode()
 
-                    # --- NEW: Manual Topic Filtering ---
                     # Process if this message is for us, or if we accept all topics
                     if self.topic is None or received_topic == self.topic:
                         json_bytes = message_parts[1]
                         data = json.loads(json_bytes.decode("utf-8"))
                         self._process_frame_data(data)
-                    # ------------------------------------
 
                 except zmq.Again:
                     continue
                 except (
                     json.JSONDecodeError,
-                    base64.binascii.Error,
+                    binascii.Error,
                     KeyError,
                     IndexError,
                     TypeError,
