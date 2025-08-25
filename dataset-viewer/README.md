@@ -8,7 +8,8 @@ This dataset viewer is a fork of the [LeRobot Dataset Visualizer](https://huggin
 npm install
 ```
 
-Get a Huggingface token from https://huggingface.co/settings/tokens
+Get a Huggingface token from [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+
 Create a `.env.local` file:
 
 ```
