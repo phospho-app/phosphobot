@@ -1263,7 +1263,7 @@ async def add_robot_connection(
             robot_name=query.robot_name,
             connection_details=query.connection_details,
         )
-        return StatusResponse(
+        return RobotConnectionResponse(
             status="ok",
             message=f"Robot connection to {query.robot_name} added",
             robot_id=robot_id,
