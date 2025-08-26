@@ -149,6 +149,13 @@ async def leader_follower_loop(
                 if invert_controls:
                     pos_rad[0] = -pos_rad[0]
 
+                # Get the leader gripper position and set it to the follower
+                follower.control_gripper(
+                    open_command=leader._rad_to_open_command(
+                        pos_rad[leader.GRIPPER_JOINT_INDEX]
+                    )
+                )
+
                 if len(pos_rad) > len(follower.SERVO_IDS):
                     if not warning_dropping_joints_displayed:
                         logger.warning(
@@ -162,12 +169,6 @@ async def leader_follower_loop(
 
                 follower.set_motors_positions(
                     q_target_rad=pos_rad, enable_gripper=False
-                )
-                # Get the leader gripper position and set it to the follower
-                follower.control_gripper(
-                    open_command=leader._rad_to_open_command(
-                        pos_rad[min(leader.GRIPPER_JOINT_INDEX, len(pos_rad) - 1)]
-                    )
                 )
 
             else:
@@ -211,6 +212,14 @@ async def leader_follower_loop(
                 if invert_controls:
                     theta_des_rad[0] = -theta_des_rad[0]
 
+                # Get the leader gripper position and set it to the follower
+                # Before truncating
+                follower.control_gripper(
+                    open_command=leader._rad_to_open_command(
+                        theta_des_rad[leader.GRIPPER_JOINT_INDEX]
+                    )
+                )
+
                 if len(pos_rad) > len(follower.SERVO_IDS):
                     if not warning_dropping_joints_displayed:
                         logger.warning(
@@ -224,14 +233,6 @@ async def leader_follower_loop(
 
                 follower.set_motors_positions(
                     q_target_rad=theta_des_rad, enable_gripper=False
-                )
-                # Get the leader gripper position and set it to the follower
-                follower.control_gripper(
-                    open_command=leader._rad_to_open_command(
-                        theta_des_rad[
-                            min(leader.GRIPPER_JOINT_INDEX, len(theta_des_rad) - 1)
-                        ]
-                    )
                 )
 
         # Maintain loop frequency
