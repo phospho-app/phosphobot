@@ -11,6 +11,7 @@ from loguru import logger
 
 from phosphobot.camera import AllCameras, get_all_cameras
 from phosphobot.configs import config
+from phosphobot.hardware.base import BaseManipulator
 from phosphobot.models import (
     BaseDataset,
     BaseEpisode,
@@ -22,6 +23,7 @@ from phosphobot.models import (
 )
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
+from phosphobot.models.robot import BaseRobot
 from phosphobot.posthog import is_github_actions
 from phosphobot.recorder import Recorder, get_recorder
 from phosphobot.robot import RobotConnectionManager, get_rcm
@@ -121,21 +123,28 @@ async def start_recording_episode(
                 format=format,
             )
             number_of_cameras_in_dataset = len(info_model.features.observation_images)
-
-            # If we are in the github action, we add 2 simulated cameras
+            # If we are in the github action, we add 2 simulated cameras for CICD (testing)
             if is_github_actions() and number_of_connected_cameras == 0:
                 number_of_connected_cameras += 2
-
-            # Our robots are 6 DOF, so we divide the number of actions by 6
-            number_of_robots_in_dataset = info_model.features.action.shape[0] // 6
-
             if number_of_connected_cameras != number_of_cameras_in_dataset:
                 raise KeyError(
                     f"Dataset {dataset_name} has {number_of_cameras_in_dataset} cameras but you have {number_of_connected_cameras} connected. Create a new dataset by changing the dataset name in Admin Settings."
                 )
-            if number_of_connected_robots != number_of_robots_in_dataset:
+
+            # Get action dimensions from existing dataset
+            dataset_action_dim = info_model.features.action.shape[0]
+            # Calculate expected action dimensions from connected robots
+            expected_action_dim = 0
+            for robot in robots_to_record:
+                assert isinstance(
+                    robot, BaseManipulator
+                ), "Robot must be an instance of BaseManipulator."
+                base_robot_info = robot.get_info_for_dataset()
+                expected_action_dim += base_robot_info.action.shape[0]
+
+            if expected_action_dim != dataset_action_dim:
                 raise KeyError(
-                    f"Dataset {dataset_name} has {number_of_robots_in_dataset} robots but you have {number_of_connected_robots} connected. Create a new dataset by changing the dataset name in Admin Settings."
+                    f"Dataset {dataset_name} has action dimension {dataset_action_dim} but connected robots have total action dimension {expected_action_dim}. Create a new dataset by changing the dataset name in Admin Settings."
                 )
         except ValueError:
             # This means the dataset does not exist yet

@@ -278,9 +278,9 @@ class BaseRobotConfig(BaseModel):
             The path to the saved file
         """
         filename = f"{self.name}_{serial_id}_config.json"
-        assert "/" not in filename, (
-            "Filename cannot contain '/'. Did you pass a device_name instead of SERIAL_ID?"
-        )
+        assert (
+            "/" not in filename
+        ), "Filename cannot contain '/'. Did you pass a device_name instead of SERIAL_ID?"
         filepath = str(get_home_app_path() / "calibration" / filename)
         logger.info(f"Saving configuration to {filepath}")
         self.to_json(filepath)
