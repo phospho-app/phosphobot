@@ -131,10 +131,22 @@ export function KeyboardControl() {
     }
   };
 
-  // Effect for handling keyboard inputs
+  // Effect for handling keyboard inputs and preventing page scroll
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) return;
+      // 1. Prevent page scrolling from control keys when active
+      if (
+        isMoving &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(
+          event.key,
+        )
+      ) {
+        event.preventDefault();
+      }
+
+      // 2. Gate all robot control inputs on the isMoving state
+      if (!isMoving || event.repeat) return;
+
       const key = event.key;
       const keyLower = key.toLowerCase();
 
@@ -157,6 +169,7 @@ export function KeyboardControl() {
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
+      // Always clear keys on keyup to prevent "stuck" keys
       setActiveKey(null);
       const key = event.key;
       const keyLower = key.toLowerCase();
@@ -170,32 +183,7 @@ export function KeyboardControl() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedRobotName, serverStatus]);
-
-  // Effect to prevent scrolling with arrow keys and spacebar when moving
-  useEffect(() => {
-    const preventScrolling = (event: KeyboardEvent) => {
-      if (
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(
-          event.key,
-        )
-      ) {
-        event.preventDefault();
-      }
-    };
-
-    if (isMoving) {
-      window.addEventListener("keydown", preventScrolling);
-      // Ensure the page doesn't scroll when starting
-      document.body.style.overflow = "hidden";
-    }
-
-    return () => {
-      window.removeEventListener("keydown", preventScrolling);
-      // Restore scrolling when stopping
-      document.body.style.overflow = "auto";
-    };
-  }, [isMoving]);
+  }, [isMoving, selectedRobotName, serverStatus]);
 
   // Effect for setting the default selected robot
   useEffect(() => {
@@ -209,7 +197,7 @@ export function KeyboardControl() {
     }
   }, [serverStatus, selectedRobotName]);
 
-  // The main, always-on control loop
+  // The main control loop
   useEffect(() => {
     const controlRobot = () => {
       const currentTime = Date.now();
@@ -219,10 +207,16 @@ export function KeyboardControl() {
         return; // Throttle command sending
       }
 
+      // **FIX**: Only run control logic if isMoving is true.
+      if (!isMoving) {
+        lastExecutionTimeRef.current = currentTime; // Update time to prevent a large jump on start
+        return;
+      }
+
       const lastOpenState = openStateRef.current;
       let openStateChanged = false;
 
-      // --- 1. Gripper State Calculation (Always Active) ---
+      // --- 1. Gripper State Calculation ---
       const gripperChangePerMs = (1.0 / FULL_TRANSITION_MS) * selectedSpeed;
       const gripperChangeAmount = gripperChangePerMs * deltaT_ms;
 
@@ -246,28 +240,26 @@ export function KeyboardControl() {
         deltaRY = 0;
       let hasMovement = false;
 
-      if (isMoving) {
-        keysPressedRef.current.forEach((key) => {
-          const move = KEY_MAPPINGS[key.toLowerCase()] || KEY_MAPPINGS[key];
-          if (move && key !== " ") {
-            deltaX += move.x;
-            deltaY += move.y;
-            deltaZ += move.z;
-            deltaRZ += move.rz;
-            deltaRX += move.rx;
-            deltaRY += move.ry;
-          }
-        });
-
-        if (deltaX || deltaY || deltaZ || deltaRZ || deltaRX || deltaRY) {
-          hasMovement = true;
-          deltaX *= selectedSpeed;
-          deltaY *= selectedSpeed;
-          deltaZ *= selectedSpeed;
-          deltaRX *= selectedSpeed;
-          deltaRY *= selectedSpeed;
-          deltaRZ *= selectedSpeed;
+      keysPressedRef.current.forEach((key) => {
+        const move = KEY_MAPPINGS[key.toLowerCase()] || KEY_MAPPINGS[key];
+        if (move && key !== " ") {
+          deltaX += move.x;
+          deltaY += move.y;
+          deltaZ += move.z;
+          deltaRZ += move.rz;
+          deltaRX += move.rx;
+          deltaRY += move.ry;
         }
+      });
+
+      if (deltaX || deltaY || deltaZ || deltaRZ || deltaRX || deltaRY) {
+        hasMovement = true;
+        deltaX *= selectedSpeed;
+        deltaY *= selectedSpeed;
+        deltaZ *= selectedSpeed;
+        deltaRX *= selectedSpeed;
+        deltaRY *= selectedSpeed;
+        deltaRZ *= selectedSpeed;
       }
 
       // --- 3. Send Command if Needed ---
@@ -303,6 +295,8 @@ export function KeyboardControl() {
     e?: React.MouseEvent | React.TouchEvent,
   ) => {
     e?.preventDefault();
+    if (!isMoving) return;
+
     setActiveKey(key);
     const keyLower = key.toLowerCase();
     const effectiveKey = KEY_MAPPINGS[key] ? key : keyLower;
@@ -351,6 +345,9 @@ export function KeyboardControl() {
 
   const stopMoving = async () => {
     setIsMoving(false);
+    // **FIX**: Clear any held keys to prevent them from being "stuck"
+    keysPressedRef.current.clear();
+    setActiveKey(null);
   };
 
   const controls = [
@@ -419,7 +416,7 @@ export function KeyboardControl() {
     <div className="container mx-auto px-4 py-6 lg:flex lg:flex-row lg:gap-8 space-y-8 lg:space-y-0">
       <div className="md:w-1/2 space-y-6">
         <Card>
-          <CardContent className="flex flex-col items-center gap-4">
+          <CardContent className="pt-6 flex flex-col items-center gap-4">
             <div className="flex flex-wrap items-end justify-center gap-2">
               <div className="flex flex-col gap-y-2">
                 <Label>Select Robot to Control</Label>
@@ -464,7 +461,7 @@ export function KeyboardControl() {
                 disabled={!selectedRobotName || isMoving}
               >
                 <Play className="mr-2 h-4 w-4" />
-                {isMoving ? "Moving..." : "Start Keyboard Control"}
+                {isMoving ? "Controlling..." : "Start Keyboard Control"}
               </Button>
               <Button
                 variant="destructive"
