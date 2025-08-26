@@ -32,7 +32,6 @@ from phosphobot.utils import background_task_log_exceptions, get_home_app_path
 router = APIRouter(tags=["recording"])
 
 
-# The record_data function is passed as a BackgroundTasks
 @router.post("/recording/start", response_model=StatusResponse)
 async def start_recording_episode(
     query: RecordingStartRequest,
@@ -154,10 +153,7 @@ async def start_recording_episode(
             logger.warning(
                 "Number of cameras or robots is not consistent with the existing dataset. Create a new dataset by changing the dataset name in Admin Settings."
             )
-            raise HTTPException(
-                status_code=400,
-                detail=str(e),
-            )
+            raise HTTPException(status_code=400, detail=str(e))
 
     # Check if the recorder is not currently saving
     if recorder.is_saving:
