@@ -13,6 +13,7 @@ from phosphobot.models.robot import BaseRobotConfig, BaseRobotPIDGains
 
 class URDFLoader(BaseManipulator):
     name = "urdf_loader"
+    device_name = "urdf_loader"
 
     RESOLUTION = 4096  # unused for now
 
@@ -258,3 +259,7 @@ class URDFLoader(BaseManipulator):
 
     def calibrate_motors(self, **kwargs) -> None:
         pass
+
+    def update_object_gripping_status(self):
+        # The object is never gripped
+        self.is_object_gripped = False
