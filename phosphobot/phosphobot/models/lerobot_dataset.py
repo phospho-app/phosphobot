@@ -76,11 +76,11 @@ class LeRobotDataset(BaseDataset):
 
     def load_meta_models(
         self,
-        robots: List[BaseRobot] | None = None,
-        codec: VideoCodecs | None = None,
-        target_size: tuple[int, int] | None = None,
+        robots: Optional[List[BaseRobot]] = None,
+        codec: Optional[VideoCodecs] = None,
+        target_size: Optional[Tuple[int, int]] = None,
         fps: Optional[int] = None,
-        all_camera_key_names: List[str] | None = None,
+        all_camera_key_names: Optional[List[str]] = None,
         force: bool = False,
     ):
         """Loads existing meta files or initializes new ones if they don't exist."""
@@ -1981,7 +1981,7 @@ class EpisodesModel(BaseModel):
     """
 
     episodes: List[EpisodesFeatures] = Field(default_factory=list)
-    _episodes_features: Dict[int, EpisodesFeatures] | None = None
+    _episodes_features: Optional[Dict[int, EpisodesFeatures]] = None
     _original_nb_total_episodes: int = 0
 
     def update(self, step: Step, episode_index: int) -> None:
@@ -2312,14 +2312,14 @@ class Stats(BaseModel):
     Statistics for a given feature.
     """
 
-    max: NdArrayAsList | None = None
-    min: NdArrayAsList | None = None
-    mean: NdArrayAsList | None = None
-    std: NdArrayAsList | None = None
+    max: Optional[NdArrayAsList] = None
+    min: Optional[NdArrayAsList] = None
+    mean: Optional[NdArrayAsList] = None
+    std: Optional[NdArrayAsList] = None
 
     # These values are used for rolling computation of mean and std
-    sum: NdArrayAsList | None = None
-    square_sum: NdArrayAsList | None = None
+    sum: Optional[NdArrayAsList] = None
+    square_sum: Optional[NdArrayAsList] = None
     count: int = 0
 
     @field_validator("count", mode="before")
@@ -2339,7 +2339,7 @@ class Stats(BaseModel):
         arbitrary_types_allowed = True
         extra = "allow"
 
-    def update(self, value: np.ndarray | None) -> None:
+    def update(self, value: Optional[np.ndarray]) -> None:
         """
         Every recording step, update the stats with the new value.
         Note: These are not the final values for mean and std.
@@ -3220,7 +3220,7 @@ class EpisodesStatsModel(BaseModel):
 class FeatureDetails(BaseModel):
     dtype: Literal["video", "int64", "float32", "str", "bool"]
     shape: List[int]
-    names: List[str] | None
+    names: Optional[List[str]]
 
 
 class VideoInfo(BaseModel):
@@ -3291,22 +3291,22 @@ class InfoFeatures(BaseModel):
     )
 
     # Optional fields (RL)
-    next_done: FeatureDetails | None = Field(
+    next_done: Optional[FeatureDetails] = Field(
         default=None,
         serialization_alias="next.done",
         validation_alias=AliasChoices("next.done", "next_done"),
     )
-    next_success: FeatureDetails | None = Field(
+    next_success: Optional[FeatureDetails] = Field(
         default=None,
         serialization_alias="next.success",
         validation_alias=AliasChoices("next.success", "next_success"),
     )
-    next_reward: FeatureDetails | None = Field(
+    next_reward: Optional[FeatureDetails] = Field(
         default=None,
         serialization_alias="next.reward",
         validation_alias=AliasChoices("next.reward", "next_reward"),
     )
-    observation_environment_state: FeatureDetails | None = Field(
+    observation_environment_state: Optional[FeatureDetails] = Field(
         default=None,
         serialization_alias="observation.environment_state",
         validation_alias=AliasChoices(
@@ -3439,10 +3439,10 @@ class InfoModel(BaseModel):
         cls,
         meta_folder_path: str,
         fps: Optional[int] = None,
-        codec: VideoCodecs | None = None,
-        robots: List[BaseRobot] | None = None,
-        target_size: tuple[int, int] | None = None,
-        all_camera_key_names: List[str] | None = None,
+        codec: Optional[VideoCodecs] = None,
+        robots: Optional[List[BaseRobot]] = None,
+        target_size: Optional[tuple[int, int]] = None,
+        all_camera_key_names: Optional[List[str]] = None,
         format: Literal["lerobot_v2", "lerobot_v2.1"] = "lerobot_v2.1",
     ) -> "InfoModel":
         """

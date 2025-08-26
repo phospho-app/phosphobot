@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from typing import Optional
 
 from fastapi import HTTPException
 from loguru import logger
@@ -43,7 +44,7 @@ def save_session(session: Session) -> None:
         json.dump(session.model_dump(), f)
 
 
-def load_session() -> Session | None:
+def load_session() -> Optional[Session]:
     """
     Load the session from a file.
     """

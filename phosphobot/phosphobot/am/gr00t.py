@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Tuple, Optional
+from typing import Any, Callable, Dict, List, Literal, Tuple, Optional
 
 import cv2
 import zmq
@@ -231,7 +231,7 @@ class BaseInferenceClient:
         self.call_endpoint("kill", requires_input=False)
 
     def call_endpoint(
-        self, endpoint: str, data: dict | None = None, requires_input: bool = True
+        self, endpoint: str, data: Optional[Dict] = None, requires_input: bool = True
     ) -> dict:
         """
         Call an endpoint on the server.
@@ -638,7 +638,7 @@ class Gr00tN1(ActionModel):
         model_id: str,
         all_cameras: AllCameras,
         robots: list[BaseManipulator],
-        cameras_keys_mapping: Dict[str, int] | None = None,
+        cameras_keys_mapping: Optional[Dict[str, int]] = None,
         verify_cameras: bool = True,
     ) -> Gr00tSpawnConfig:
         """
@@ -704,13 +704,13 @@ class Gr00tN1(ActionModel):
     async def control_loop(
         self,
         control_signal: AIControlSignal,
-        robots: list[BaseManipulator],
+        robots: List[BaseManipulator],
         model_spawn_config: Gr00tSpawnConfig,
         all_cameras: AllCameras,
         prompt: Optional[str] = None,
         fps: int = 30,
         speed: float = 1.0,
-        cameras_keys_mapping: Dict[str, int] | None = None,
+        cameras_keys_mapping: Optional[Dict[str, int]] = None,
         unit: Literal["degrees", "rad", "other"] = "rad",
         min_angle: Optional[float] = None,
         max_angle: Optional[float] = None,
@@ -1256,7 +1256,7 @@ class Gr00tTrainer(BaseTrainer):
         logger.info("Generating modality.json file")
         number_of_robots, number_of_cameras = generate_modality_json(data_dir)
 
-        val_data_dir: Path | None = None
+        val_data_dir: Optional[Path] = None
         if self.config.training_params.validation_dataset_name is not None:
             if self.config.training_params.validation_data_dir is not None:
                 val_data_dir = Path(self.config.training_params.validation_data_dir)

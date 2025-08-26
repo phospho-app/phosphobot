@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Tuple
 
 import numpy as np
 from loguru import logger
@@ -335,7 +335,7 @@ class SO100Hardware(BaseManipulator):
 
     def read_motor_temperature(
         self, servo_id: int, **kwargs
-    ) -> tuple[float, float] | None:
+    ) -> Optional[Tuple[float, float]]:
         """
         Read the temperature of a Feetech servo.
         """

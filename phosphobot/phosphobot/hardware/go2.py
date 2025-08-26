@@ -1,11 +1,10 @@
 import asyncio
-import json
-from collections import deque
-from dataclasses import dataclass
-from typing import Deque
 import concurrent.futures
 import threading
 import time
+from collections import deque
+from dataclasses import dataclass
+from typing import Deque, Optional
 
 import numpy as np
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
@@ -19,7 +18,7 @@ from phosphobot.models import RobotConfigStatus
 @dataclass
 class MovementCommand:
     position: np.ndarray
-    orientation: np.ndarray | None = None
+    orientation: Optional[np.ndarray] = None
 
 
 class UnitreeGo2(BaseMobileRobot):
@@ -387,7 +386,7 @@ class UnitreeGo2(BaseMobileRobot):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,
-        target_orientation_rad: np.ndarray | None,
+        target_orientation_rad: Optional[np.ndarray],
         **kwargs,
     ) -> None:
         """
@@ -423,7 +422,7 @@ class UnitreeGo2(BaseMobileRobot):
     async def move_robot_relative(
         self,
         target_position: np.ndarray,
-        target_orientation_rad: np.ndarray | None,
+        target_orientation_rad: Optional[np.ndarray],
         **kwargs,
     ) -> None:
         """

@@ -15,7 +15,7 @@ from phosphobot.models import RobotConfigStatus
 @dataclass
 class MovementCommand:
     position: np.ndarray
-    orientation: np.ndarray | None = None
+    orientation: Optional[np.ndarray] = None
 
 
 class LeKiwi(BaseMobileRobot):
@@ -128,7 +128,7 @@ class LeKiwi(BaseMobileRobot):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,
-        target_orientation_rad: np.ndarray | None,
+        target_orientation_rad: Optional[np.ndarray],
         **kwargs,
     ) -> None:
         """

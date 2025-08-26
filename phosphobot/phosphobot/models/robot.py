@@ -26,7 +26,7 @@ class RobotConfigStatus(BaseModel):
     name: str
     robot_type: Literal["manipulator", "mobile", "other"] = "manipulator"
     device_name: Optional[str]
-    temperature: List[Temperature] | None = None
+    temperature: Optional[List[Temperature]] = None
 
 
 class BaseRobot(ABC):
@@ -107,7 +107,7 @@ class BaseRobot(ABC):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,  # cartesian np.array
-        target_orientation_rad: np.ndarray | None,  # rad np.array
+        target_orientation_rad: Optional[np.ndarray],  # rad np.array
         **kwargs,
     ) -> None:
         """
@@ -294,7 +294,7 @@ class RobotConfigResponse(BaseModel):
 
     robot_id: int
     name: str
-    config: BaseRobotConfig | None
+    config: Optional[BaseRobotConfig]
     gripper_joint_index: Optional[int] = None
     servo_ids: List[int] = Field(default_factory=lambda: list(range(1, 7)))
     resolution: int = 4096

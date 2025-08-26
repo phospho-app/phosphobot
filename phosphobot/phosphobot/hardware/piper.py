@@ -76,7 +76,7 @@ class PiperHardware(BaseManipulator):
         self,
         can_name: str = "can0",
         only_simulation: bool = False,
-        axis: List[float] | None = None,
+        axis: Optional[List[float]] = None,
     ):
         self.can_name = can_name
         super().__init__(

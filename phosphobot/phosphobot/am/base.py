@@ -352,7 +352,7 @@ class HuggingFaceTokenValidator:
 def generate_readme(
     model_type: str,
     dataset_repo_id: str,
-    folder_path: Path | None = None,
+    folder_path: Optional[Path] = None,
     wandb_run_url: Optional[str] = None,
     steps: Optional[int] = None,
     epochs: Optional[int] = None,

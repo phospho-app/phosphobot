@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -63,7 +63,7 @@ class RobotStatus(BaseModel):
     """
 
     is_object_gripped: Optional[bool] = None
-    is_object_gripped_source: Literal["left", "right"] | None = None
+    is_object_gripped_source: Optional[Literal["left", "right"]] = None
     nb_actions_received: int
 
 
@@ -308,7 +308,7 @@ class JointsReadRequest(BaseModel):
         "rad",
         description="The unit of the angles. Defaults to radian.",
     )
-    joints_ids: List[int] | None = Field(
+    joints_ids: Optional[List[int]] = Field(
         None,
         description="If set, only read the joints with these ids. If None, read all joints.",
     )
@@ -331,7 +331,7 @@ class JointsWriteRequest(BaseModel):
         "rad",
         description="The unit of the angles. Defaults to radian.",
     )
-    joints_ids: List[int] | None = Field(
+    joints_ids: Optional[List[int]] = Field(
         None,
         description="If set, only set the joints with these ids. If None, set all joints."
         "Example: 'angles'=[1,1,1], 'joints_ids'=[0,1,2] will set the first 3 joints to 1 radian.",
@@ -369,7 +369,7 @@ class VoltageReadResponse(BaseModel):
     Response to read the torque of the robot.
     """
 
-    current_voltage: List[float] | None = Field(
+    current_voltage: Optional[List[float]] = Field(
         ...,
         description="A list of length 6, with the current voltage of each joint. If the robot is not connected, this will be None.",
     )
@@ -380,7 +380,7 @@ class TemperatureReadResponse(BaseModel):
     Response to read the Temperature of the robot.
     """
 
-    current_max_Temperature: List[Temperature] | None = Field(
+    current_max_Temperature: Optional[List[Temperature]] = Field(
         ...,
         description=" A list of Temperature objects, one for each joint. If the robot is not connected, this will be None.",
     )
@@ -406,8 +406,8 @@ class InfoResponse(BaseModel):
     robot_type: Optional[str] = None
     robot_dof: Optional[int] = None
     number_of_episodes: Optional[int] = None
-    image_keys: List[str] | None = None
-    image_frames: Dict[str, str] | None = None
+    image_keys: Optional[List[str]] = None
+    image_frames: Optional[Dict[str, str]] = None
 
 
 class StatusResponse(BaseModel):
@@ -429,7 +429,7 @@ class TrainingInfoRequest(BaseModel):
 class TrainingInfoResponse(BaseModel):
     status: Literal["ok", "error"]
     message: Optional[str] = None
-    training_body: dict | None = None
+    training_body: Optional[dict] = None
 
 
 class ServerInfoResponse(BaseModel):
@@ -498,7 +498,7 @@ class AIControlStatusResponse(StatusResponse):
     Response when starting the AI control.
     """
 
-    server_info: ServerInfoResponse | None = None
+    server_info: Optional[ServerInfoResponse] = None
     ai_control_signal_id: str
     ai_control_signal_status: Literal["stopped", "running", "paused", "waiting"]
 
@@ -514,13 +514,13 @@ class RecordingStartRequest(BaseModel):
         + "If None, defaults to the value set in Admin Configuration.",
         examples=["example_dataset"],
     )
-    episode_format: Literal["json", "lerobot_v2", "lerobot_v2.1"] | None = Field(
+    episode_format: Optional[Literal["json", "lerobot_v2", "lerobot_v2.1"]] = Field(
         None,
         description="Format to save the episode.\n`json` is compatible with OpenVLA and stores videos as a series of npy.\n`lerobot_v2` is compatible with [lerobot training.](https://docs.phospho.ai/learn/ai-models)."
         + "If None, defaults to the value set in Admin Configuration.",
         examples=["lerobot_v2.1"],
     )
-    video_codec: VideoCodecs | None = Field(
+    video_codec: Optional[VideoCodecs] = Field(
         None,
         description="Codec to use for the video saving."
         + "If None, defaults to the value set in Admin Configuration.",
@@ -536,12 +536,12 @@ class RecordingStartRequest(BaseModel):
         None,
         description="Path to the branch to push the dataset to, in addition to the main branch. If set to None, only push to the main branch. Defaults to None.",
     )
-    target_video_size: tuple[int, int] | None = Field(
+    target_video_size: Optional[Tuple[int, int]] = Field(
         None,
         description="Target video size for the recording, all videos in the dataset should have the same size. If set to None, defaults to the value set in Admin Configuration.",
         examples=[(320, 240)],
     )
-    cameras_ids_to_record: List[int] | None = Field(
+    cameras_ids_to_record: Optional[List[int]] = Field(
         None,
         description="List of camera ids to record. If set to None, records all available cameras.",
         examples=[[0, 1]],
@@ -551,7 +551,7 @@ class RecordingStartRequest(BaseModel):
         description="A text describing the recorded task. If set to None, defaults to the value set in Admin Configuration.",
         examples=["Pick up the orange brick and put it in the black box."],
     )
-    robot_serials_to_ignore: List[str] | None = Field(
+    robot_serials_to_ignore: Optional[List[str]] = Field(
         None,
         description="List of robot serial ids to ignore. If set to None, records all available robots.",
         examples=[["/dev/ttyUSB0"]],
@@ -616,12 +616,12 @@ class RecordingPlayRequest(BaseModel):
         ],
     )
 
-    robot_id: None | int | List[int] = Field(
+    robot_id: Optional[Union[int, List[int]]] = Field(
         None,
         description="ID of the robot to play the episode on. If None, plays on all robots. If a list, plays on the robots with the given IDs.",
         examples=[0, [0, 1]],
     )
-    robot_serials_to_ignore: List[str] | None = Field(
+    robot_serials_to_ignore: Optional[List[str]] = Field(
         None,
         description="List of robot serial ids to ignore. If set to None, plays on all available robots.",
         examples=[["/dev/ttyUSB0"]],
@@ -761,7 +761,7 @@ class AdminSettingsRequest(BaseModel):
     video_codec: VideoCodecs
     video_size: List[int]  # size 2
     task_instruction: str
-    cameras_to_record: List[int] | None = None
+    cameras_to_record: Optional[List[int]] = None
     hf_private_mode: bool = False
 
 
@@ -776,7 +776,7 @@ class AdminSettingsResponse(BaseModel):
     video_codec: VideoCodecs
     video_size: List[int]  # size 2
     task_instruction: str
-    cameras_to_record: List[int] | None
+    cameras_to_record: Optional[List[int]]
     hf_private_mode: bool
 
 
@@ -841,7 +841,7 @@ class StartServerRequest(BaseModel):
     """
 
     model_id: str = Field(..., description="Hugging Face model id to use")
-    robot_serials_to_ignore: List[str] | None = Field(
+    robot_serials_to_ignore: Optional[List[str]] = Field(
         None,
         description="List of robot serial ids to ignore. If set to None, controls all available robots.",
         examples=[["/dev/ttyUSB0"]],
@@ -868,12 +868,12 @@ class StartAIControlRequest(BaseModel):
         description="Speed of the AI control. 1.0 is normal speed, 0.5 is half speed, 2.0 is double speed. The highest speed is still bottlenecked by the GPU inference time.",
     )
 
-    robot_serials_to_ignore: List[str] | None = Field(
+    robot_serials_to_ignore: Optional[List[str]] = Field(
         None,
         description="List of robot serial ids to ignore. If set to None, controls all available robots.",
         examples=[["/dev/ttyUSB0"]],
     )
-    cameras_keys_mapping: Dict[str, int] | None = Field(
+    cameras_keys_mapping: Optional[Dict[str, int]] = Field(
         None,
         description="Mapping of the camera keys to the camera ids. If set to None, use the default mapping based on cameras order.",
         examples=[{"wrist_camera": 0, "context_camera": 1}],
@@ -1005,13 +1005,13 @@ class SessionReponse(BaseModel):
     """
 
     message: str
-    session: Session | None = None
+    session: Optional[Session] = None
     is_pro_user: Optional[bool] = None
 
 
 class AuthResponse(BaseModel):
     authenticated: bool
-    session: Session | None = None
+    session: Optional[Session] = None
     is_pro_user: Optional[bool] = None
 
 
@@ -1059,7 +1059,7 @@ class StartLeaderArmControlRequest(BaseModel):
     enable_gravity_compensation: bool = Field(
         False, description="Enable gravity compensation for the leader robots"
     )
-    gravity_compensation_values: dict[str, int] | None = Field(
+    gravity_compensation_values: Optional[Dict[str, int]] = Field(
         {"shoulder": 100, "elbow": 50, "wrist": 10},
         description="Gravity compensation pourcentage values for shoulder, elbow, and wrist joints (0-100%)",
     )
@@ -1077,7 +1077,7 @@ class SupabaseTrainingModel(BaseModel):
     terminated_at: Optional[str]
     used_wandb: Optional[bool]
     model_type: str
-    training_params: dict | None = None
+    training_params: Optional[dict] = None
     modal_function_call_id: Optional[str] = None
     # Metrics
     session_count: int = 0
@@ -1171,6 +1171,10 @@ class RobotConnectionRequest(BaseModel):
         ...,
         description="Connection details for the robot. These are passed to the class constructor. This can include IP address, port, and other connection parameters.",
     )
+
+
+class RobotConnectionResponse(StatusResponse):
+    robot_id: int
 
 
 class AddZMQCameraRequest(BaseModel):

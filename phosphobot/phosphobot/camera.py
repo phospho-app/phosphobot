@@ -335,7 +335,7 @@ class BaseCamera(ABC):
         target_size: Optional[tuple[int, int]],
         quality: Optional[int],
         is_video_frame: bool = True,
-    ) -> bytes | None:
+    ) -> Optional[bytes]:
         if is_video_frame:
             rgb_frame = self.get_rgb_frame(resize=target_size)
         else:
@@ -355,10 +355,10 @@ class BaseCamera(ABC):
 
     async def generate_rgb_frames(
         self,
-        target_size: tuple[int, int] | None,
+        target_size: Optional[tuple[int, int]],
         quality: Optional[int],
         is_video_frame: bool = True,
-        request: Request | None = None,
+        request: Optional[Request] = None,
     ) -> AsyncGenerator:
         """Generator for video frames"""
         try:
@@ -532,7 +532,7 @@ Camera type: {self.camera_type}""")
                     self.last_frame = frame
 
     def get_rgb_frame(
-        self, resize: tuple[int, int] | None = None
+        self, resize: Optional[tuple[int, int]] = None
     ) -> Optional[cv2.typing.MatLike]:
         """
         Read a frame from the camera. Returns None if the frame could not be read.
@@ -545,7 +545,7 @@ Camera type: {self.camera_type}""")
         if self.last_frame is None:
             logger.warning(f"{self.camera_name}: No frame available")
 
-        frame: np.ndarray | None = None
+        frame: Optional[np.ndarray] = None
         # Convert from BGR to RGB
         if self.last_frame is not None:
             frame = cv2.cvtColor(self.last_frame, cv2.COLOR_BGR2RGB)
@@ -583,7 +583,7 @@ class DummyCamera(VideoCamera):
         return True
 
     def get_rgb_frame(
-        self, resize: tuple[int, int] | None = None
+        self, resize: Optional[Tuple[int, int]] = None
     ) -> Optional[cv2.typing.MatLike]:
         """
         Read a frame from the camera. Returns None if the frame could not be read.
@@ -626,7 +626,7 @@ class StereoCamera(VideoCamera):
         return f"StereoCamera {self.camera_id}"
 
     def get_left_eye_rgb_frame(
-        self, resize: tuple[int, int] | None = None
+        self, resize: Optional[Tuple[int, int]] = None
     ) -> Optional[cv2.typing.MatLike]:
         last_frame = self.get_rgb_frame()
         if last_frame is None:
@@ -639,7 +639,7 @@ class StereoCamera(VideoCamera):
         return left_frame
 
     def get_right_eye_rgb_frame(
-        self, resize: tuple[int, int] | None = None
+        self, resize: Optional[Tuple[int, int]] = None
     ) -> Optional[cv2.typing.MatLike]:
         last_frame = self.get_rgb_frame()
         if last_frame is None:
@@ -795,7 +795,7 @@ try:
             return f"RealsenseCamera {self.device_index} ({self.device_serial})"
 
         def get_rgb_frame(
-            self, resize: tuple[int, int] | None = None
+            self, resize: Optional[Tuple[int, int]] = None
         ) -> Optional[cv2.typing.MatLike]:
             # To get the video frame, get the couple (video, depth) frame from the wait_for_frames method
             if not self.is_active:
@@ -816,7 +816,7 @@ try:
             return frame
 
         def get_depth_frame(
-            self, resize: tuple[int, int] | None = None
+            self, resize: Optional[Tuple[int, int]] = None
         ) -> Optional[cv2.typing.MatLike]:
             # To get the depth frame, also get the couple (video, depth) frame from the wait_for_frames method
             # The method get_depth and get_rgb_frame can be called simultaneously without lagging (tested)
@@ -875,7 +875,7 @@ try:
             return
 
         def get_rgb_frame(
-            self, resize: Optional[tuple[int, int]] = None
+            self, resize: Optional[Tuple[int, int]] = None
         ) -> Optional[cv2.typing.MatLike]:
             if not self.is_active:
                 return None
@@ -1062,19 +1062,19 @@ class ZMQCamera(VideoCamera):
 
 
 class AllCameras:
-    disabled_cameras: list[int] | None
+    disabled_cameras: Optional[List[int]]
     video_cameras: List[VideoCamera]
     realsense_cameras: List[RealSenseCamera]
     zmq_cameras: List[ZMQCamera]
 
     camera_ids: List[int]
     camera_names: List[str]
-    _main_camera: BaseCamera | None = None
+    _main_camera: Optional[BaseCamera] = None
     # If it's None, record everything. Otherwise, record only the corresponding cameras
     _cameras_ids_to_record: List[int]
     _is_detecting: bool = False
 
-    def __init__(self, disabled_cameras: list[int] | None = None):
+    def __init__(self, disabled_cameras: Optional[List[int]] = None):
         """
         AllCameras class to manage all cameras connected to the computer.
         Args:
@@ -1463,7 +1463,7 @@ class AllCameras:
     def get_rgb_frame(
         self,
         camera_id: Optional[int] = None,
-        resize: Optional[tuple[int, int]] = None,
+        resize: Optional[Tuple[int, int]] = None,
     ) -> Optional[cv2.typing.MatLike]:
         """
         Return the latest RGB frame from the specidied camera
@@ -1489,14 +1489,14 @@ class AllCameras:
         return frame
 
     def get_rgb_frames_for_all_cameras(
-        self, resize: Optional[tuple[int, int]] = None
-    ) -> Dict[str, cv2.typing.MatLike | None]:
+        self, resize: Optional[Tuple[int, int]] = None
+    ) -> Dict[str, Optional[cv2.typing.MatLike]]:
         """
         Get the RGB frames for all the cameras.
 
         Returns a dict with the camera id as key and the frame as value.
         """
-        frames: dict[str, cv2.typing.MatLike | None] = {}
+        frames: Dict[str, Optional[cv2.typing.MatLike]] = {}
         for camera in self.video_cameras:
             if camera.camera_type == "stereo":
                 camera = cast(StereoCamera, camera)
@@ -1519,7 +1519,7 @@ class AllCameras:
         return self._cameras_ids_to_record
 
     @cameras_ids_to_record.setter
-    def cameras_ids_to_record(self, camera_ids: List[int] | None):
+    def cameras_ids_to_record(self, camera_ids: Optional[List[int]]):
         """
         Set the camera ids to record.
         """
@@ -1533,7 +1533,7 @@ class AllCameras:
             self._cameras_ids_to_record = self.camera_ids
 
     @property
-    def main_camera(self) -> BaseCamera | None:
+    def main_camera(self) -> Optional[BaseCamera]:
         """
         Get the main camera among the selected camera ids.
         If selected camera ids are not provided, we select amoung all available cameras.
@@ -1566,8 +1566,8 @@ class AllCameras:
 
     def get_main_camera_frames(
         self,
-        target_video_size: tuple[int, int],
-    ) -> List[cv2.typing.MatLike] | None:
+        target_video_size: Tuple[int, int],
+    ) -> Optional[List[cv2.typing.MatLike]]:
         """
         Get the frames from the main camera.
         """
@@ -1620,7 +1620,7 @@ class AllCameras:
 
     def get_secondary_camera_frames(
         self,
-        target_video_size: tuple[int, int],
+        target_video_size: Tuple[int, int],
     ) -> List[cv2.typing.MatLike]:
         """
         Get the frames from every camera except the main camera.
@@ -1709,7 +1709,7 @@ def get_all_cameras() -> AllCameras:
     return cameras
 
 
-def get_all_cameras_no_init() -> AllCameras | None:
+def get_all_cameras_no_init() -> Optional[AllCameras]:
     """
     Return the global AllCameras instance without initializing it.
     This is useful for testing purposes.

@@ -39,11 +39,6 @@ def video_feed_for_camera(
 ):
     """
     Stream video feed of the specified camera.
-
-    Parameters:
-    - camera_id (Optional[int]): ID of the camera to stream. If None, the default camera is used.
-    - target_size (tuple[int, int] | None): Target size of the video feed. Default is None.
-    - quality (Optional[int]): Quality of the video feed. Default is None.
     """
 
     if width is None or height is None:

@@ -23,7 +23,7 @@ class URDFLoader(BaseManipulator):
         gripper_joint_index: int,
         zmq_server_url: Optional[str] = None,
         zmq_topic: Optional[str] = None,
-        axis_orientation: list[int] | None = None,
+        axis_orientation: Optional[List[int]] = None,
     ):
         self.URDF_FILE_PATH = urdf_path
         self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
@@ -32,10 +32,10 @@ class URDFLoader(BaseManipulator):
             zmq_server_url if zmq_server_url and zmq_server_url.strip() else None
         )
         self.zmq_topic = zmq_topic if zmq_topic and zmq_topic.strip() else None
-        self.zmq_context: zmq.Context | None = None
-        self.zmq_socket: zmq.Socket | None = None
-        self.zmq_latest_joint_positions: np.ndarray | None = None
-        self.zmq_thread: threading.Thread | None = None
+        self.zmq_context: Optional[zmq.Context] = None
+        self.zmq_socket: Optional[zmq.Socket] = None
+        self.zmq_latest_joint_positions: Optional[np.ndarray] = None
+        self.zmq_thread: Optional[threading.Thread] = None
         self._zmq_initialized = False
         self._zmq_init_lock = threading.Lock()
         self.data_lock = threading.Lock()

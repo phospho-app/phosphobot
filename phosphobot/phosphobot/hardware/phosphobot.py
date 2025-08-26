@@ -1,4 +1,5 @@
 import asyncio
+from typing import List, Optional
 import httpx
 import numpy as np
 
@@ -14,7 +15,7 @@ class RemotePhosphobot(BaseRobot):
     """
 
     name = "phosphobot"
-    _config: BaseRobotConfig | None = None
+    _config: Optional[BaseRobotConfig] = None
 
     def __init__(self, ip: str, port: int, robot_id: int, **kwargs):
         """
@@ -32,8 +33,8 @@ class RemotePhosphobot(BaseRobot):
         self.current_position = np.zeros(3)
         self.current_orientation = np.zeros(3)  # [roll, pitch, yaw]
         self.robot_id = robot_id
-        self.initial_position: np.ndarray | None = None
-        self.initial_orientation_rad: np.ndarray | None = None
+        self.initial_position: Optional[np.ndarray] = None
+        self.initial_orientation_rad: Optional[np.ndarray] = None
         self.device_name = f"{self.ip}:{self.port}"
 
     @property
@@ -145,7 +146,7 @@ class RemotePhosphobot(BaseRobot):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,
-        target_orientation_rad: np.ndarray | None,
+        target_orientation_rad: Optional[np.ndarray],
         **kwargs,
     ) -> None:
         """
@@ -186,7 +187,7 @@ class RemotePhosphobot(BaseRobot):
             raise Exception(f"Move failed: {response.text}")
 
     async def move_robot_relative(
-        self, target_position: np.ndarray, target_orientation_rad: np.ndarray | None
+        self, target_position: np.ndarray, target_orientation_rad: Optional[np.ndarray]
     ) -> None:
         # Replace None values in target_position and target_orientation_rad with 0
 
@@ -371,9 +372,9 @@ class RemotePhosphobot(BaseRobot):
 
     def write_joint_positions(
         self,
-        angles: list[float],
+        angles: List[float],
         unit: str = "rad",
-        joints_ids: list[int] | None = None,
+        joints_ids: Optional[List[int]] = None,
         **kwargs,
     ) -> None:
         """
@@ -442,7 +443,7 @@ class RemotePhosphobot(BaseRobot):
         pass
 
     @property
-    def config(self) -> BaseRobotConfig | None:
+    def config(self) -> Optional[BaseRobotConfig]:
         """
         Get the configuration of the robot.
 
