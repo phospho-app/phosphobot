@@ -1,5 +1,3 @@
-// GamepadControl.tsx - Main component
-// Enhanced GamepadControl with multi-arm single controller support
 import { LoadingPage } from "@/components/common/loading";
 import { SpeedSelect } from "@/components/common/speed-select";
 import {
@@ -62,7 +60,6 @@ import {
   useGamepadControl,
   useGamepadDetection,
 } from "./GamepadComponents";
-// Import our refactored modules
 import {
   AnalogValues,
   ConfigMode,
