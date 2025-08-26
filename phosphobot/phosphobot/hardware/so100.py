@@ -23,19 +23,10 @@ class SO100Hardware(BaseManipulator):
 
     AXIS_ORIENTATION = [0, 0, 1, 1]
 
-    # Control commands (refer to the Feetech SCServo manual)
-    TORQUE_ENABLE = 0x01
-    TORQUE_DISABLE = 0
-
-    TORQUE_ADDRESS = 0x40
-
-    COMMAND_WRITE = 0x03
-    COMMAND_READ = 0x02
-
     END_EFFECTOR_LINK_INDEX = 4
     GRIPPER_JOINT_INDEX = 5
 
-    # Dynamixel settings
+    # Feetech settings
     motors = {
         # name: (index, model)
         "shoulder_pan": [1, "sts3215"],

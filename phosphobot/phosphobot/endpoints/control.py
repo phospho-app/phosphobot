@@ -487,7 +487,7 @@ async def end_effector_read(
     """
     robot = await rcm.get_robot(robot_id)
     if query is None:
-        query = EndEffectorReadRequest(sync=False)
+        query = EndEffectorReadRequest(only_gripper=False, sync=False)
 
     if not isinstance(robot, BaseManipulator):
         raise HTTPException(
@@ -495,12 +495,28 @@ async def end_effector_read(
             detail="Robot is not a manipulator and does not have an end effector",
         )
 
+    if query.only_gripper:
+        if not hasattr(robot, "closing_gripper_value"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Robot {robot.name} does not have a .closing_gripper_value attribute to read the gripper state.",
+            )
+        return EndEffectorPosition(
+            x=None,
+            y=None,
+            z=None,
+            rx=None,
+            ry=None,
+            rz=None,
+            open=robot.closing_gripper_value,
+        )
+
     initial_position = getattr(robot, "initial_position", None)
     initial_orientation_rad = getattr(robot, "initial_orientation_rad", None)
     if initial_position is None or initial_orientation_rad is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Call /move/init before using this endpoint for robot {robot.name}. ",
+            detail=f"Before using /end-effector/read you need to call /move/init?robot_id={robot_id} to initialize the robot's position and orientation.",
         )
 
     position, orientation, open_status = robot.get_end_effector_state(sync=query.sync)
@@ -816,7 +832,7 @@ async def start_leader_follower(
     if signal_leader_follower.is_in_loop():
         raise HTTPException(
             status_code=400,
-            detail="Leader-follower control is already running. Call /move/leader/stop first.",
+            detail="Leader-follower control is already running. To stop it, call /move/leader/stop",
         )
 
     # Parse the robot IDs from the request
@@ -1249,7 +1265,7 @@ async def feedback_ai_control(
     return StatusResponse(message="Feedback sent")
 
 
-@router.post("/robot/add-connection", response_model=StatusResponse)
+@router.post("/robot/add-connection", response_model=RobotConnectionResponse)
 async def add_robot_connection(
     query: RobotConnectionRequest,
     rcm: RobotConnectionManager = Depends(get_rcm),
