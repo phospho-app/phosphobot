@@ -128,7 +128,7 @@ class LeKiwi(BaseMobileRobot):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,
-        target_orientation_rad: np.ndarray | None,
+        target_orientation_rad: Optional[np.ndarray],
         **kwargs,
     ) -> None:
         """

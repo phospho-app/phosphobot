@@ -38,6 +38,7 @@ from phosphobot.models import (
     RelativeEndEffectorPosition,
     RobotConfigResponse,
     RobotConnectionRequest,
+    RobotConnectionResponse,
     SpawnStatusResponse,
     StartAIControlRequest,
     StartLeaderArmControlRequest,
@@ -477,7 +478,7 @@ async def move_sleep(
     description="Retrieve the position, orientation, and open status of the robot's end effector. Only available for manipulators.",
 )
 async def end_effector_read(
-    query: EndEffectorReadRequest | None = None,
+    query: Optional[EndEffectorReadRequest] = None,
     robot_id: int = 0,
     rcm: RobotConnectionManager = Depends(get_rcm),
 ) -> EndEffectorPosition:
@@ -684,7 +685,7 @@ async def toggle_torque(
     description="Read the current positions of the robot's joints in radians and motor units.",
 )
 async def read_joints(
-    request: JointsReadRequest | None = None,
+    request: Optional[JointsReadRequest] = None,
     robot_id: int = 0,
     rcm: RobotConnectionManager = Depends(get_rcm),
 ) -> JointsReadResponse:
@@ -1252,7 +1253,7 @@ async def feedback_ai_control(
 async def add_robot_connection(
     query: RobotConnectionRequest,
     rcm: RobotConnectionManager = Depends(get_rcm),
-) -> StatusResponse:
+) -> RobotConnectionResponse:
     """
     Manually add a robot connection to the robot manager.
     Useful for adding robot that are accessible only via WiFi, for example.

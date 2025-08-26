@@ -3,7 +3,7 @@ import json
 import os
 import asyncio
 from abc import abstractmethod
-from typing import List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 from fastapi import HTTPException
 import numpy as np
@@ -63,14 +63,14 @@ class BaseManipulator(BaseRobot):
     # They are in the same order as the joint links in the URDF file
     SERVO_IDS: List[int]
 
-    CALIBRATION_POSITION: list[float]  # same size as SERVO_IDS
-    SLEEP_POSITION: list[float] | None = None
+    CALIBRATION_POSITION: List[float]  # same size as SERVO_IDS
+    SLEEP_POSITION: Optional[List[float]] = None
     RESOLUTION: int
     # The effector is the gripper
     END_EFFECTOR_LINK_INDEX: int
 
     # calibration config: offsets, signs, pid values
-    config: BaseRobotConfig | None = None
+    config: Optional[BaseRobotConfig] = None
 
     # status variables
     is_connected: bool = False
@@ -87,9 +87,9 @@ class BaseManipulator(BaseRobot):
     calibration_max_steps: int = 3
 
     # (x, y, z) position of the robot in the simulation in meters
-    initial_orientation_rad: np.ndarray | None = None
+    initial_orientation_rad: Optional[np.ndarray] = None
     # (rx, ry, rz) orientation of the robot in the simulation
-    initial_position: np.ndarray | None = None
+    initial_position: Optional[np.ndarray] = None
 
     @abstractmethod
     def enable_torque(self) -> None:
@@ -127,7 +127,7 @@ class BaseManipulator(BaseRobot):
         """
         raise NotImplementedError("The robot enable torque must be implemented.")
 
-    def read_motor_temperature(self, servo_id: int) -> tuple[float, float] | None:
+    def read_motor_temperature(self, servo_id: int) -> Optional[Tuple[float, float]]:
         """
         Read the temperature of a motor
         raise: Exception if the routine has not been implemented
@@ -194,10 +194,10 @@ class BaseManipulator(BaseRobot):
         serial_id: Optional[str] = None,
         only_simulation: bool = False,
         reset_simulation_bool: bool = False,
-        axis: List[float] | None = None,
+        axis: Optional[List[float]] = None,
         add_debug_lines: bool = False,
         show_debug_link_indices: bool = False,
-        **kwargs: Optional[dict[str, str]],
+        **kwargs: Optional[Dict[str, str]],
     ):
         """
         Args:
@@ -933,7 +933,7 @@ class BaseManipulator(BaseRobot):
     async def move_robot_absolute(
         self,
         target_position: np.ndarray,  # cartesian np.array
-        target_orientation_rad: np.ndarray | None,  # rad np.array
+        target_orientation_rad: Optional[np.ndarray],  # rad np.array
         interpolate_trajectory: bool = False,
         steps: int = 10,
         **kwargs,
@@ -1007,7 +1007,7 @@ class BaseManipulator(BaseRobot):
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
             joint_indices=self.actuated_joints,
-            target_positions=joints,
+            target_positions=list(joints),
         )
         # Update the simulation
         self.sim.step()
@@ -1201,7 +1201,7 @@ class BaseManipulator(BaseRobot):
             ),
         )
 
-    def current_voltage(self) -> np.ndarray | None:
+    def current_voltage(self) -> Optional[np.ndarray]:
         """
         Read the current voltage u of the joints of the robot.
 
@@ -1221,12 +1221,11 @@ class BaseManipulator(BaseRobot):
         # If the robot is not connected, error raised
         return None
 
-    def current_temperature(self) -> List[Temperature] | None:
+    def current_temperature(self) -> Optional[List[Temperature]]:
         """
         Read the current and maximum temperature of the joints of the robot.
         Returns:
-            List[Temperature] | None: A list of Temperature objects, one for each joint,
-                                    or None if the robot is not connected.
+            A list of Temperature objects, one for each joint, or None if the robot is not connected.
         """
         if self.is_connected:
             temperatures = []

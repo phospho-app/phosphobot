@@ -1490,7 +1490,7 @@ class AllCameras:
 
     def get_rgb_frames_for_all_cameras(
         self, resize: Optional[Tuple[int, int]] = None
-    ) -> Dict[str, cv2.typing.MatLike]:
+    ) -> Dict[str, Optional[cv2.typing.MatLike]]:
         """
         Get the RGB frames for all the cameras.
 

@@ -194,7 +194,7 @@ class PyBulletSimulation:
         axis: Optional[List[float]] = None,
         axis_orientation: Optional[List[int]] = None,
         use_fixed_base: bool = True,
-    ) -> Tuple[int, int, List[int]]:
+    ) -> Tuple[Optional[int], int, List[int]]:
         """
         Load a URDF file into the simulation.
 
