@@ -34,7 +34,7 @@ class Recorder:
     is_saving: bool = False
     is_recording: bool = False
     episode: Optional[BaseEpisode] = None  # Link to an Episode instance
-    start_ts: float | None
+    start_ts: Optional[float]
     freq: int  # Stored from start() for use in record_loop
 
     cameras: AllCameras
@@ -89,11 +89,13 @@ class Recorder:
         freq: int,
         target_size: tuple[int, int] | None,
         dataset_name: str,  # e.g., "my_robot_data"
-        instruction: str | None,
+        instruction: Optional[str],
         episode_format: Literal["json", "lerobot_v2", "lerobot_v2.1"],
         cameras_ids_to_record: list[int] | None,
         use_push_to_hf: bool = True,  # Stored for save_episode to decide
-        branch_path: str | None = None,  # Stored for push_to_hub if initiated from here
+        branch_path: Optional[
+            str
+        ] = None,  # Stored for push_to_hub if initiated from here
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
     ) -> None:
         if target_size is None:
@@ -246,7 +248,7 @@ class Recorder:
 
         return None
 
-    def push_to_hub(self, dataset_path: str, branch_path: str | None = None) -> None:
+    def push_to_hub(self, dataset_path: str, branch_path: Optional[str] = None) -> None:
         logger.info(
             f"Attempting to push dataset from {dataset_path} to Hugging Face Hub. Branch: {branch_path or 'main'}"
         )

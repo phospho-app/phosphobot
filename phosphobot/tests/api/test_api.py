@@ -217,7 +217,7 @@ def make_request_with_retry(
             time.sleep(1)
 
 
-def login_to_hf() -> tuple[str, str, str | None] | None:
+def login_to_hf() -> tuple[str, str, Optional[str]] | None:
     """
     Login to HF and set up the dataset name for CICD testing.
     """

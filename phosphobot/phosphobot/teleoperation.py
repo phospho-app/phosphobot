@@ -27,7 +27,7 @@ class RobotState:
 
 
 class TeleopManager:
-    robot_id: int | None
+    robot_id: Optional[int]
     rcm: RobotConnectionManager
     states: Dict[Literal["left", "right"], RobotState]
     action_counter: int
@@ -35,7 +35,7 @@ class TeleopManager:
     MOVE_TIMEOUT: float = 1.0  # seconds
     MAX_INSTRUCTIONS_PER_SEC: int = 200
 
-    def __init__(self, rcm: RobotConnectionManager, robot_id: int | None = None):
+    def __init__(self, rcm: RobotConnectionManager, robot_id: Optional[int] = None):
         self.rcm = rcm
         self.states: Dict[str, RobotState] = {
             "left": RobotState(),
@@ -109,7 +109,7 @@ class TeleopManager:
 
         return None
 
-    async def move_init(self, robot_id: int | None = None) -> None:
+    async def move_init(self, robot_id: Optional[int] = None) -> None:
         """
         Move the robot to the initial position.
         """

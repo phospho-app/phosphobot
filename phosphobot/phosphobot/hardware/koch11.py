@@ -363,7 +363,7 @@ class KochHardware(BaseManipulator):
 
         return positions
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
+    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
         """
         Read the position of a Dynamixel servo.
         """
@@ -394,7 +394,7 @@ class KochHardware(BaseManipulator):
 
         return None
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
+    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
         """
         Read the torque of a Dynamixel servo.
         """

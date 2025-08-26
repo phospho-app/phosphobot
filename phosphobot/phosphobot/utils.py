@@ -15,7 +15,7 @@ import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, Tuple, Union
+from typing import Annotated, Any, Literal, Tuple, Union, Optional
 
 import av
 import cv2
@@ -333,13 +333,13 @@ def fetch_latest_brew_version(fail_silently: bool = False) -> str:
 @dataclass
 class Tokens:
     ENV: Literal["dev", "prod"] = "dev"
-    SENTRY_DSN: str | None = None
+    SENTRY_DSN: Optional[str] = None
     # This is used to track the app usage
-    POSTHOG_API_KEY: str | None = "phc_EesFKS4CVoyc0URzJN0FOETpg7KipCBEpRvHEvv5mDF"
-    POSTHOG_HOST: str | None = "https://us.i.posthog.com"
-    SUPABASE_URL: str | None = None
-    SUPABASE_KEY: str | None = None
-    MODAL_API_URL: str | None = None
+    POSTHOG_API_KEY: Optional[str] = "phc_EesFKS4CVoyc0URzJN0FOETpg7KipCBEpRvHEvv5mDF"
+    POSTHOG_HOST: Optional[str] = "https://us.i.posthog.com"
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    MODAL_API_URL: Optional[str] = None
 
 
 def get_tokens() -> Tokens:
@@ -692,7 +692,7 @@ def get_field_min_max(df: pd.DataFrame, field_name: str) -> tuple:
         return (df[field_name].min(), df[field_name].max())
 
 
-def parse_hf_username_or_orgid(user_info: dict) -> str | None:
+def parse_hf_username_or_orgid(user_info: dict) -> Optional[str]:
     """
     Extract the username or organization name from the user info dictionary.
     user_info = api.whoami(token=hf_token)
@@ -736,7 +736,7 @@ def parse_hf_username_or_orgid(user_info: dict) -> str | None:
     return None
 
 
-def get_hf_username_or_orgid() -> str | None:
+def get_hf_username_or_orgid() -> Optional[str]:
     """
     Returns the username or organization name from the Hugging Face token file.
     Returns None if we can't write anywhere.
@@ -765,7 +765,7 @@ def get_hf_username_or_orgid() -> str | None:
         return None
 
 
-def get_hf_token() -> str | None:
+def get_hf_token() -> Optional[str]:
     """
     Returns the hf token from the token file.
     Returns None if there is no token.
@@ -825,7 +825,7 @@ def get_local_network_ip():
     return ip
 
 
-def get_local_subnet() -> str | None:
+def get_local_subnet() -> Optional[str]:
     """
     Get the local subnet in CIDR notation.
     Returns:

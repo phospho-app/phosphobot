@@ -215,7 +215,7 @@ class PiperHardware(BaseManipulator):
         # Disable the gripper with no change of zero position
         self.motors_bus.GripperCtrl(0, self.GRIPPER_EFFORT, self.DISABLE_GRIPPER, 0)
 
-    def read_motor_torque(self, servo_id: int) -> float | None:
+    def read_motor_torque(self, servo_id: int) -> Optional[float]:
         """
         Read the torque of a motor
 
@@ -228,7 +228,7 @@ class PiperHardware(BaseManipulator):
             # Not implemented
             return 100
 
-    def read_motor_voltage(self, servo_id: int) -> float | None:
+    def read_motor_voltage(self, servo_id: int) -> Optional[float]:
         """
         Read the voltage of a motor
 
@@ -292,7 +292,7 @@ class PiperHardware(BaseManipulator):
         if enable_gripper and len(q_target) >= self.gripper_servo_id:
             self.write_motor_position(self.gripper_servo_id, q_target[-1])
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
+    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
         """
         Read the position of the motor. This should return the position in motor units.
         """

@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Optional
 
 import httpx
 import numpy as np
@@ -24,7 +24,7 @@ class CustomAIControlSignal(AIControlSignal):
         self._last_status_update = None
 
     def _update_supabase(
-        self, started_at: datetime | None = None, ended_at: datetime | None = None
+        self, started_at: Optional[datetime] = None, ended_at: Optional[datetime] = None
     ):
         # schedule the real work in the running loop
         if self._status == self._last_status_update:
@@ -33,7 +33,7 @@ class CustomAIControlSignal(AIControlSignal):
         loop.create_task(self._update_supabase_async(started_at, ended_at))
 
     async def _update_supabase_async(
-        self, started_at: datetime | None = None, ended_at: datetime | None = None
+        self, started_at: Optional[datetime] = None, ended_at: Optional[datetime] = None
     ):
         if not self._supabase_client:
             self._supabase_client = await get_client()
@@ -108,10 +108,10 @@ async def setup_ai_control(
     ai_control_signal_id: str,
     model_type: Literal["gr00t", "ACT", "ACT_BBOX"],
     model_id: str = "PLB/GR00T-N1-lego-pickup-mono-2",
-    cameras_keys_mapping: dict[str, int] | None = None,
+    cameras_keys_mapping: Optional[dict[str, int]] = None,
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
-    checkpoint: int | None = None,
+    checkpoint: Optional[int] = None,
 ) -> tuple[Gr00tN1 | ACT, Gr00tSpawnConfig | ACTSpawnConfig, ServerInfoResponse]:
     """
     Setup the AI control loop by spawning the inference server and returning the model.

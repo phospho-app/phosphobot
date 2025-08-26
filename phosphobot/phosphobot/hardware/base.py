@@ -110,7 +110,7 @@ class BaseManipulator(BaseRobot):
         raise NotImplementedError("The robot enable torque must be implemented.")
 
     @abstractmethod
-    def read_motor_torque(self, servo_id: int) -> float | None:
+    def read_motor_torque(self, servo_id: int) -> Optional[float]:
         """
         Read the torque of a motor
 
@@ -119,7 +119,7 @@ class BaseManipulator(BaseRobot):
         raise NotImplementedError("The robot enable torque must be implemented.")
 
     @abstractmethod
-    def read_motor_voltage(self, servo_id: int) -> float | None:
+    def read_motor_voltage(self, servo_id: int) -> Optional[float]:
         """
         Read the voltage of a motor
 
@@ -160,7 +160,7 @@ class BaseManipulator(BaseRobot):
         raise NotImplementedError("The robot write motor position must be implemented.")
 
     @abstractmethod
-    def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
+    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
         """
         Read the position of the motor. This should return the position in motor units.
         """
@@ -190,8 +190,8 @@ class BaseManipulator(BaseRobot):
 
     def __init__(
         self,
-        device_name: str | None = None,
-        serial_id: str | None = None,
+        device_name: Optional[str] = None,
+        serial_id: Optional[str] = None,
         only_simulation: bool = False,
         reset_simulation_bool: bool = False,
         axis: List[float] | None = None,
@@ -844,8 +844,8 @@ class BaseManipulator(BaseRobot):
         angles: List[float],
         unit: Literal["rad", "motor_units", "degrees", "other"],
         joints_ids: Optional[List[int]] = None,
-        min_value: float | None = None,
-        max_value: float | None = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ) -> None:
         """
         Move the robot's joints to the specified angles.

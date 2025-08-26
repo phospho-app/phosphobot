@@ -1,5 +1,4 @@
 import json
-import pickle
 import threading
 from typing import List, Literal, Optional
 
@@ -22,8 +21,8 @@ class URDFLoader(BaseManipulator):
         urdf_path: str,
         end_effector_link_index: int,
         gripper_joint_index: int,
-        zmq_server_url: str | None = None,
-        zmq_topic: str | None = None,
+        zmq_server_url: Optional[str] = None,
+        zmq_topic: Optional[str] = None,
         axis_orientation: list[int] | None = None,
     ):
         self.URDF_FILE_PATH = urdf_path
@@ -227,7 +226,7 @@ class URDFLoader(BaseManipulator):
             max_value=max_value,
         )
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
+    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
         pass
 
     def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
@@ -241,10 +240,10 @@ class URDFLoader(BaseManipulator):
     def read_group_motor_position(self) -> np.ndarray:
         return np.zeros(len(self.SERVO_IDS), dtype=np.int32)
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
+    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
         pass
 
-    def read_motor_voltage(self, servo_id: int, **kwargs) -> float | None:
+    def read_motor_voltage(self, servo_id: int, **kwargs) -> Optional[float]:
         pass
 
     def status(self) -> RobotConfigStatus:

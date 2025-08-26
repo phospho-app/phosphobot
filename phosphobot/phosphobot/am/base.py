@@ -84,13 +84,13 @@ class TrainingParamsAct(BaseModel):
     Training paramters are left to None by default and are set depending on the dataset in the training pipeline.
     """
 
-    batch_size: int | None = Field(
+    batch_size: Optional[int] = Field(
         default=None,
         description="Batch size for training, we run this on an A10G, leave it to None to auto-detect based on your dataset",
         gt=0,
         le=150,
     )
-    steps: int | None = Field(
+    steps: Optional[int] = Field(
         default=None,
         description="Number of training steps, leave it to None to auto-detect based on your dataset",
         gt=0,
@@ -158,12 +158,12 @@ class TrainingParamsGr00T(BaseModel):
         gt=0,
         le=1,
     )
-    validation_dataset_name: str | None = Field(
+    validation_dataset_name: Optional[str] = Field(
         default=None,
         description="Optional dataset repository ID on Hugging Face to use for validation",
     )
 
-    batch_size: int | None = Field(
+    batch_size: Optional[int] = Field(
         default=None,
         description="Batch size for training, default is 64, decrease it if you get an out of memory error",
         gt=0,
@@ -192,7 +192,7 @@ class TrainingParamsGr00T(BaseModel):
         default="data/", description="The directory to save the dataset to"
     )
 
-    validation_data_dir: str | None = Field(
+    validation_data_dir: Optional[str] = Field(
         default=None,
         description="Optional directory to save the validation dataset to. If None, no validation will be done.",
     )
@@ -423,7 +423,7 @@ Training was successful, try it out on your robot!
 def resize_dataset(
     dataset_root_path: Path,
     resize_to: tuple = (320, 240),
-) -> tuple[bool, bool, str | None]:
+) -> tuple[bool, bool, Optional[str]]:
     """
     Resize the dataset to a smaller size for faster training.
 

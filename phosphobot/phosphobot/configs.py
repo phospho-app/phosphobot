@@ -3,7 +3,7 @@ Store constants and configurations for the app in this file.
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import yaml  # type: ignore
 from loguru import logger
@@ -43,7 +43,7 @@ class Configuration(BaseModel):
     PROFILE: bool = False
 
     # Recording
-    MAIN_CAMERA_ID: int | None = None  # defaults to min(detected cameras)
+    MAIN_CAMERA_ID: Optional[int] = None  # defaults to min(detected cameras)
 
     # Whether to initialize the RealSense camera
     ENABLE_REALSENSE: bool = True

@@ -43,9 +43,9 @@ class Observation(BaseModel):
     # Current joints positions of the robot
     joints_position: np.ndarray
     # Instruction given to the robot, can be null when recording the dataset
-    language_instruction: str | None = None
+    language_instruction: Optional[str] = None
     # Timestamp in seconds since episode start (usefull for frequency)
-    timestamp: float | None = None
+    timestamp: Optional[float] = None
 
     # To be able to use np.array in pydantic, we need to use arbitrary_types_allowed = True
     class Config:
@@ -62,11 +62,11 @@ class Step(BaseModel):
     # Robot action as outputed by OpenVLA (size 7 array) based on the CURRENT observation
     action: Optional[np.ndarray] = None
     # if this is the first step of an episode that contains the initial state.
-    is_first: bool | None = None
+    is_first: Optional[bool] = None
     # True if this is a terminal step, meaning the episode isn' over after this step but the robot is in a terminal state
-    is_terminal: bool | None = None
+    is_terminal: Optional[bool] = None
     # if this is the last step of an episode, that contains the last observation. When true,
-    is_last: bool | None = None
+    is_last: Optional[bool] = None
     reward: float = 0.0  # Reward given by the environment
     # Discount factor for the reward, not used for now
     discount: float = 1.0
@@ -505,7 +505,7 @@ class BaseDataset:
         repo_id = f"{get_hf_username_or_orgid()}/{self.dataset_name}"
         return repo_id
 
-    def check_repo_exists(self, repo_id: str | None) -> bool:
+    def check_repo_exists(self, repo_id: Optional[str]) -> bool:
         """Check if a repository exists on Hugging Face"""
         repo_id = repo_id or self.repo_id
         return self.HF_API.repo_exists(repo_id=repo_id, repo_type="dataset")
@@ -600,7 +600,7 @@ It's compatible with LeRobot.
 To get started in robotics, [get your own phospho starter pack.](https://robots.phospho.ai).
 """
 
-    def push_dataset_to_hub(self, branch_path: str | None = None):
+    def push_dataset_to_hub(self, branch_path: Optional[str] = None):
         """
         Push the dataset to the Hugging Face Hub.
 

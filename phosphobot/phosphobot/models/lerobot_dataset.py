@@ -79,7 +79,7 @@ class LeRobotDataset(BaseDataset):
         robots: List[BaseRobot] | None = None,
         codec: VideoCodecs | None = None,
         target_size: tuple[int, int] | None = None,
-        fps: int | None = None,
+        fps: Optional[int] = None,
         all_camera_key_names: List[str] | None = None,
         force: bool = False,
     ):
@@ -1222,7 +1222,7 @@ class LeRobotEpisode(BaseEpisode):
         codec: VideoCodecs,
         freq: int,
         target_size: tuple[int, int],  # width, height
-        instruction: str | None,
+        instruction: Optional[str],
         all_camera_key_names: List[str],
         **kwargs,
     ) -> "LeRobotEpisode":
@@ -1626,7 +1626,7 @@ class LeRobotEpisode(BaseEpisode):
         """
         return pd.read_parquet(self._parquet_path)
 
-    def delete(self, update_hub: bool = True, repo_id: str | None = None) -> None:
+    def delete(self, update_hub: bool = True, repo_id: Optional[str] = None) -> None:
         """
         Remove files related to the episode. Note: this doesn't update the meta files from the dataset.
         Call Dataset.delete_episode to update the meta files.
@@ -3438,7 +3438,7 @@ class InfoModel(BaseModel):
     def from_json(
         cls,
         meta_folder_path: str,
-        fps: int | None = None,
+        fps: Optional[int] = None,
         codec: VideoCodecs | None = None,
         robots: List[BaseRobot] | None = None,
         target_size: tuple[int, int] | None = None,

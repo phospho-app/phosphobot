@@ -2,6 +2,7 @@ import os
 import platform
 import uuid
 from functools import wraps
+from typing import Optional
 
 from posthog import Posthog
 
@@ -107,7 +108,7 @@ def posthog_pageview(page: str) -> None:
     )
 
 
-def add_email_to_posthog(email: str | None) -> None:
+def add_email_to_posthog(email: Optional[str]) -> None:
     if posthog.disabled or not email:
         return
 

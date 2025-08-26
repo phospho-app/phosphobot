@@ -294,11 +294,18 @@ class RobotConnectionManager:
         robots_status = [robot.status() for robot in await self.robots]
         return [status for status in robots_status if status is not None]
 
-    async def add_connection(self, robot_name: str, connection_details: dict[str, Any]):
+    async def add_connection(
+        self, robot_name: str, connection_details: dict[str, Any]
+    ) -> tuple[int, BaseRobot]:
         """
         Manually add a connection to a robot using the robot type and connection details.
         Useful when detecting the robot is more complex than just a serial port.
         Eg: IP address, etc.
+
+        :param robot_name: Name of the robot to connect to.
+        :param connection_details: Dictionary containing connection details specific to the robot.
+
+        :return: Tuple containing the robot ID and the connected robot instance.
         """
         robot_class = robot_name_to_class.get(robot_name)
         if robot_class is None:
@@ -313,6 +320,8 @@ class RobotConnectionManager:
         logger.success(
             f"Connected to {robot.name} with robot_id {len(self._all_robots) - 1}."
         )
+        robot_id = len(self._all_robots) - 1
+        return robot_id, robot
 
     async def remove_connection(self, robot_id: int):
         """

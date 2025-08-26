@@ -249,7 +249,7 @@ def _find_cameras(
 
 # TODO: Handle multiple realsense cameras
 def detect_video_indexes(
-    max_index_search_range: int | None = None,
+    max_index_search_range: Optional[int] = None,
     mock: bool = False,
     camera_names: List[str] = [],
 ) -> list[int]:
@@ -316,7 +316,7 @@ class BaseCamera(ABC):
 
     @abstractmethod
     def get_rgb_frame(
-        self, resize: tuple[int, int] | None = None
+        self, resize: Optional[tuple[int, int]] = None
     ) -> Optional[cv2.typing.MatLike]:
         """Get the latest frame from the camera."""
         pass
@@ -332,8 +332,8 @@ class BaseCamera(ABC):
 
     def get_jpeg_rgb_frame(
         self,
-        target_size: tuple[int, int] | None,
-        quality: int | None,
+        target_size: Optional[tuple[int, int]],
+        quality: Optional[int],
         is_video_frame: bool = True,
     ) -> bytes | None:
         if is_video_frame:
@@ -356,7 +356,7 @@ class BaseCamera(ABC):
     async def generate_rgb_frames(
         self,
         target_size: tuple[int, int] | None,
-        quality: int | None,
+        quality: Optional[int],
         is_video_frame: bool = True,
         request: Request | None = None,
     ) -> AsyncGenerator:

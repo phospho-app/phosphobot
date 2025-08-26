@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Tuple
+from typing import Any, Callable, Dict, Literal, Tuple, Optional
 
 import cv2
 import zmq
@@ -407,7 +407,7 @@ class HuggingFaceModelConfig(BaseModel):
     # This will store the found embodiment config
     embodiment: EmbodimentConfig
     # This will store the original field name
-    embodiment_field_name: str | None = None
+    embodiment_field_name: Optional[str] = None
 
     class Config:
         extra = "allow"
@@ -707,13 +707,13 @@ class Gr00tN1(ActionModel):
         robots: list[BaseManipulator],
         model_spawn_config: Gr00tSpawnConfig,
         all_cameras: AllCameras,
-        prompt: str | None = None,
+        prompt: Optional[str] = None,
         fps: int = 30,
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
         unit: Literal["degrees", "rad", "other"] = "rad",
-        min_angle: float | None = None,
-        max_angle: float | None = None,
+        min_angle: Optional[float] = None,
+        max_angle: Optional[float] = None,
         **kwargs: Any,
     ):
         """
@@ -1085,7 +1085,7 @@ async def run_gr00t_training(
     save_steps: int,
     wandb_enabled: bool,
     validation_data_dir=None,
-    timeout_seconds: int | None = None,
+    timeout_seconds: Optional[int] = None,
     gr00t_repo_path: str = ".",
 ):
     cmd = [
@@ -1183,7 +1183,7 @@ class Gr00tTrainer(BaseTrainer):
     def __init__(self, config: Gr00tTrainerConfig):
         self.config = config
 
-    def train(self, timeout_seconds: int | None = None) -> None:
+    def train(self, timeout_seconds: Optional[int] = None) -> None:
         """
         You can pass a timeout in seconds to the training process.
         If the training process exceeds this time, it will be

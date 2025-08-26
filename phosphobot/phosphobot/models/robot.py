@@ -14,8 +14,8 @@ DEFAULT_FILE_ENCODING = "utf-8"
 
 
 class Temperature(BaseModel):
-    current: float | None
-    max: float | None
+    current: Optional[float]
+    max: Optional[float]
 
 
 class RobotConfigStatus(BaseModel):
@@ -25,7 +25,7 @@ class RobotConfigStatus(BaseModel):
 
     name: str
     robot_type: Literal["manipulator", "mobile", "other"] = "manipulator"
-    device_name: str | None
+    device_name: Optional[str]
     temperature: List[Temperature] | None = None
 
 
@@ -295,6 +295,6 @@ class RobotConfigResponse(BaseModel):
     robot_id: int
     name: str
     config: BaseRobotConfig | None
-    gripper_joint_index: int | None = None
+    gripper_joint_index: Optional[int] = None
     servo_ids: List[int] = Field(default_factory=lambda: list(range(1, 7)))
     resolution: int = 4096

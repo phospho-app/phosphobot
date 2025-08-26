@@ -62,7 +62,7 @@ class RobotStatus(BaseModel):
     This is sent by the robot to the app.
     """
 
-    is_object_gripped: bool | None = None
+    is_object_gripped: Optional[bool] = None
     is_object_gripped_source: Literal["left", "right"] | None = None
     nb_actions_received: int
 
@@ -96,22 +96,22 @@ class MoveAbsoluteRequest(BaseModel):
     that you get by calling /move/init.
     """
 
-    x: float | None = Field(None, description="X position in centimeters")
-    y: float | None = Field(None, description="Y position in centimeters")
-    z: float | None = Field(None, description="Z position in centimeters")
-    rx: float | None = Field(
+    x: Optional[float] = Field(None, description="X position in centimeters")
+    y: Optional[float] = Field(None, description="Y position in centimeters")
+    z: Optional[float] = Field(None, description="Z position in centimeters")
+    rx: Optional[float] = Field(
         None,
         description="Absolute Pitch in degrees. If None, inverse kinematics will be used to calculate the best position.",
     )
-    ry: float | None = Field(
+    ry: Optional[float] = Field(
         None,
         description="Absolute Yaw in degrees. If None, inverse kinematics will be used to calculate the best position.",
     )
-    rz: float | None = Field(
+    rz: Optional[float] = Field(
         None,
         description="Absolute Roll in degrees. If None, inverse kinematics will be used to calculate the best position.",
     )
-    open: float | None = Field(None, description="0 for closed, 1 for open")
+    open: Optional[float] = Field(None, description="0 for closed, 1 for open")
 
     max_trials: int = Field(
         10,
@@ -147,7 +147,7 @@ class AppControlData(BaseModel):
     source: Literal["left", "right"] = Field(
         "right", description="Which hand the data comes from. Can be left or right."
     )
-    timestamp: float | None = Field(
+    timestamp: Optional[float] = Field(
         None, description="Unix timestamp with milliseconds"
     )
     # For moving robots, we can have a direction vector.
@@ -230,13 +230,13 @@ class RelativeEndEffectorPosition(BaseModel):
     # Dataset are in RDLS format like the Bridge Data V2 dataset
     # See https://github.com/google-research/rlds for more information
 
-    x: float | None = Field(None, description="Delta X position in centimeters")
-    y: float | None = Field(None, description="Delta Y position in centimeters")
-    z: float | None = Field(None, description="Delta Z position in centimeters")
-    rx: float | None = Field(None, description="Relative Pitch in degrees")
-    ry: float | None = Field(None, description="Relative Yaw in degrees")
-    rz: float | None = Field(None, description="Relative Roll in degrees")
-    open: float | None = Field(
+    x: Optional[float] = Field(None, description="Delta X position in centimeters")
+    y: Optional[float] = Field(None, description="Delta Y position in centimeters")
+    z: Optional[float] = Field(None, description="Delta Z position in centimeters")
+    rx: Optional[float] = Field(None, description="Relative Pitch in degrees")
+    ry: Optional[float] = Field(None, description="Relative Yaw in degrees")
+    rz: Optional[float] = Field(None, description="Relative Roll in degrees")
+    open: Optional[float] = Field(
         None, description="0 for closed, 1 for open. If None, use the last value."
     )
 
@@ -343,7 +343,7 @@ class JointsReadResponse(BaseModel):
     Response to read the joints of the robot.
     """
 
-    angles: List[float | None] = Field(
+    angles: List[Optional[float]] = Field(
         ...,
         description="A list of length 6, with the position of each joint in the unit specified in the request. If a joint is not available, its value will be None.",
     )
@@ -403,9 +403,9 @@ class InfoResponse(BaseModel):
     """
 
     status: Literal["ok", "error"] = "ok"
-    robot_type: str | None = None
-    robot_dof: int | None = None
-    number_of_episodes: int | None = None
+    robot_type: Optional[str] = None
+    robot_dof: Optional[int] = None
+    number_of_episodes: Optional[int] = None
     image_keys: List[str] | None = None
     image_frames: Dict[str, str] | None = None
 
@@ -418,7 +418,7 @@ class StatusResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     status: Literal["ok", "error"] = "ok"
-    message: str | None = None
+    message: Optional[str] = None
 
 
 class TrainingInfoRequest(BaseModel):
@@ -428,7 +428,7 @@ class TrainingInfoRequest(BaseModel):
 
 class TrainingInfoResponse(BaseModel):
     status: Literal["ok", "error"]
-    message: str | None = None
+    message: Optional[str] = None
     training_body: dict | None = None
 
 
@@ -508,7 +508,7 @@ class RecordingStartRequest(BaseModel):
     Request to start the recording of an episode.
     """
 
-    dataset_name: str | None = Field(
+    dataset_name: Optional[str] = Field(
         None,
         description="Name of the dataset to save the episode in."
         + "If None, defaults to the value set in Admin Configuration.",
@@ -526,13 +526,13 @@ class RecordingStartRequest(BaseModel):
         + "If None, defaults to the value set in Admin Configuration.",
         examples=["avc1"],
     )
-    freq: int | None = Field(
+    freq: Optional[int] = Field(
         None,
         description="Records steps of the robot at this frequency."
         + "If None, defaults to the value set in Admin Configuration.",
         examples=[30],
     )
-    branch_path: str | None = Field(
+    branch_path: Optional[str] = Field(
         None,
         description="Path to the branch to push the dataset to, in addition to the main branch. If set to None, only push to the main branch. Defaults to None.",
     )
@@ -546,7 +546,7 @@ class RecordingStartRequest(BaseModel):
         description="List of camera ids to record. If set to None, records all available cameras.",
         examples=[[0, 1]],
     )
-    instruction: str | None = Field(
+    instruction: Optional[str] = Field(
         None,
         description="A text describing the recorded task. If set to None, defaults to the value set in Admin Configuration.",
         examples=["Pick up the orange brick and put it in the black box."],
@@ -578,11 +578,11 @@ class RecordingStopResponse(BaseModel):
     Response when the recording is stopped. The episode is saved in the given path.
     """
 
-    episode_folder_path: str | None = Field(
+    episode_folder_path: Optional[str] = Field(
         ...,
         description="Path to the folder where the episode is saved.",
     )
-    episode_index: int | None = Field(
+    episode_index: Optional[int] = Field(
         ...,
         description="Index of the recorded episode in the dataset.",
     )
@@ -597,18 +597,18 @@ class RecordingPlayRequest(BaseModel):
         "lerobot_v2.1",
         description="Format of the dataset to play. This is used to determine how to read the episode data.",
     )
-    dataset_name: str | None = Field(
+    dataset_name: Optional[str] = Field(
         None,
         description="Name of the dataset to play the episode from. If None, defaults to the last dataset recorded.",
         examples=["example_dataset"],
     )
-    episode_id: int | None = Field(
+    episode_id: Optional[int] = Field(
         None,
         description="ID of the episode to play. If a dataset_name is specified but episode_id is None, plays the last episode recorded of this dataset. "
         + "If dataset_name is None, this is ignored and plays the last episode recorded.",
         examples=[0],
     )
-    episode_path: str | None = Field(
+    episode_path: Optional[str] = Field(
         None,
         description="(Optional) If you recorded your data with LeRobot v2 compatible format, you can directly specifiy the path to the .parquet file of the episode to play. If specified, you don't have to pass a dataset_name or episode_id.",
         examples=[
@@ -857,7 +857,9 @@ class StartAIControlRequest(BaseModel):
     Request to start the AI control of the robot.
     """
 
-    prompt: str | None = Field(None, description="Prompt to be followed by the robot")
+    prompt: Optional[str] = Field(
+        None, description="Prompt to be followed by the robot"
+    )
     model_id: str = Field(..., description="Hugging Face model id to use")
     speed: float = Field(
         1.0,
@@ -888,7 +890,7 @@ class StartAIControlRequest(BaseModel):
         True,
         description="Whether to verify the setup before starting the AI control. If False, skips the verification step.",
     )
-    checkpoint: int | None = Field(
+    checkpoint: Optional[int] = Field(
         None,
         description="Checkpoint to use for the model. If None, uses the latest checkpoint.",
         examples=[500],
@@ -898,11 +900,11 @@ class StartAIControlRequest(BaseModel):
         description="Format of the angles used in the model. Can be 'degrees', 'radians', or 'other'. If other is selected, you will need to specify a min and max angle value.",
         examples=["rad"],
     )
-    min_angle: float | None = Field(
+    min_angle: Optional[float] = Field(
         None,
         description="If angle_format is 'other', this is the minimum angle value used in the model. If None and angle_format is 'other', will raise an error.",
     )
-    max_angle: float | None = Field(
+    max_angle: Optional[float] = Field(
         None,
         description="If angle_format is 'other', this is the maximum angle value used in the model. If None and angle_format is 'other', will raise an error.",
     )
@@ -932,7 +934,7 @@ class AIStatusResponse(BaseModel):
     status: Literal["stopped", "running", "paused", "waiting"] = Field(
         ..., description="Status of the AI control"
     )
-    id: str | None = Field(..., description="ID of the AI control session.")
+    id: Optional[str] = Field(..., description="ID of the AI control session.")
 
 
 class TorqueControlRequest(BaseModel):
@@ -1004,13 +1006,13 @@ class SessionReponse(BaseModel):
 
     message: str
     session: Session | None = None
-    is_pro_user: bool | None = None
+    is_pro_user: Optional[bool] = None
 
 
 class AuthResponse(BaseModel):
     authenticated: bool
     session: Session | None = None
-    is_pro_user: bool | None = None
+    is_pro_user: Optional[bool] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -1031,8 +1033,10 @@ class RobotPairRequest(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    leader_id: int | None = Field(..., description="Serial number of the leader robot")
-    follower_id: int | None = Field(
+    leader_id: Optional[int] = Field(
+        ..., description="Serial number of the leader robot"
+    )
+    follower_id: Optional[int] = Field(
         ..., description="Serial number of the follower robot"
     )
 
@@ -1070,14 +1074,14 @@ class SupabaseTrainingModel(BaseModel):
     dataset_name: str
     model_name: str
     requested_at: str
-    terminated_at: str | None
-    used_wandb: bool | None
+    terminated_at: Optional[str]
+    used_wandb: Optional[bool]
     model_type: str
     training_params: dict | None = None
-    modal_function_call_id: str | None = None
+    modal_function_call_id: Optional[str] = None
     # Metrics
     session_count: int = 0
-    success_rate: float | None = None
+    success_rate: Optional[float] = None
 
 
 class TrainingsList(BaseModel):
@@ -1090,7 +1094,7 @@ class UDPServerInformationResponse(BaseModel):
 
 
 class StartTrainingResponse(StatusResponse):
-    training_id: int | None = Field(
+    training_id: Optional[int] = Field(
         ...,
         description="ID of the training to start. This is the ID returned by the training request.",
     )
@@ -1112,7 +1116,7 @@ class ScanNetworkRequest(BaseModel):
     Request to scan the network for devices.
     """
 
-    robot_name: str | None = Field(
+    robot_name: Optional[str] = Field(
         None,
         description="Name of the robot to scan for. If None, scans for all devices on the network.",
     )
@@ -1127,7 +1131,7 @@ class ScanNetworkResponse(BaseModel):
         ...,
         description="List of devices found on the network.",
     )
-    subnet: str | None = Field(
+    subnet: Optional[str] = Field(
         ...,
         description="Subnet of the network.",
         examples=["192.168.1.1/24"],
@@ -1137,9 +1141,9 @@ class ScanNetworkResponse(BaseModel):
 class LocalDevice(BaseModel):
     name: str
     device: str
-    serial_number: str | None = None
-    pid: int | None = None
-    interface: str | None = None
+    serial_number: Optional[str] = None
+    pid: Optional[int] = None
+    interface: Optional[str] = None
 
 
 class ScanDevicesResponse(BaseModel):
@@ -1180,7 +1184,7 @@ class AddZMQCameraRequest(BaseModel):
         + "Format: 'tcp://<host>:<port>'.",
         examples=["tcp://localhost:5555"],
     )
-    topic: str | None = Field(
+    topic: Optional[str] = Field(
         None,
         description="Topic to subscribe to. If None, will subscribes to all messages on the given TCP address.",
         examples=["camera", "wrist_camera"],

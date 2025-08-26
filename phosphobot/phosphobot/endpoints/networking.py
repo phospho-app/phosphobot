@@ -1,6 +1,7 @@
 import asyncio
 import os
 import subprocess
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from loguru import logger
@@ -186,7 +187,7 @@ async def switch_to_network(
 
 @router.post("/network/scan-devices", response_model=ScanNetworkResponse)
 async def list_local_network_ips(
-    query: ScanNetworkRequest | None = None,
+    query: Optional[ScanNetworkRequest] = None,
 ) -> ScanNetworkResponse:
     """
     Endpoint to list all IP addresses on the local network.

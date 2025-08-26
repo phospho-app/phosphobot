@@ -31,19 +31,19 @@ router = APIRouter(tags=["camera"])
 )
 def video_feed_for_camera(
     request: Request,
-    camera_id: int | None,
-    height: int | None = None,
-    width: int | None = None,
-    quality: int | None = None,
+    camera_id: Optional[int],
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+    quality: Optional[int] = None,
     cameras: AllCameras = Depends(get_all_cameras),
 ):
     """
     Stream video feed of the specified camera.
 
     Parameters:
-    - camera_id (int | None): ID of the camera to stream. If None, the default camera is used.
+    - camera_id (Optional[int]): ID of the camera to stream. If None, the default camera is used.
     - target_size (tuple[int, int] | None): Target size of the video feed. Default is None.
-    - quality (int | None): Quality of the video feed. Default is None.
+    - quality (Optional[int]): Quality of the video feed. Default is None.
     """
 
     if width is None or height is None:

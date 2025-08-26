@@ -205,7 +205,7 @@ class SO100Hardware(BaseManipulator):
             logger.error("Too many communication errors. Disconnecting robot.")
             self.disconnect()
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> int | None:
+    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
         """
         Read the position of a Feetech servo.
         """
@@ -289,7 +289,7 @@ class SO100Hardware(BaseManipulator):
             return np.ones(6) * np.nan
         return motor_positions
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> float | None:
+    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
         """
         Read the torque of a Feetech servo.
         """
@@ -307,7 +307,7 @@ class SO100Hardware(BaseManipulator):
             self.update_motor_errors()
             return None
 
-    def read_motor_voltage(self, servo_id: int, **kwargs) -> float | None:
+    def read_motor_voltage(self, servo_id: int, **kwargs) -> Optional[float]:
         """
         Read the voltage of a Feetech servo.
         """

@@ -2,7 +2,7 @@ import asyncio
 import json
 import traceback
 from copy import copy
-from typing import cast
+from typing import cast, Optional
 
 import httpx
 import json_numpy  # type: ignore
@@ -86,7 +86,7 @@ signal_vr_control = ControlSignal()
     description="Initialize the robot to its initial position before starting the teleoperation.",
 )
 async def move_init(
-    robot_id: int | None = None,
+    robot_id: Optional[int] = None,
     teleop_manager: TeleopManager = Depends(get_teleop_manager),
 ):
     """
@@ -104,7 +104,7 @@ async def move_init(
 )
 async def move_teleop_post(
     control_data: AppControlData,
-    robot_id: int | None = None,
+    robot_id: Optional[int] = None,
     teleop_manager: TeleopManager = Depends(get_teleop_manager),
 ) -> StatusResponse:
     teleop_manager.robot_id = robot_id
@@ -639,7 +639,7 @@ async def read_torque(
 )
 async def toggle_torque(
     request: TorqueControlRequest,
-    robot_id: int | None = None,
+    robot_id: Optional[int] = None,
     rcm: RobotConnectionManager = Depends(get_rcm),
 ) -> StatusResponse:
     """
@@ -1258,12 +1258,14 @@ async def add_robot_connection(
     Useful for adding robot that are accessible only via WiFi, for example.
     """
     try:
-        await rcm.add_connection(
+        robot_id, robot = await rcm.add_connection(
             robot_name=query.robot_name,
             connection_details=query.connection_details,
         )
         return StatusResponse(
-            status="ok", message=f"Robot connection to {query.robot_name} added"
+            status="ok",
+            message=f"Robot connection to {query.robot_name} added",
+            robot_id=robot_id,
         )
     except Exception as e:
         logger.error(f"Failed to add robot connection: {e}\n{traceback.format_exc()}")

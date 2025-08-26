@@ -424,8 +424,8 @@ class ACT(ActionModel):
         prompt: Optional[str] = None,
         selected_camera_id: Optional[int] = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",
-        min_angle: float | None = None,
-        max_angle: float | None = None,
+        min_angle: Optional[float] = None,
+        max_angle: Optional[float] = None,
         **kwargs,
     ):
         """
