@@ -487,7 +487,7 @@ async def end_effector_read(
     """
     robot = await rcm.get_robot(robot_id)
     if query is None:
-        query = EndEffectorReadRequest(sync=False)
+        query = EndEffectorReadRequest(only_gripper=False, sync=False)
 
     if not isinstance(robot, BaseManipulator):
         raise HTTPException(
