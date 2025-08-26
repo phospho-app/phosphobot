@@ -3,6 +3,7 @@ import { LoadingPage } from "@/components/common/loading";
 import { SpeedSelect } from "@/components/common/speed-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -130,51 +131,50 @@ export function KeyboardControl() {
     }
   };
 
-  // Effect for handling keyboard inputs
+  // Effect for handling keyboard inputs and preventing page scroll
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) return;
-      setActiveKey(event.key);
-      const keyLower = event.key.toLowerCase();
+      // 1. Prevent page scrolling from control keys when active
+      if (
+        isMoving &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(
+          event.key,
+        )
+      ) {
+        event.preventDefault();
+      }
 
-      const isSpace = event.key === " ";
-      if (isSpace) {
-        // UX Feature: If gripper is not fully open, a single press will fully open it.
-        if (openStateRef.current < 0.99) {
+      // 2. Gate all robot control inputs on the isMoving state
+      if (!isMoving || event.repeat) return;
+
+      const key = event.key;
+      const keyLower = key.toLowerCase();
+
+      // Check if the key is a recognized control key
+      if (KEY_MAPPINGS[key] || KEY_MAPPINGS[keyLower]) {
+        setActiveKey(key);
+        keysPressedRef.current.add(KEY_MAPPINGS[key] ? key : keyLower);
+
+        // UX Feature for Spacebar: If gripper is not fully open, a single press will fully open it.
+        if (key === " " && openStateRef.current < 0.99) {
           openStateRef.current = 1;
-          // Send an immediate command to ensure responsiveness
           const data = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, open: 1 };
           postData(BASE_URL + "move/relative", data, {
             robot_id: robotIDFromName(selectedRobotName),
           });
-          // Consume this keydown; don't add " " to keysPressedRef.
-          return;
+          // Consume this press; don't add to keysPressedRef to avoid immediate closing.
+          keysPressedRef.current.delete(" ");
         }
-        keysPressedRef.current.add(" ");
-        return;
-      }
-
-      if (KEY_MAPPINGS[keyLower]) {
-        keysPressedRef.current.add(keyLower);
-      } else if (KEY_MAPPINGS[event.key]) {
-        keysPressedRef.current.add(event.key);
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
+      // Always clear keys on keyup to prevent "stuck" keys
       setActiveKey(null);
-      const keyLower = event.key.toLowerCase();
-
-      if (event.key === " ") {
-        keysPressedRef.current.delete(" ");
-        return;
-      }
-
-      if (KEY_MAPPINGS[keyLower]) {
-        keysPressedRef.current.delete(keyLower);
-      } else if (KEY_MAPPINGS[event.key]) {
-        keysPressedRef.current.delete(event.key);
-      }
+      const key = event.key;
+      const keyLower = key.toLowerCase();
+      keysPressedRef.current.delete(key);
+      keysPressedRef.current.delete(keyLower);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -183,7 +183,7 @@ export function KeyboardControl() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedRobotName, serverStatus]);
+  }, [isMoving, selectedRobotName, serverStatus]);
 
   // Effect for setting the default selected robot
   useEffect(() => {
@@ -197,20 +197,26 @@ export function KeyboardControl() {
     }
   }, [serverStatus, selectedRobotName]);
 
-  // The main, always-on control loop
+  // The main control loop
   useEffect(() => {
     const controlRobot = () => {
       const currentTime = Date.now();
       const deltaT_ms = currentTime - lastExecutionTimeRef.current;
 
       if (deltaT_ms < DEBOUNCE_INTERVAL) {
-        return; // Throttle command sending to avoid overwhelming the server
+        return; // Throttle command sending
+      }
+
+      // **FIX**: Only run control logic if isMoving is true.
+      if (!isMoving) {
+        lastExecutionTimeRef.current = currentTime; // Update time to prevent a large jump on start
+        return;
       }
 
       const lastOpenState = openStateRef.current;
       let openStateChanged = false;
 
-      // --- 1. Gripper State Calculation (Always Active) ---
+      // --- 1. Gripper State Calculation ---
       const gripperChangePerMs = (1.0 / FULL_TRANSITION_MS) * selectedSpeed;
       const gripperChangeAmount = gripperChangePerMs * deltaT_ms;
 
@@ -219,13 +225,13 @@ export function KeyboardControl() {
       } else {
         openStateRef.current += gripperChangeAmount; // Open gripper
       }
-      openStateRef.current = Math.max(0, Math.min(1, openStateRef.current)); // Clamp to [0, 1]
+      openStateRef.current = Math.max(0, Math.min(1, openStateRef.current)); // Clamp
 
       if (Math.abs(openStateRef.current - lastOpenState) > 0.001) {
         openStateChanged = true;
       }
 
-      // --- 2. Robot Movement Calculation (Active only if `isMoving`) ---
+      // --- 2. Robot Movement Calculation ---
       let deltaX = 0,
         deltaY = 0,
         deltaZ = 0,
@@ -234,28 +240,26 @@ export function KeyboardControl() {
         deltaRY = 0;
       let hasMovement = false;
 
-      if (isMoving) {
-        keysPressedRef.current.forEach((key) => {
-          const move = KEY_MAPPINGS[key];
-          if (move && key !== " ") {
-            deltaX += move.x;
-            deltaY += move.y;
-            deltaZ += move.z;
-            deltaRZ += move.rz;
-            deltaRX += move.rx;
-            deltaRY += move.ry;
-          }
-        });
-
-        if (deltaX || deltaY || deltaZ || deltaRZ || deltaRX || deltaRY) {
-          hasMovement = true;
-          deltaX *= selectedSpeed;
-          deltaY *= selectedSpeed;
-          deltaZ *= selectedSpeed;
-          deltaRX *= selectedSpeed;
-          deltaRY *= selectedSpeed;
-          deltaRZ *= selectedSpeed;
+      keysPressedRef.current.forEach((key) => {
+        const move = KEY_MAPPINGS[key.toLowerCase()] || KEY_MAPPINGS[key];
+        if (move && key !== " ") {
+          deltaX += move.x;
+          deltaY += move.y;
+          deltaZ += move.z;
+          deltaRZ += move.rz;
+          deltaRX += move.rx;
+          deltaRY += move.ry;
         }
+      });
+
+      if (deltaX || deltaY || deltaZ || deltaRZ || deltaRX || deltaRY) {
+        hasMovement = true;
+        deltaX *= selectedSpeed;
+        deltaY *= selectedSpeed;
+        deltaZ *= selectedSpeed;
+        deltaRX *= selectedSpeed;
+        deltaRY *= selectedSpeed;
+        deltaRZ *= selectedSpeed;
       }
 
       // --- 3. Send Command if Needed ---
@@ -286,11 +290,18 @@ export function KeyboardControl() {
     };
   }, [isMoving, selectedSpeed, serverStatus, selectedRobotName]);
 
-  // UI button handlers for space (mouse/touch)
-  const startSpacePressFromUI = (e?: React.MouseEvent | React.TouchEvent) => {
+  const startKeyPressFromUI = (
+    key: string,
+    e?: React.MouseEvent | React.TouchEvent,
+  ) => {
     e?.preventDefault();
-    // Same UX as keyboard: single press on a non-open gripper opens it.
-    if (openStateRef.current < 0.99) {
+    if (!isMoving) return;
+
+    setActiveKey(key);
+    const keyLower = key.toLowerCase();
+    const effectiveKey = KEY_MAPPINGS[key] ? key : keyLower;
+
+    if (key === " " && openStateRef.current < 0.99) {
       openStateRef.current = 1;
       const data = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, open: 1 };
       postData(BASE_URL + "move/relative", data, {
@@ -298,13 +309,15 @@ export function KeyboardControl() {
       });
       return;
     }
-    keysPressedRef.current.add(" ");
-    setActiveKey(" ");
+
+    keysPressedRef.current.add(effectiveKey);
   };
 
-  const endSpacePressFromUI = () => {
-    keysPressedRef.current.delete(" ");
+  const endKeyPressFromUI = (key: string) => {
     setActiveKey(null);
+    const keyLower = key.toLowerCase();
+    keysPressedRef.current.delete(key);
+    keysPressedRef.current.delete(keyLower);
   };
 
   const initRobot = async () => {
@@ -332,64 +345,67 @@ export function KeyboardControl() {
 
   const stopMoving = async () => {
     setIsMoving(false);
+    // **FIX**: Clear any held keys to prevent them from being "stuck"
+    keysPressedRef.current.clear();
+    setActiveKey(null);
   };
 
   const controls = [
     {
       key: "ArrowUp",
       description: "Move in the positive X direction",
-      icon: <ArrowUp className="size-6" />,
+      icon: <ArrowUp className="size-5" />,
     },
     {
       key: "ArrowDown",
       description: "Move in the negative X direction",
-      icon: <ArrowDown className="size-6" />,
+      icon: <ArrowDown className="size-5" />,
     },
     {
       key: "ArrowLeft",
       description: "Rotate Z counter-clockwise (yaw)",
-      icon: <ArrowLeft className="size-6" />,
+      icon: <ArrowLeft className="size-5" />,
     },
     {
       key: "ArrowRight",
       description: "Rotate Z clockwise (yaw)",
-      icon: <ArrowRight className="size-6" />,
+      icon: <ArrowRight className="size-5" />,
     },
     {
       key: "F",
       description: "Increase Z (move up)",
-      icon: <ChevronUp className="size-6" />,
+      icon: <ChevronUp className="size-5" />,
     },
     {
       key: "V",
       description: "Decrease Z (move down)",
-      icon: <ChevronDown className="size-6" />,
+      icon: <ChevronDown className="size-5" />,
     },
     {
       key: "D",
       description: "Wrist pitch up",
-      icon: <ArrowUpFromLine className="size-6" />,
+      icon: <ArrowUpFromLine className="size-5" />,
     },
     {
       key: "G",
       description: "Wrist pitch down",
-      icon: <ArrowDownFromLine className="size-6" />,
+      icon: <ArrowDownFromLine className="size-5" />,
     },
     {
       key: "B",
       description: "Wrist roll clockwise",
-      icon: <RotateCw className="size-6" />,
+      icon: <RotateCw className="size-5" />,
     },
     {
       key: "C",
       description: "Wrist roll counter-clockwise",
-      icon: <RotateCcw className="size-6" />,
+      icon: <RotateCcw className="size-5" />,
     },
     {
       key: " ",
       description:
         "Hold to close gripper, release to open. Press once to fully open.",
-      icon: <Space className="size-6" />,
+      icon: <Space className="size-5" />,
     },
   ];
 
@@ -397,139 +413,113 @@ export function KeyboardControl() {
   if (!serverStatus) return <LoadingPage />;
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
-      <Card>
-        <CardContent className="pt-6">
-          <figure className="flex flex-col items-center">
-            <img
-              src={controlschema}
-              alt="Robot Control Schema"
-              className="w-full max-w-md rounded-md shadow"
-            />
-            <figcaption className="text-sm text-muted-foreground text-center mt-2">
-              Press the key to move the robot in the corresponding direction
-            </figcaption>
-          </figure>
-          <div className="flex items-center justify-center mt-6 gap-x-2 flex-wrap">
-            <Select
-              value={selectedRobotName || ""}
-              onValueChange={(value) => setSelectedRobotName(value)}
-              disabled={isMoving}
-            >
-              <SelectTrigger id="follower-robot" className="min-w-[200px]">
-                <SelectValue placeholder="Select robot to move" />
-              </SelectTrigger>
-              <SelectContent>
-                {serverStatus.robot_status.map((robot) => (
-                  <SelectItem
-                    key={robot.device_name}
-                    value={robot.device_name || "Undefined port"}
+    <div className="container mx-auto px-4 py-6 lg:flex lg:flex-row lg:gap-8 space-y-8 lg:space-y-0">
+      <div className="md:w-1/2 space-y-6">
+        <Card>
+          <CardContent className="pt-6 flex flex-col items-center gap-4">
+            <div className="flex flex-wrap items-end justify-center gap-2">
+              <div className="flex flex-col gap-y-2">
+                <Label>Select Robot to Control</Label>
+                <Select
+                  value={selectedRobotName || ""}
+                  onValueChange={(value) => setSelectedRobotName(value)}
+                  disabled={isMoving}
+                >
+                  <SelectTrigger
+                    id="follower-robot"
+                    className="max-w-xs truncate"
                   >
-                    {robot.name} ({robot.device_name})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isMoving ? (
-              <Button variant="destructive" onClick={stopMoving}>
-                <Square className="mr-2 h-4 w-4" />
-                Stop the Robot
-              </Button>
-            ) : (
+                    <SelectValue placeholder="Select robot to move" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serverStatus.robot_status.map((robot) => (
+                      <SelectItem
+                        key={robot.device_name}
+                        value={robot.device_name || "Undefined port"}
+                      >
+                        <span className="truncate">
+                          {robot.name} ({robot.device_name})
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <SpeedSelect
+                defaultValue={selectedSpeed}
+                onChange={(newSpeed) => setSelectedSpeed(newSpeed)}
+                title="Movement speed"
+                minSpeed={0.1}
+                maxSpeed={2.0}
+                step={0.1}
+              />
+            </div>
+            <div className="flex justify-center items-center gap-4">
               <Button
                 variant="default"
                 onClick={startMoving}
-                disabled={!selectedRobotName}
+                disabled={!selectedRobotName || isMoving}
               >
                 <Play className="mr-2 h-4 w-4" />
-                Start Moving Robot
+                {isMoving ? "Controlling..." : "Start Keyboard Control"}
               </Button>
-            )}
-            <SpeedSelect
-              defaultValue={selectedSpeed}
-              onChange={(newSpeed) => setSelectedSpeed(newSpeed)}
-              title="Movement speed"
-              minSpeed={0.1}
-              maxSpeed={2.0}
-              step={0.1}
-            />
-          </div>
-        </CardContent>
-      </Card>
+              <Button
+                variant="destructive"
+                onClick={stopMoving}
+                disabled={!isMoving}
+              >
+                <Square className="mr-2 h-4 w-4" />
+                Stop
+              </Button>
+            </div>
+            <figure className="flex flex-col items-center">
+              <img
+                src={controlschema}
+                alt="Robot Control Schema"
+                className="w-full max-w-md rounded-md shadow"
+              />
+              <figcaption className="text-sm text-muted-foreground text-center mt-2">
+                Press a key or click a button to move the robot.
+              </figcaption>
+            </figure>
+          </CardContent>
+        </Card>
+      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-        {controls.map((control) => (
-          <TooltipProvider key={control.key}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card
-                  className={`flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-accent transition-colors ${
-                    activeKey === control.key
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-card"
-                  }`}
-                  onMouseDown={
-                    control.key === " "
-                      ? (e) => startSpacePressFromUI(e)
-                      : undefined
-                  }
-                  onTouchStart={
-                    control.key === " "
-                      ? (e) => startSpacePressFromUI(e)
-                      : undefined
-                  }
-                  onMouseUp={
-                    control.key === " " ? endSpacePressFromUI : undefined
-                  }
-                  onMouseLeave={
-                    control.key === " " ? endSpacePressFromUI : undefined
-                  }
-                  onTouchEnd={
-                    control.key === " " ? endSpacePressFromUI : undefined
-                  }
-                  onTouchCancel={
-                    control.key === " " ? endSpacePressFromUI : undefined
-                  }
-                  onClick={() => {
-                    // Clicks on spacebar are handled by press/release events above
-                    if (control.key === " ") return;
-
-                    if (!isMoving) {
-                      // For non-spacebar clicks, simulate a quick key press
-                      const move =
-                        KEY_MAPPINGS[control.key.toLowerCase()] ||
-                        KEY_MAPPINGS[control.key];
-                      if (move) {
-                        const data = {
-                          x: move.x * selectedSpeed,
-                          y: move.y * selectedSpeed,
-                          z: move.z * selectedSpeed,
-                          rx: move.rx * selectedSpeed,
-                          ry: move.ry * selectedSpeed,
-                          rz: move.rz * selectedSpeed,
-                          open: openStateRef.current,
-                        };
-                        postData(BASE_URL + "move/relative", data, {
-                          robot_id: robotIDFromName(selectedRobotName),
-                        });
-                      }
-                      setActiveKey(control.key);
-                      setTimeout(() => setActiveKey(null), 200);
-                    }
-                  }}
-                >
-                  {control.icon}
-                  <span className="mt-2 font-bold">
-                    {control.key === " " ? "SPACE" : control.key.toUpperCase()}
-                  </span>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{control.description}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ))}
+      <div className="md:w-1/2">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {controls.map((control) => (
+            <TooltipProvider key={control.key}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Card
+                    className={`flex flex-col items-center justify-center p-3 cursor-pointer select-none hover:bg-accent transition-colors ${
+                      activeKey === control.key
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card"
+                    }`}
+                    onMouseDown={(e) => startKeyPressFromUI(control.key, e)}
+                    onTouchStart={(e) => startKeyPressFromUI(control.key, e)}
+                    onMouseUp={() => endKeyPressFromUI(control.key)}
+                    onMouseLeave={() => endKeyPressFromUI(control.key)}
+                    onTouchEnd={() => endKeyPressFromUI(control.key)}
+                    onTouchCancel={() => endKeyPressFromUI(control.key)}
+                  >
+                    {control.icon}
+                    <span className="mt-2 text-sm font-bold">
+                      {control.key === " "
+                        ? "SPACE"
+                        : control.key.toUpperCase()}
+                    </span>
+                  </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{control.description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
+        </div>
       </div>
     </div>
   );
