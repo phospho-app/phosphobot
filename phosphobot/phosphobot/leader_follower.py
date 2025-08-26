@@ -7,13 +7,19 @@ import numpy as np
 from loguru import logger
 
 from phosphobot.control_signal import ControlSignal
-from phosphobot.hardware import SO100Hardware, PiperHardware, RemotePhosphobot, get_sim
+from phosphobot.hardware import (
+    SO100Hardware,
+    PiperHardware,
+    RemotePhosphobot,
+    get_sim,
+    URDFLoader,
+)
 
 
 @dataclass
 class RobotPair:
     leader: SO100Hardware | PiperHardware | RemotePhosphobot
-    follower: SO100Hardware | PiperHardware | RemotePhosphobot
+    follower: SO100Hardware | PiperHardware | RemotePhosphobot | URDFLoader
 
 
 async def leader_follower_loop(
@@ -56,12 +62,13 @@ async def leader_follower_loop(
         follower.enable_torque()
         if not enable_gravity_compensation:
             leader.disable_torque()
-            if isinstance(follower, SO100Hardware):
-                p_gains = [12, 12, 12, 12, 12, 12]
-                d_gains = [32, 32, 32, 32, 32, 32]
-                default_p_gains = [12, 20, 20, 20, 20, 20]
-                default_d_gains = [36, 36, 36, 32, 32, 32]
 
+            p_gains = [12, 12, 12, 12, 12, 12]
+            d_gains = [32, 32, 32, 32, 32, 32]
+            default_p_gains = [12, 20, 20, 20, 20, 20]
+            default_d_gains = [36, 36, 36, 32, 32, 32]
+
+            if isinstance(follower, SO100Hardware):
                 for i in range(6):
                     follower._set_pid_gains_motors(
                         servo_id=i + 1,
@@ -71,12 +78,12 @@ async def leader_follower_loop(
                     )
                     await asyncio.sleep(0.05)
         else:
-            assert isinstance(
-                leader, SO100Hardware
-            ), "Gravity compensation is only supported for SO100Hardware."
-            assert isinstance(
-                follower, SO100Hardware
-            ), "Gravity compensation is only supported for SO100Hardware."
+            assert isinstance(leader, SO100Hardware), (
+                "Gravity compensation is only supported for SO100Hardware."
+            )
+            assert isinstance(follower, SO100Hardware), (
+                "Gravity compensation is only supported for SO100Hardware."
+            )
             leader_current_voltage = leader.current_voltage()
             if (
                 leader_current_voltage is None
@@ -114,7 +121,8 @@ async def leader_follower_loop(
                     d_gain=d_gains[i],
                 )
                 await asyncio.sleep(0.05)
-
+    # We display a warning only once if the leader has more joints than the follower
+    warning_dropping_joints_displayed = False
     # Main control loop
     while control_signal.is_in_loop():
         start_time = time.perf_counter()
@@ -140,23 +148,35 @@ async def leader_follower_loop(
                 # Simple leader-follower control: follower mirrors leader's position
                 if invert_controls:
                     pos_rad[0] = -pos_rad[0]
+
+                if len(pos_rad) > len(follower.SERVO_IDS):
+                    if not warning_dropping_joints_displayed:
+                        logger.warning(
+                            f"Leader joint positions have more joints than the follower ({len(pos_rad)} > {len(follower.SERVO_IDS)}). "
+                            "Dropping extra joints."
+                        )
+                        # Display the warning only once
+                        warning_dropping_joints_displayed = True
+                    # We drop the extra joints
+                    pos_rad = pos_rad[: len(follower.SERVO_IDS)]
+
                 follower.set_motors_positions(
                     q_target_rad=pos_rad, enable_gripper=False
                 )
                 # Get the leader gripper position and set it to the follower
                 follower.control_gripper(
                     open_command=leader._rad_to_open_command(
-                        pos_rad[leader.GRIPPER_JOINT_INDEX]
+                        pos_rad[min(leader.GRIPPER_JOINT_INDEX, len(pos_rad) - 1)]
                     )
                 )
 
             else:
-                assert isinstance(
-                    leader, SO100Hardware
-                ), "Gravity compensation is only supported for SO100Hardware."
-                assert isinstance(
-                    follower, SO100Hardware
-                ), "Gravity compensation is only supported for SO100Hardware."
+                assert isinstance(leader, SO100Hardware), (
+                    "Gravity compensation is only supported for SO100Hardware."
+                )
+                assert isinstance(follower, SO100Hardware), (
+                    "Gravity compensation is only supported for SO100Hardware."
+                )
                 # Calculate gravity compensation torque
                 # Update PyBullet simulation for gravity calculation
                 for i, idx in enumerate(joint_indices):
@@ -190,13 +210,27 @@ async def leader_follower_loop(
                 leader.write_joint_positions(theta_des_rad, unit="rad")
                 if invert_controls:
                     theta_des_rad[0] = -theta_des_rad[0]
+
+                if len(pos_rad) > len(follower.SERVO_IDS):
+                    if not warning_dropping_joints_displayed:
+                        logger.warning(
+                            f"Leader joint positions have more joints than the follower ({len(pos_rad)} > {len(follower.SERVO_IDS)}). "
+                            "Dropping extra joints."
+                        )
+                        # Display the warning only once
+                        warning_dropping_joints_displayed = True
+                    # We drop the extra joints
+                    theta_des_rad = theta_des_rad[: len(follower.SERVO_IDS)]
+
                 follower.set_motors_positions(
                     q_target_rad=theta_des_rad, enable_gripper=False
                 )
                 # Get the leader gripper position and set it to the follower
                 follower.control_gripper(
                     open_command=leader._rad_to_open_command(
-                        theta_des_rad[leader.GRIPPER_JOINT_INDEX]
+                        theta_des_rad[
+                            min(leader.GRIPPER_JOINT_INDEX, len(theta_des_rad) - 1)
+                        ]
                     )
                 )
 
