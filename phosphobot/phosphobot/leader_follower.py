@@ -1,6 +1,7 @@
 import asyncio
 import time
 from dataclasses import dataclass
+from typing import Dict, Optional
 
 import numpy as np
 from loguru import logger
@@ -20,7 +21,7 @@ async def leader_follower_loop(
     control_signal: ControlSignal,
     invert_controls: bool,
     enable_gravity_compensation: bool,
-    compensation_values: dict[str, int] | None,
+    compensation_values: Optional[Dict[str, int]],
     sim=get_sim(),
 ):
     """
@@ -70,12 +71,12 @@ async def leader_follower_loop(
                     )
                     await asyncio.sleep(0.05)
         else:
-            assert isinstance(leader, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
-            assert isinstance(follower, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
+            assert isinstance(
+                leader, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
+            assert isinstance(
+                follower, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
             leader_current_voltage = leader.current_voltage()
             if (
                 leader_current_voltage is None
@@ -150,12 +151,12 @@ async def leader_follower_loop(
                 )
 
             else:
-                assert isinstance(leader, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
-                assert isinstance(follower, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
+                assert isinstance(
+                    leader, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
+                assert isinstance(
+                    follower, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
                 # Calculate gravity compensation torque
                 # Update PyBullet simulation for gravity calculation
                 for i, idx in enumerate(joint_indices):

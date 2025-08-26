@@ -27,6 +27,7 @@ import numpy as np
 import scservo_sdk as scs
 import tqdm
 from loguru import logger
+from typing import List, Optional, Union, Dict, Tuple
 
 from phosphobot.hardware.motors.motor_utils import (
     RobotDeviceAlreadyConnectedError,
@@ -297,9 +298,9 @@ class FeetechMotorsBus:
     def __init__(
         self,
         port: str,
-        motors: dict[str, tuple[int, str]],
-        extra_model_control_table: dict[str, list[tuple]] | None = None,
-        extra_model_resolution: dict[str, int] | None = None,
+        motors: Dict[str, Tuple[int, str]],
+        extra_model_control_table: Optional[Dict[str, List[tuple]]] = None,
+        extra_model_resolution: Optional[Dict[str, int]] = None,
         mock=False,
     ):
         self.port = port
@@ -480,7 +481,7 @@ class FeetechMotorsBus:
         self.calibration = calibration
 
     def apply_calibration_autocorrect(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """This function apply the calibration, automatically detects out of range errors for motors values and attempt to correct.
 
@@ -495,7 +496,7 @@ class FeetechMotorsBus:
         return values
 
     def apply_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """Convert from unsigned int32 joint position range [0, 2**32[ to the universal float32 nominal degree range ]-180.0, 180.0[ with
         a "zero position" at 0 degree.
@@ -571,7 +572,7 @@ class FeetechMotorsBus:
         return values
 
     def autocorrect_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """This function automatically detects issues with values of motors after calibration, and correct for these issues.
 
@@ -688,7 +689,7 @@ class FeetechMotorsBus:
                 self.calibration["homing_offset"][calib_idx] += resolution * factor
 
     def revert_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """Inverse of `apply_calibration`."""
         if motor_names is None:
@@ -816,7 +817,9 @@ class FeetechMotorsBus:
         else:
             return values[0]
 
-    def _perform_read(self, data_name, motor_names: str | list[str] | None = None):
+    def _perform_read(
+        self, data_name, motor_names: Optional[Union[List[str], str]] = None
+    ):
         if not self.is_connected:
             raise RobotDeviceNotConnectedError(
                 f"FeetechMotorsBus({self.port}) is not connected. You need to run `motors_bus.connect()`."
@@ -918,8 +921,8 @@ class FeetechMotorsBus:
     def _perform_write(
         self,
         data_name,
-        values: int | float | np.ndarray,
-        motor_names: str | list[str] | None = None,
+        values: Union[int, float, np.ndarray],
+        motor_names: Optional[Union[List[str], str]] = None,
     ):
         if not self.is_connected:
             raise RobotDeviceNotConnectedError(

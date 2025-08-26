@@ -14,12 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime, timezone
 import enum
 import logging
 import math
 import time
 from copy import deepcopy
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import tqdm
@@ -310,9 +311,9 @@ class DynamixelMotorsBus:
     def __init__(
         self,
         port: str,
-        motors: dict[str, tuple[int, str]],
-        extra_model_control_table: dict[str, list[tuple]] | None = None,
-        extra_model_resolution: dict[str, int] | None = None,
+        motors: Dict[str, Tuple[int, str]],
+        extra_model_control_table: Optional[Dict[str, list[tuple]]] = None,
+        extra_model_resolution: Optional[Dict[str, int]] = None,
         mock=False,
     ):
         self.port = port
@@ -429,7 +430,7 @@ class DynamixelMotorsBus:
         self.calibration = calibration
 
     def apply_calibration_autocorrect(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """This function applies the calibration, automatically detects out of range errors for motors values and attempts to correct.
 
@@ -444,7 +445,7 @@ class DynamixelMotorsBus:
         return values
 
     def apply_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """Convert from unsigned int32 joint position range [0, 2**32[ to the universal float32 nominal degree range ]-180.0, 180.0[ with
         a "zero position" at 0 degree.
@@ -521,7 +522,7 @@ class DynamixelMotorsBus:
         return values
 
     def autocorrect_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """This function automatically detects issues with values of motors after calibration, and correct for these issues.
 
@@ -637,7 +638,7 @@ class DynamixelMotorsBus:
                 self.calibration["homing_offset"][calib_idx] += resolution * factor
 
     def revert_calibration(
-        self, values: np.ndarray | list, motor_names: list[str] | None
+        self, values: np.ndarray | list, motor_names: Optional[List[str]]
     ):
         """Inverse of `apply_calibration`."""
         if motor_names is None:
@@ -717,7 +718,7 @@ class DynamixelMotorsBus:
         else:
             return values[0]
 
-    def read(self, data_name, motor_names: str | list[str] | None = None):
+    def read(self, data_name, motor_names: Optional[Union[List[str], str]] = None):
         if not self.is_connected:
             raise ValueError(
                 f"DynamixelMotorsBus({self.port}) is not connected. You need to run `motors_bus.connect()`."
@@ -826,8 +827,8 @@ class DynamixelMotorsBus:
     def write(
         self,
         data_name,
-        values: int | float | np.ndarray,
-        motor_names: str | list[str] | None = None,
+        values: Union[int, float, np.ndarray],
+        motor_names: Optional[Union[List[str], str]] = None,
     ):
         if not self.is_connected:
             raise ValueError(

@@ -323,7 +323,7 @@ class ACT(ActionModel):
         model_id: str,
         all_cameras: AllCameras,
         robots: list[BaseManipulator],
-        cameras_keys_mapping: Dict[str, int] | None = None,
+        cameras_keys_mapping: Optional[Dict[str, int]] = None,
         verify_cameras: bool = True,
     ) -> ACTSpawnConfig:
         """
@@ -420,7 +420,7 @@ class ACT(ActionModel):
         all_cameras: AllCameras,
         fps: int = 30,
         speed: float = 1.0,
-        cameras_keys_mapping: Dict[str, int] | None = None,
+        cameras_keys_mapping: Optional[Dict[str, int]] = None,
         prompt: Optional[str] = None,
         selected_camera_id: Optional[int] = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",

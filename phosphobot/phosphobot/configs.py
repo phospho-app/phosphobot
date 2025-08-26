@@ -3,7 +3,7 @@ Store constants and configurations for the app in this file.
 """
 
 from pathlib import Path
-from typing import Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import yaml  # type: ignore
 from loguru import logger
@@ -73,17 +73,19 @@ class Configuration(BaseModel):
         "lerobot_v2.1"
     )
     DEFAULT_VIDEO_CODEC: VideoCodecs = Field(default_factory=lambda: "avc1")
-    DEFAULT_VIDEO_SIZE: list[int] = [320, 240]
+    DEFAULT_VIDEO_SIZE: List[int] = [320, 240]
     DEFAULT_TASK_INSTRUCTION: str = "None"
     # List of camera ids to disable, set to -1 to disable all cameras
-    DEFAULT_CAMERAS_TO_DISABLE: list[int] | None = None
-    DEFAULT_CAMERAS_TO_RECORD: list[int] | None = None
+    DEFAULT_CAMERAS_TO_DISABLE: Optional[List[int]] = None
+    DEFAULT_CAMERAS_TO_RECORD: Optional[List[int]] = None
 
     class Config:
         extra = "ignore"
 
     @classmethod
-    def from_yaml(cls, config_path: str | Path | None = None) -> "Configuration":
+    def from_yaml(
+        cls, config_path: Optional[Union[str, Path]] = None
+    ) -> "Configuration":
         """
         Load configuration from a YAML file.
         Args:

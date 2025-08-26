@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Tuple
 
 import numpy as np
 from fastapi import BackgroundTasks, Depends
@@ -87,15 +87,14 @@ class Recorder:
         robots: list[BaseRobot],  # Can use self.robots or update if new list passed
         codec: VideoCodecs,
         freq: int,
-        target_size: tuple[int, int] | None,
+        target_size: Optional[Tuple[int, int]],
         dataset_name: str,  # e.g., "my_robot_data"
         instruction: Optional[str],
         episode_format: Literal["json", "lerobot_v2", "lerobot_v2.1"],
-        cameras_ids_to_record: list[int] | None,
+        cameras_ids_to_record: Optional[List[int]],
         use_push_to_hf: bool = True,  # Stored for save_episode to decide
-        branch_path: Optional[
-            str
-        ] = None,  # Stored for push_to_hub if initiated from here
+        # Stored for push_to_hub if initiated from here
+        branch_path: Optional[str] = None,
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
     ) -> None:
         if target_size is None:

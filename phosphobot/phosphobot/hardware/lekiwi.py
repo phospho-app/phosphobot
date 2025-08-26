@@ -15,7 +15,7 @@ from phosphobot.models import RobotConfigStatus
 @dataclass
 class MovementCommand:
     position: np.ndarray
-    orientation: np.ndarray | None = None
+    orientation: Optional[np.ndarray] = None
 
 
 class LeKiwi(BaseMobileRobot):
