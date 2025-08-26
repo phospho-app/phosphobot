@@ -23,7 +23,6 @@ from phosphobot.models import (
 )
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
-from phosphobot.models.robot import BaseRobot
 from phosphobot.posthog import is_github_actions
 from phosphobot.recorder import Recorder, get_recorder
 from phosphobot.robot import RobotConnectionManager, get_rcm
