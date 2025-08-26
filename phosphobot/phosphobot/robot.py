@@ -314,6 +314,27 @@ class RobotConnectionManager:
             f"Connected to {robot.name} with robot_id {len(self._all_robots) - 1}."
         )
 
+    async def remove_connection(self, robot_id: int):
+        """
+        Remove a connection to a robot by its ID.
+        """
+        if not isinstance(robot_id, int):
+            raise ValueError("robot_id must be an integer.")
+
+        if robot_id < 0 or robot_id >= len(self._all_robots):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Robot ID {robot_id} is out of range. Only {len(self._all_robots)} robots connected.",
+            )
+
+        robot = await self.get_robot(robot_id=robot_id)
+        robot.disconnect()
+        self._all_robots.remove(robot)
+        if robot in self._manually_added_robots:
+            # Remove from manually added robots if it was added manually
+            self._manually_added_robots.remove(robot)
+        logger.success(f"Disconnected and removed robot with ID {robot_id}.")
+
 
 @lru_cache()
 def get_rcm() -> RobotConnectionManager:

@@ -1272,6 +1272,30 @@ async def add_robot_connection(
         )
 
 
+@router.post("/robot/disconnect", response_model=StatusResponse)
+async def disconnect_robot(
+    robot_id: int = 0,
+    rcm: RobotConnectionManager = Depends(get_rcm),
+) -> StatusResponse:
+    """
+    Manually add a robot connection to the robot manager.
+    Useful for adding robot that are accessible only via WiFi, for example.
+    """
+    try:
+        await rcm.remove_connection(robot_id=robot_id)
+        return StatusResponse(
+            status="ok",
+            message=f"Robot connection to {robot_id} removed successfully",
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to remove robot connection {robot_id}: {e}\n{traceback.format_exc()}"
+        )
+        raise HTTPException(
+            status_code=400, detail=f"Failed to remove robot connection {robot_id}: {e}"
+        )
+
+
 @router.post("/robot/config", response_model=RobotConfigResponse)
 async def get_robot_config(
     robot_id: int = 0,

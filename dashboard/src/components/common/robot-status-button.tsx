@@ -26,12 +26,13 @@ import {
   LoaderCircle,
   Moon,
   PlusCircle,
+  Unplug,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 
 import {
   EditTemperatureDialog,
@@ -117,6 +118,20 @@ function RobotStatusMenuItem({
       await new Promise((resolve) => setTimeout(resolve, 100));
       await mutateTorque();
     });
+  };
+
+  const disconnectRobot = async () => {
+    if (!serverStatus) {
+      console.error("Server not available");
+      return;
+    }
+    const data = await fetchWithBaseUrl(
+      `/robot/disconnect?robot_id=${robotId}`,
+      "POST",
+    );
+    if (data) {
+      mutate("/status");
+    }
   };
 
   return (
@@ -235,6 +250,14 @@ function RobotStatusMenuItem({
             robot={robot}
             setTemperatureDialogOpen={setTemperatureDialogOpen}
           />
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => disconnectRobot()}
+            className="flex items-center gap-2 hover:text-destructive focus:text-destructive"
+          >
+            <Unplug className="size-4" />
+            <span>Disconnect robot</span>
+          </DropdownMenuItem>
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <EditTemperatureDialog

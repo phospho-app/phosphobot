@@ -97,19 +97,6 @@ export function TemperatureSubmenu({
               </div>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              <DialogTrigger asChild>
-                <DropdownMenuItem
-                  className="flex items-center gap-1"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setTemperatureDialogOpen(true);
-                  }}
-                >
-                  <Settings2 className="size-4" />
-                  <span>Set maximum temperature</span>
-                </DropdownMenuItem>
-              </DialogTrigger>
-              <DropdownMenuSeparator />
               {robot.temperature.map((temperature, index) => {
                 const isOverheating =
                   temperature.current !== null &&
@@ -150,6 +137,19 @@ export function TemperatureSubmenu({
                   </DropdownMenuItem>
                 );
               })}
+              <DropdownMenuSeparator />
+              <DialogTrigger asChild>
+                <DropdownMenuItem
+                  className="flex items-center gap-1"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setTemperatureDialogOpen(true);
+                  }}
+                >
+                  <Settings2 className="size-4" />
+                  <span>Set maximum temperatures</span>
+                </DropdownMenuItem>
+              </DialogTrigger>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         </>
