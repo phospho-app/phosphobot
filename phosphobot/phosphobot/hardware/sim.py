@@ -194,7 +194,7 @@ class PyBulletSimulation:
         axis: Optional[List[float]] = None,
         axis_orientation: Optional[List[int]] = None,
         use_fixed_base: bool = True,
-    ) -> Tuple[Optional[int], int, List[int]]:
+    ) -> Tuple[int, int, List[int]]:
         """
         Load a URDF file into the simulation.
 
@@ -212,7 +212,9 @@ class PyBulletSimulation:
 
         if not self.connected or not p.isConnected():
             logger.warning("Simulation is not connected, cannot load URDF")
-            return None, 0, []
+            raise RuntimeError(
+                f"Can't load URDF {urdf_path} - simulation not connected."
+            )
 
         robot_id = p.loadURDF(
             urdf_path,
