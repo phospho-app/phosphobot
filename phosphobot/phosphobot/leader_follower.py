@@ -18,7 +18,7 @@ from phosphobot.hardware import (
 
 @dataclass
 class RobotPair:
-    leader: SO100Hardware | PiperHardware | RemotePhosphobot
+    leader: SO100Hardware | PiperHardware | RemotePhosphobot | URDFLoader
     follower: SO100Hardware | PiperHardware | RemotePhosphobot | URDFLoader
 
 
