@@ -73,6 +73,10 @@ class EndEffectorReadRequest(BaseModel):
         description="If True, the simulation will first read the motor positions, synchronize them with the simulated robot, and then return the end effector position."
         + "Useful for measurements, however it will take more time to respond.",
     )
+    only_gripper: bool = Field(
+        False,
+        description="If True, only return the gripper state. If False, return the full end effector position and orientation.",
+    )
 
 
 class EndEffectorPosition(BaseModel):
@@ -81,12 +85,12 @@ class EndEffectorPosition(BaseModel):
     All zeros means the initial position, that you get by calling /move/init
     """
 
-    x: float = Field(description="X position in centimeters")
-    y: float = Field(description="Y position in centimeters")
-    z: float = Field(description="Z position in centimeters")
-    rx: float = Field(description="Absolute Pitch in degrees")
-    ry: float = Field(description="Absolute Yaw in degrees")
-    rz: float = Field(description="Absolute Roll in degrees")
+    x: Optional[float] = Field(description="X position in centimeters")
+    y: Optional[float] = Field(description="Y position in centimeters")
+    z: Optional[float] = Field(description="Z position in centimeters")
+    rx: Optional[float] = Field(description="Absolute Pitch in degrees")
+    ry: Optional[float] = Field(description="Absolute Yaw in degrees")
+    rz: Optional[float] = Field(description="Absolute Roll in degrees")
     open: float = Field(description="0 for closed, 1 for open")
 
 
