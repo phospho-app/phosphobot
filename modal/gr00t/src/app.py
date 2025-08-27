@@ -532,33 +532,41 @@ def train(  # All these args should be verified in phosphobot
     wandb_api_key: str | None,
     model_name: str,
     training_params: TrainingParamsGr00T,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
     timeout_seconds: int = TRAINING_TIMEOUT,
+    wandb_run_id: str | None = None,
     **kwargs,
 ):
     from datetime import datetime, timezone
 
     from supabase import Client, create_client
 
-    from .helper import Predictor
+    from .helper import train_gr00t
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    predictor = Predictor()
-
-    # Get the HF token from the modal secret
-    hf_token = os.getenv("HF_TOKEN")
+    # Use user's HF token for private training, fallback to system token
+    hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN is not set")
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
     logger.info(
-        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
+        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
 
+    # Set the wandb run id if it is not set, using the environment variable
+    if wandb_run_id:
+        logger.info(f"Setting WANDB_RUN_ID to {wandb_run_id}")
+        os.environ["WANDB_RUN_ID"] = wandb_run_id
+
     try:
-        predictor.predict(
+        train_gr00t(
             dataset_repo_id=dataset_name,
             hf_token=hf_token,
             wandb_api_key=wandb_api_key,
@@ -568,6 +576,7 @@ def train(  # All these args should be verified in phosphobot
             epochs=training_params.epochs,
             learning_rate=training_params.learning_rate,
             validation_dataset_name=training_params.validation_dataset_name,
+            private_mode=private_mode,
         )
 
         logger.info(f"✅ Training {training_id} for {dataset_name} completed")

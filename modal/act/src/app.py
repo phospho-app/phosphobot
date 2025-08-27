@@ -124,6 +124,7 @@ async def run_act_training(
     training_params: TrainingParamsAct,
     output_dir: str,
     wandb_enabled: bool,
+    wandb_run_id: str,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
 ):
     cmd = [
@@ -140,7 +141,9 @@ async def run_act_training(
         f"--steps={training_params.steps}",
         "--policy.device=cuda",
         f"--output_dir={output_dir}",
+        f"--wandb.run_id={wandb_run_id}",
         f"--wandb.enable={str(wandb_enabled).lower()}",
+        f"--job_name={wandb_run_id}",
     ]
 
     logger.info(f"Starting training with command: {' '.join(cmd)}")
@@ -359,19 +362,19 @@ async def serve(
                 nonlocal last_bbox_computed
                 nonlocal policy
 
-                assert len(current_qpos) == model_specifics.state_size[0], (
-                    f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-                )
-                assert len(images) <= len(model_specifics.video_keys), (
-                    f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
-                )
+                assert (
+                    len(current_qpos) == model_specifics.state_size[0]
+                ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+                assert (
+                    len(images) <= len(model_specifics.video_keys)
+                ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
                 if len(images) > 0:
-                    assert len(images[0].shape) == 3, (
-                        f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-                    )
-                    assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
-                        f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
-                    )
+                    assert (
+                        len(images[0].shape) == 3
+                    ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+                    assert (
+                        len(images[0].shape) == 3 and images[0].shape[2] == 3
+                    ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
 
                 with torch.no_grad(), torch.autocast(device_type="cuda"):
                     current_qpos = current_qpos.copy()
@@ -626,8 +629,11 @@ def train(  # All these args should be verified in phosphobot
     wandb_api_key: str | None,
     model_name: str,
     training_params: TrainingParamsAct | TrainingParamsActWithBbox,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
     max_hf_download_retries: int = 3,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
+    wandb_run_id: str = "wandb_run_id_not_set",
     **kwargs,
 ):
     from datetime import datetime, timezone
@@ -638,13 +644,16 @@ def train(  # All these args should be verified in phosphobot
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    hf_token = os.getenv("HF_TOKEN")
+    # Use user's HF token for private training, fallback to system token
+    hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN environment variable is not set")
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
     logger.info(
-        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
+        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name} (private_mode={private_mode})"
     )
 
     try:
@@ -656,7 +665,7 @@ def train(  # All these args should be verified in phosphobot
 
         logger.debug("Creating the HF repo...")
         if not HuggingFaceTokenValidator().has_write_access(
-            hf_token=hf_token, hf_model_name=model_name
+            hf_token=hf_token, hf_model_name=model_name, private=private_mode
         ):
             raise ValueError(
                 f"The provided HF token does not have write access to {dataset_name}"
@@ -711,7 +720,28 @@ def train(  # All these args should be verified in phosphobot
                 image_keys_to_keep=training_params.image_keys_to_keep,
             )
             logger.success(f"Bounding boxes computed and saved to {dataset_path}")
-            dataset_name = "phospho-app/" + dataset_path.name
+
+            # Use user's namespace for private training, phospho-app for public
+            if private_mode and user_hf_token:
+                # Get username from HF token for private training
+                hf_api_temp = HfApi(token=user_hf_token)
+                try:
+                    user_info = hf_api_temp.whoami()
+                    username = user_info.get("name")
+                    if username:
+                        dataset_name = f"{username}/{dataset_path.name}"
+                    else:
+                        logger.warning(
+                            "Could not get username from HF token, using phospho-app namespace"
+                        )
+                        dataset_name = "phospho-app/" + dataset_path.name
+                except Exception as e:
+                    logger.warning(
+                        f"Error getting username from HF token: {e}, using phospho-app namespace"
+                    )
+                    dataset_name = "phospho-app/" + dataset_path.name
+            else:
+                dataset_name = "phospho-app/" + dataset_path.name
 
             logger.info(f"Uploading dataset {dataset_name} to Hugging Face")
             hf_api = HfApi(token=hf_token)
@@ -720,6 +750,7 @@ def train(  # All these args should be verified in phosphobot
                 repo_id=dataset_name,
                 token=hf_token,
                 exist_ok=True,
+                private=private_mode,
             )
             hf_api.upload_folder(
                 repo_type="dataset",
@@ -812,6 +843,7 @@ def train(  # All these args should be verified in phosphobot
                     output_dir=str(output_dir),
                     wandb_enabled=wandb_enabled,
                     timeout_seconds=timeout_seconds,
+                    wandb_run_id=wandb_run_id,
                 )
             )
         except TimeoutError as te:
@@ -825,6 +857,21 @@ def train(  # All these args should be verified in phosphobot
 
         # We now upload the trained model to the HF repo
         hf_api = HfApi(token=hf_token)
+
+        # Create the model repository if it doesn't exist
+        try:
+            hf_api.repo_info(repo_id=model_name, repo_type="model")
+            logger.info(f"Model repository {model_name} already exists.")
+        except Exception:
+            logger.info(f"Creating model repository {model_name}")
+            hf_api.create_repo(
+                repo_id=model_name,
+                repo_type="model",
+                exist_ok=True,
+                private=private_mode,
+                token=hf_token,
+            )
+
         files_directory = output_dir / "checkpoints" / "last" / "pretrained_model"
         output_paths: list[Path] = []
         for item in files_directory.glob("**/*"):
@@ -873,10 +920,8 @@ def train(  # All these args should be verified in phosphobot
             model_type="act",
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
+            training_params=training_params,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
             return_readme_as_bytes=True,
         )
         hf_api.upload_file(
@@ -918,9 +963,7 @@ def train(  # All these args should be verified in phosphobot
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
+            training_params=training_params,
             error_traceback=str(e),
             return_readme_as_bytes=True,
         )
@@ -947,9 +990,7 @@ def train(  # All these args should be verified in phosphobot
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
+            training_params=training_params,
             error_traceback=str(e),
             return_readme_as_bytes=True,
         )

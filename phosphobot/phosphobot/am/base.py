@@ -12,6 +12,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from phosphobot.models import InfoModel, ModelConfigurationResponse
+from phosphobot.utils import get_hf_token
 
 # Disable PyAV logs
 av.logging.set_level(None)
@@ -239,6 +240,15 @@ class BaseTrainerConfig(BaseModel):
 class TrainingRequest(BaseTrainerConfig):
     """Pydantic model for training request validation"""
 
+    private_mode: bool = Field(
+        default=False,
+        description="Whether to use private training (PRO users only)",
+    )
+    user_hf_token: Optional[str] = Field(
+        default=None,
+        description="User's personal HF token for private training",
+    )
+
     @model_validator(mode="before")
     @classmethod
     def validate_required_fields(cls, data: dict) -> dict:
@@ -246,18 +256,18 @@ class TrainingRequest(BaseTrainerConfig):
             raise ValueError("model_name is required for training requests")
         return data
 
-    @field_validator("model_name", mode="before")
-    def validate_model_name(cls, model_name: str) -> str:
-        if model_name is None:
+    @model_validator(mode="after")
+    def validate_and_format_model_name(self) -> "TrainingRequest":
+        """Format model name based on private mode"""
+        if self.model_name is None:
             raise ValueError("model_name is required for training requests")
 
         # We add random characters to the model name to avoid collisions
         random_chars = "".join(
             random.choices(string.ascii_lowercase + string.digits, k=10)
         )
-        # We need to make sure that the model is called phospho-app/...
-        # So we can upload it to the phospho Hugging Face repo
-        size = model_name.split("/")
+
+        size = self.model_name.split("/")
 
         def clamp_length(name: str, max_length: int) -> str:
             """Clamp the length of the model name to a maximum length."""
@@ -265,40 +275,95 @@ class TrainingRequest(BaseTrainerConfig):
                 return name[:max_length]
             return name
 
-        if len(size) == 1:
-            # Make sure the total model_name is shorter than 96 characters
-            model_name = clamp_length(
-                model_name, 96 - len(random_chars) - len("phospho-app/")
-            )
+        if self.private_mode:
+            # Private mode: use user's namespace
+            if not self.user_hf_token:
+                self.user_hf_token = get_hf_token()
 
-            model_name = "phospho-app/" + model_name + "-" + random_chars
-        elif len(size) == 2:
-            if size[0] != "phospho-app":
-                # Make sure the total model_name is shorter than 96 characters
-                size[1] = clamp_length(
-                    size[1], 96 - len(random_chars) - len("phospho-app/")
+            if not self.user_hf_token:
+                raise ValueError(
+                    "Private training requires a valid HF token in your settings."
                 )
 
-                model_name = "phospho-app/" + size[1] + "-" + random_chars
+            try:
+                api = HfApi(token=self.user_hf_token)
+                user_info = api.whoami()
+                username = user_info.get("name")
+                if not username:
+                    raise ValueError("Could not get username from HF token")
+
+                if len(size) == 1:
+                    # Format: username/model_name-random
+                    model_name = clamp_length(
+                        size[0], 96 - len(random_chars) - len(username) - 2
+                    )
+                    self.model_name = f"{username}/{model_name}-{random_chars}"
+                elif len(size) == 2:
+                    # If already has namespace, use user's namespace instead
+                    model_name = clamp_length(
+                        size[1], 96 - len(random_chars) - len(username) - 2
+                    )
+                    self.model_name = f"{username}/{model_name}-{random_chars}"
+                else:
+                    raise ValueError(
+                        "Model name should be in the format <model_name> or <namespace>/<model_name>",
+                    )
+            except Exception as e:
+                raise ValueError(f"Failed to validate user namespace: {e}")
         else:
-            raise ValueError(
-                "Model name should be in the format phospho-app/<model_name> or <model_name>",
-            )
+            # Public mode: use phospho-app namespace
+            if len(size) == 1:
+                # Make sure the total model_name is shorter than 96 characters
+                model_name = clamp_length(
+                    size[0], 96 - len(random_chars) - len("phospho-app/")
+                )
+                self.model_name = "phospho-app/" + model_name + "-" + random_chars
+            elif len(size) == 2:
+                if size[0] != "phospho-app":
+                    # Make sure the total model_name is shorter than 96 characters
+                    model_name = clamp_length(
+                        size[1], 96 - len(random_chars) - len("phospho-app/")
+                    )
+                    self.model_name = "phospho-app/" + model_name + "-" + random_chars
+            else:
+                raise ValueError(
+                    "Model name should be in the format phospho-app/<model_name> or <model_name>",
+                )
 
-        return model_name
+        return self
 
-    @field_validator("dataset_name", mode="before")
-    def validate_dataset(cls, dataset_name: str) -> str:
-        try:
-            url = f"https://huggingface.co/api/datasets/{dataset_name}/tree/main"
-            response = requests.get(url, timeout=5)
-            if response.status_code != 200:
-                raise ValueError()
-            return dataset_name
-        except Exception:
-            raise ValueError(
-                f"Dataset {dataset_name} is not a valid, public Hugging Face dataset. Please check the URL and try again. Your dataset name should be in the format <username>/<dataset_name>",
-            )
+    @model_validator(mode="after")
+    def validate_dataset_access(self) -> "TrainingRequest":
+        """Validate dataset access based on private mode"""
+        if self.private_mode:
+            # Private mode: validate with user's HF token
+            if not self.user_hf_token:
+                raise ValueError("Private training requires a user HF token")
+
+            try:
+                api = HfApi(token=self.user_hf_token)
+                # Try to access the dataset with the user's token
+                api.repo_info(repo_id=self.dataset_name, repo_type="dataset")
+            except Exception as e:
+                raise ValueError(
+                    f"Cannot access dataset {self.dataset_name} with provided token. "
+                    f"Make sure the dataset exists and is accessible with your HF token: {e}"
+                )
+        else:
+            # Public mode: validate dataset is publicly accessible
+            try:
+                url = (
+                    f"https://huggingface.co/api/datasets/{self.dataset_name}/tree/main"
+                )
+                response = requests.get(url, timeout=5)
+                if response.status_code != 200:
+                    raise ValueError()
+            except Exception:
+                raise ValueError(
+                    f"Dataset {self.dataset_name} is not a valid, public Hugging Face dataset. Please check the URL and try again. Your dataset name should be in the format <username>/<dataset_name>",
+                )
+
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -333,14 +398,43 @@ class TrainingRequest(BaseTrainerConfig):
             # If no training params are provided, we set the default ones
             data["training_params"] = params_class()
 
+        # Generate a model name. Reuse this logic but implement it in python
+        if "model_name" not in data:
+            # Generate a random suffix of 10 characters
+            random_suffix = "".join(
+                random.choices(string.ascii_lowercase + string.digits, k=10)
+            )
+            # model name should be username/model_type-dataset_name-random_suffix
+            if data["private_mode"]:
+                # Private mode: use user's namespace
+                if not data.get("user_hf_token"):
+                    data["user_hf_token"] = get_hf_token()
+
+                if not data["user_hf_token"]:
+                    raise ValueError(
+                        "Private training requires a valid HF token in your settings."
+                    )
+
+                api = HfApi(token=data["user_hf_token"])
+                user_info = api.whoami()
+                username = user_info.get("name")
+                if not username:
+                    raise ValueError("Could not get username from HF token")
+
+                model_name = f"{username}/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
+            else:
+                # Public mode: use phospho-app namespace
+                model_name = f"phospho-app/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
+            data["model_name"] = model_name
+
         return data
 
 
 class HuggingFaceTokenValidator:
     @staticmethod
-    def has_write_access(hf_token: str, hf_model_name: str) -> bool:
+    def has_write_access(hf_token: str, hf_model_name: str, private: bool) -> bool:
         """Check if the HF token has write access by attempting to create a repo."""
-        api = HfApi()
+        api = HfApi(token=hf_token)
         try:
             api.create_repo(hf_model_name, private=False, exist_ok=True, token=hf_token)
             return True  # The token has write access
@@ -352,11 +446,9 @@ class HuggingFaceTokenValidator:
 def generate_readme(
     model_type: str,
     dataset_repo_id: str,
+    training_params: BaseModel,
     folder_path: Optional[Path] = None,
     wandb_run_url: Optional[str] = None,
-    steps: Optional[int] = None,
-    epochs: Optional[int] = None,
-    batch_size: Optional[int] = None,
     error_traceback: Optional[str] = None,
     return_readme_as_bytes: bool = False,
 ):
@@ -373,7 +465,10 @@ task_categories:
 - robotics                                               
 ---
 
-# {model_type} Model - phospho Training Pipeline
+# {model_type} model - 🧪 phosphobot training pipeline
+
+**Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
+**Wandb run URL**: {wandb_run_url}
 
 """
     if error_traceback:
@@ -388,20 +483,18 @@ We faced an issue while training your model.
 """
     else:
         readme += """
-## This model was trained using **phospho**.
+## This model was trained using **[🧪phospho](https://phospho.ai)**
 
 Training was successful, try it out on your robot!
 
 """
 
     readme += f"""
-## Training parameters:
+## Training parameters
 
-- **Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
-- **Wandb run URL**: {wandb_run_url}
-- **Epochs**: {epochs}
-- **Batch size**: {batch_size}
-- **Training steps**: {steps}
+```text
+{training_params.model_dump_json(indent=2)}
+```
 
 📖 **Get Started**: [docs.phospho.ai](https://docs.phospho.ai?utm_source=huggingface_readme)
 

@@ -1183,7 +1183,12 @@ class Gr00tTrainer(BaseTrainer):
     def __init__(self, config: Gr00tTrainerConfig):
         self.config = config
 
-    def train(self, timeout_seconds: Optional[int] = None) -> None:
+    def train(
+        self,
+        timeout_seconds: Optional[int] = None,
+        private_mode: bool = False,
+        hf_token: Optional[str] = None,
+    ) -> None:
         """
         You can pass a timeout in seconds to the training process.
         If the training process exceeds this time, it will be
@@ -1202,13 +1207,15 @@ class Gr00tTrainer(BaseTrainer):
 
         if self.config.model_name is not None:
             # We check if the user has write access to the model-id
-            hf_token = os.getenv("HF_TOKEN")
+            hf_token = hf_token or os.getenv("HF_TOKEN")
             if hf_token is None:
                 raise ValueError(
                     "HF_TOKEN environment variable is not set. Please set it to your Hugging Face token."
                 )
             if not HuggingFaceTokenValidator().has_write_access(
-                hf_token=hf_token, hf_model_name=self.config.model_name
+                hf_token=hf_token,
+                hf_model_name=self.config.model_name,
+                private=private_mode,
             ):
                 raise ValueError(
                     f"The provided HF token does not have write access to {self.config.model_name}"
@@ -1420,8 +1427,7 @@ class Gr00tTrainer(BaseTrainer):
             readme = generate_readme(
                 model_type="gr00t",
                 dataset_repo_id=self.config.dataset_name,
-                epochs=self.config.training_params.epochs,
-                batch_size=self.config.training_params.batch_size,
+                training_params=self.config.training_params,
                 return_readme_as_bytes=True,
             )
 

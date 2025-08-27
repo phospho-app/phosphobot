@@ -143,6 +143,35 @@ async def start_training(
     - (You can add a wandb token in phosphobot to track your training)
     """
     logger.debug(f"Training request: {request}")
+
+    # Set default private mode from config if not specified
+    from phosphobot.configs import config
+
+    if request.private_mode is None:
+        request.private_mode = config.DEFAULT_HF_PRIVATE_MODE
+
+    # Validate private training requirements
+    if request.private_mode:
+        from phosphobot.endpoints.auth import check_pro_user
+
+        is_pro = await check_pro_user(session.user.id)
+        if not is_pro:
+            raise HTTPException(
+                status_code=403,
+                detail="Private training is only available for PRO users.",
+            )
+
+        # Set user's HF token for private training
+        request.user_hf_token = get_hf_token()
+        if not request.user_hf_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Private training requires a valid HF token in your settings.",
+            )
+    else:
+        # For public training, we need to remove the user_hf_token (otherwise can't push to phospho-app)
+        request.user_hf_token = None
+
     tokens = get_tokens()
     if not tokens.MODAL_API_URL:
         raise HTTPException(
@@ -246,6 +275,7 @@ async def start_training(
     return StartTrainingResponse(
         message=f"Training triggered successfully, find your model at: https://huggingface.co/{request.model_name}",
         training_id=response_data.get("training_id", None),
+        model_url=f"https://huggingface.co/{request.model_name}",
     )
 
 
