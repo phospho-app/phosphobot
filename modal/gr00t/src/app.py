@@ -532,6 +532,8 @@ def train(  # All these args should be verified in phosphobot
     wandb_api_key: str | None,
     model_name: str,
     training_params: TrainingParamsGr00T,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
     timeout_seconds: int = TRAINING_TIMEOUT,
     **kwargs,
 ):
@@ -547,11 +549,11 @@ def train(  # All these args should be verified in phosphobot
 
     predictor = Predictor()
 
-    # Get the HF token from the modal secret
-    hf_token = os.getenv("HF_TOKEN")
+    # Use user's HF token for private training, fallback to system token
+    hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN is not set")
+        raise ValueError("HF_TOKEN is not available (neither user token nor system token)")
 
     logger.info(
         f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
@@ -568,6 +570,7 @@ def train(  # All these args should be verified in phosphobot
             epochs=training_params.epochs,
             learning_rate=training_params.learning_rate,
             validation_dataset_name=training_params.validation_dataset_name,
+            private_mode=private_mode,
         )
 
         logger.info(f"✅ Training {training_id} for {dataset_name} completed")

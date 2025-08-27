@@ -35,6 +35,7 @@ import {
   Database,
   HelpCircle,
   Key,
+  Lock,
   Play,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -88,6 +89,7 @@ export function AdminPage() {
     if (!adminSettings) return;
     let error = "";
     let [w, h] = adminSettings.video_size;
+    let finalValue = value;
 
     switch (key) {
       case "dataset_name":
@@ -100,10 +102,17 @@ export function AdminPage() {
         [w, h] = value as [number, number];
         error = validateVideoSize(w, h);
         break;
+      case "hf_private_mode":
+        // Enforce PRO requirement for private mode
+        if (value === true && !proUser) {
+          error = "Private mode requires PRO subscription";
+          finalValue = false as AdminSettings[K];
+        }
+        break;
     }
 
     setValidationErrors((prev) => ({ ...prev, [key]: error }));
-    mutate({ ...adminSettings, [key]: value }, false);
+    mutate({ ...adminSettings, [key]: finalValue }, false);
   };
 
   if (!adminSettings) return <LoadingPage />;
@@ -118,15 +127,66 @@ export function AdminPage() {
             API Key Settings
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <HuggingFaceKeyInput />
-          {adminSettingsTokens?.huggingface && (
-            <div className="flex items-center gap-2 text-xs text-green-500">
-              <CircleCheck className="h-4 w-4" /> Token set
+        <CardContent className="flex flex-col gap-y-8">
+          <div className="flex flex-col gap-y-4">
+            <HuggingFaceKeyInput />
+            {adminSettingsTokens?.huggingface && (
+              <div className="flex items-center gap-2 text-xs text-green-500">
+                <CircleCheck className="h-4 w-4" /> Token set
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="hf_private_mode"
+                    checked={adminSettings.hf_private_mode}
+                    onCheckedChange={(checked) =>
+                      handleSettingChange("hf_private_mode", checked as boolean)
+                    }
+                    disabled={!proUser}
+                    className={!proUser ? "opacity-50" : ""}
+                  />
+                  <Label
+                    htmlFor="hf_private_mode"
+                    className={`text-sm ${!proUser ? "text-muted-foreground" : ""}`}
+                  >
+                    <Lock className="inline size-4" />
+                    HF Private mode: store datasets as private and enable
+                    private training
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          In private mode, all datasets and trained models are
+                          created as private under your HuggingFace username.
+                        </p>
+                        <p>
+                          If private mode is disabled, datasets are created as
+                          public on your Hugging Face account, and trained
+                          models are public under the phospho-app organization.
+                        </p>
+                        <p>
+                          <b>Requires phospho pro</b> subscription to enable.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                {!proUser && (
+                  <a href="https://phospho.ai/pro" target="_blank">
+                    <Button size="sm" className="text-xs h-8">
+                      Get phospho pro
+                    </Button>
+                  </a>
+                )}
+              </div>
             </div>
-          )}
-        </CardContent>
-        <CardContent className="space-y-4">
+          </div>
           <WandBKeyInput />
           {adminSettingsTokens?.wandb && (
             <div className="flex items-center gap-2 text-xs text-green-500">
@@ -289,46 +349,6 @@ export function AdminPage() {
                     <SelectItem value="json">json</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-4">
-                  <Checkbox
-                    id="hf_private_mode"
-                    checked={adminSettings.hf_private_mode}
-                    onCheckedChange={(checked) =>
-                      handleSettingChange("hf_private_mode", checked as boolean)
-                    }
-                    disabled={!proUser}
-                    className={!proUser ? "opacity-50" : ""}
-                  />
-                  <Label
-                    htmlFor="hf_private_mode"
-                    className={`text-sm ${!proUser ? "text-muted-foreground" : ""}`}
-                  >
-                    Store datasets as private on Hugging Face
-                  </Label>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          By default, datasets are stored as public on Hugging
-                          Face.
-                        </p>
-                        <p>
-                          Get a <b>phospho pro</b> account to save datasets as
-                          private by default.
-                        </p>
-                        <p>
-                          Note: private datasets are <b>not visible</b> in the
-                          LeRobot dataset viewer and AI training may not work.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
               </div>
             </div>
           </CardContent>

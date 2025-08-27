@@ -13,6 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalStore } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
@@ -21,9 +27,11 @@ import {
   Ban,
   CheckCircle2,
   Dumbbell,
+  Globe,
   Lightbulb,
   List,
   Loader2,
+  Lock,
   Pencil,
   Save,
 } from "lucide-react";
@@ -178,6 +186,7 @@ export function AITrainingPage() {
     ["/admin/settings/tokens"],
     ([url]) => fetcher(url, "POST"),
   );
+  const { data: adminSettings } = useSWR(["/admin/settings"], fetcher);
   const { data: datasetsList } = useSWR<DatasetListResponse>(
     ["/dataset/list"],
     ([url]) => fetcher(url, "POST"),
@@ -221,11 +230,13 @@ export function AITrainingPage() {
   const generateHuggingFaceModelName = async (dataset: string) => {
     // Model name followed by 10 random characters
     const randomChars = Math.random().toString(36).substring(2, 12);
-    // Remove the name/... and replace with phospho-app/...
+    // Remove the name/... and replace with appropriate namespace
     const [, datasetName] = dataset.split("/");
 
+    // Check if private training is enabled for PRO users
+    const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
+
     // Fetch whoami to get the username
-    let middlePart = "";
     try {
       const result = await fetchWithBaseUrl(
         "/admin/huggingface/whoami",
@@ -233,26 +244,52 @@ export function AITrainingPage() {
       );
       // Check the status from the whoami response
       if (result.status === "success" && result.username) {
-        // Include username in the model name if status is success
-        middlePart = `${result.username}-${selectedModelType}-${datasetName}`;
+        const username = result.username;
+
+        if (isPrivateTraining) {
+          // Private training: use user's namespace
+          const modelPart = `${selectedModelType}-${datasetName}`;
+          // Ensure total model name doesn't exceed 96 characters
+          // username + "/" + modelPart + "-" + randomChars
+          const maxModelPartLength = 96 - username.length - 1 - 11; // 1 for "/", 11 for "-" + randomChars
+          const finalModelPart =
+            modelPart.length > maxModelPartLength
+              ? modelPart.substring(0, maxModelPartLength)
+              : modelPart;
+          return `${username}/${finalModelPart}-${randomChars}`;
+        } else {
+          // Public training: use phospho-app namespace with username prefix
+          const middlePart = `${username}-${selectedModelType}-${datasetName}`;
+          // Ensure total model name doesn't exceed 96 characters
+          // "phospho-app/" = 13 chars, "-" + randomChars = 11 chars, so middlePart max = 96 - 13 - 11 = 72
+          const maxMiddleLength = 72;
+          const finalMiddlePart =
+            middlePart.length > maxMiddleLength
+              ? middlePart.substring(0, maxMiddleLength)
+              : middlePart;
+          return `phospho-app/${finalMiddlePart}-${randomChars}`;
+        }
       } else {
         // Fallback without username if status is not success
-        middlePart = `${selectedModelType}-${datasetName}`;
+        const fallbackPart = `${selectedModelType}-${datasetName}`;
+        const maxFallbackLength = 72; // Same constraint as above
+        const finalFallbackPart =
+          fallbackPart.length > maxFallbackLength
+            ? fallbackPart.substring(0, maxFallbackLength)
+            : fallbackPart;
+        return `phospho-app/${finalFallbackPart}-${randomChars}`;
       }
     } catch (error) {
       console.error("Error fetching whoami:", error);
       // Fallback without username in case of error
-      middlePart = `${selectedModelType}-${datasetName}`;
+      const fallbackPart = `${selectedModelType}-${datasetName}`;
+      const maxFallbackLength = 72;
+      const finalFallbackPart =
+        fallbackPart.length > maxFallbackLength
+          ? fallbackPart.substring(0, maxFallbackLength)
+          : fallbackPart;
+      return `phospho-app/${finalFallbackPart}-${randomChars}`;
     }
-    // Ensure total model name doesn't exceed 96 characters
-    // "phospho-app/" = 13 chars, "-" + randomChars = 11 chars, so middlePart max = 96 - 13 - 11 = 72
-    const maxMiddleLength = 72;
-    if (middlePart.length > maxMiddleLength) {
-      middlePart = middlePart.substring(0, maxMiddleLength);
-    }
-
-    const modelName = `phospho-app/${middlePart}-${randomChars}`;
-    return modelName;
   };
 
   const handleTrainModel = async () => {
@@ -289,6 +326,9 @@ export function AITrainingPage() {
         setTrainingState("idle");
         return { success: false, error: "Invalid JSON format" };
       }
+
+      // Add private training flag based on admin settings and PRO status
+      trainingBody.private_mode = proUser && adminSettings?.hf_private_mode;
 
       // Send the edited JSON to the training endpoint
       const response = await fetchWithBaseUrl(
@@ -504,19 +544,65 @@ export function AITrainingPage() {
                 </div>
               )}
 
-              <Button
-                variant="secondary"
-                className="flex w-full mt-4"
-                onClick={handleTrainModel}
-                disabled={
-                  !selectedDataset ||
-                  trainingState !== "idle" ||
-                  isDatasetInfoLoading ||
-                  datasetInfoResponse?.status === "error"
-                }
-              >
-                {renderButtonContent()}
-              </Button>
+              <div className="flex gap-2 items-center mt-4">
+                <Button
+                  variant="secondary"
+                  className="flex flex-1"
+                  onClick={handleTrainModel}
+                  disabled={
+                    !selectedDataset ||
+                    trainingState !== "idle" ||
+                    isDatasetInfoLoading ||
+                    datasetInfoResponse?.status === "error"
+                  }
+                >
+                  {renderButtonContent()}
+                </Button>
+
+                {/* Privacy Status Icon */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {proUser ? (
+                        <a href="/admin">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                          >
+                            {adminSettings?.hf_private_mode ? (
+                              <Lock className="size-4" />
+                            ) : (
+                              <Globe className="size-4" />
+                            )}
+                          </Button>
+                        </a>
+                      ) : (
+                        <a
+                          href="https://phospho.ai/pro"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                          >
+                            <Globe className="size-4" />
+                          </Button>
+                        </a>
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {proUser && adminSettings?.hf_private_mode
+                        ? "Private training enabled - click to manage settings"
+                        : proUser
+                          ? "Public training - click to manage settings"
+                          : "Public training - upgrade to PRO for private training"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
 
               {selectedModelType === "custom" &&
                 (showLogs || currentLogFile) && (

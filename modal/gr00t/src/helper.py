@@ -90,6 +90,7 @@ class Predictor:
         learning_rate: float = 0.0002,
         save_steps: int = 20_000,
         validation_dataset_name: str | None = None,
+        private_mode: bool = False,
     ):
         """Run a single prediction on the model"""
         steps = None
@@ -204,6 +205,21 @@ class Predictor:
                 return_readme_as_bytes=True,
             )
             hf_api = HfApi(token=hf_token)
+            
+            # Create the model repository if it doesn't exist
+            try:
+                hf_api.repo_info(repo_id=hf_model_name, repo_type="model")
+                logger.info(f"Model repository {hf_model_name} already exists.")
+            except Exception:
+                logger.info(f"Creating model repository {hf_model_name}")
+                hf_api.create_repo(
+                    repo_id=hf_model_name,
+                    repo_type="model",
+                    exist_ok=True,
+                    private=private_mode,
+                    token=hf_token,
+                )
+            
             hf_api.upload_file(
                 repo_type="model",
                 path_or_fileobj=readme,

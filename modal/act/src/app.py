@@ -626,6 +626,8 @@ def train(  # All these args should be verified in phosphobot
     wandb_api_key: str | None,
     model_name: str,
     training_params: TrainingParamsAct | TrainingParamsActWithBbox,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
     max_hf_download_retries: int = 3,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
     **kwargs,
@@ -638,10 +640,11 @@ def train(  # All these args should be verified in phosphobot
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    hf_token = os.getenv("HF_TOKEN")
+    # Use user's HF token for private training, fallback to system token
+    hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN environment variable is not set")
+        raise ValueError("HF_TOKEN is not available (neither user token nor system token)")
 
     logger.info(
         f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
@@ -711,7 +714,24 @@ def train(  # All these args should be verified in phosphobot
                 image_keys_to_keep=training_params.image_keys_to_keep,
             )
             logger.success(f"Bounding boxes computed and saved to {dataset_path}")
-            dataset_name = "phospho-app/" + dataset_path.name
+            
+            # Use user's namespace for private training, phospho-app for public
+            if private_mode and user_hf_token:
+                # Get username from HF token for private training
+                hf_api_temp = HfApi(token=user_hf_token)
+                try:
+                    user_info = hf_api_temp.whoami()
+                    username = user_info.get("name")
+                    if username:
+                        dataset_name = f"{username}/{dataset_path.name}"
+                    else:
+                        logger.warning("Could not get username from HF token, using phospho-app namespace")
+                        dataset_name = "phospho-app/" + dataset_path.name
+                except Exception as e:
+                    logger.warning(f"Error getting username from HF token: {e}, using phospho-app namespace")
+                    dataset_name = "phospho-app/" + dataset_path.name
+            else:
+                dataset_name = "phospho-app/" + dataset_path.name
 
             logger.info(f"Uploading dataset {dataset_name} to Hugging Face")
             hf_api = HfApi(token=hf_token)
@@ -720,6 +740,7 @@ def train(  # All these args should be verified in phosphobot
                 repo_id=dataset_name,
                 token=hf_token,
                 exist_ok=True,
+                private=private_mode,
             )
             hf_api.upload_folder(
                 repo_type="dataset",
@@ -825,6 +846,21 @@ def train(  # All these args should be verified in phosphobot
 
         # We now upload the trained model to the HF repo
         hf_api = HfApi(token=hf_token)
+        
+        # Create the model repository if it doesn't exist
+        try:
+            hf_api.repo_info(repo_id=model_name, repo_type="model")
+            logger.info(f"Model repository {model_name} already exists.")
+        except Exception:
+            logger.info(f"Creating model repository {model_name}")
+            hf_api.create_repo(
+                repo_id=model_name,
+                repo_type="model",
+                exist_ok=True,
+                private=private_mode,
+                token=hf_token,
+            )
+        
         files_directory = output_dir / "checkpoints" / "last" / "pretrained_model"
         output_paths: list[Path] = []
         for item in files_directory.glob("**/*"):
