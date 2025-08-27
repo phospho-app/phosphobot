@@ -14,7 +14,12 @@ from pydantic import ValidationError
 
 from phosphobot.hardware import BaseManipulator
 from phosphobot.hardware.base import BaseMobileRobot
-from phosphobot.models import AppControlData, RobotStatus, UDPServerInformationResponse
+from phosphobot.models import (
+    AppControlData,
+    RobotStatus,
+    UDPServerInformationResponse,
+    TeleopSettings,
+)
 from phosphobot.robot import RobotConnectionManager
 from phosphobot.utils import get_local_network_ip
 
@@ -361,7 +366,7 @@ class TeleopManager:
         return updates
 
     @property
-    def settings(self) -> "TeleopSettings":
+    def settings(self) -> TeleopSettings:
         """Return current teleop settings."""
         from phosphobot.models import TeleopSettings
 
