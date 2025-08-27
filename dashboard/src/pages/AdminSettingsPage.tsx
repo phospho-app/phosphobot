@@ -82,6 +82,14 @@ export function AdminPage() {
     }
   }, [adminSettings, validationErrors]);
 
+  // Force disable private mode for non-PRO users
+  useEffect(() => {
+    if (adminSettings && proUser !== true && adminSettings.hf_private_mode) {
+      // Directly mutate to avoid circular dependency
+      mutate({ ...adminSettings, hf_private_mode: false }, false);
+    }
+  }, [proUser, adminSettings, mutate]);
+
   const handleSettingChange = <K extends keyof AdminSettings>(
     key: K,
     value: AdminSettings[K],
@@ -104,7 +112,7 @@ export function AdminPage() {
         break;
       case "hf_private_mode":
         // Enforce PRO requirement for private mode
-        if (value === true && !proUser) {
+        if (value === true && proUser !== true) {
           error = "Private mode requires PRO subscription";
           finalValue = false as AdminSettings[K];
         }
@@ -144,12 +152,12 @@ export function AdminPage() {
                     onCheckedChange={(checked) =>
                       handleSettingChange("hf_private_mode", checked as boolean)
                     }
-                    disabled={!proUser}
-                    className={!proUser ? "opacity-50" : ""}
+                    disabled={proUser !== true}
+                    className={proUser !== true ? "opacity-50" : ""}
                   />
                   <Label
                     htmlFor="hf_private_mode"
-                    className={`text-sm ${!proUser ? "text-muted-foreground" : ""}`}
+                    className={`text-sm ${proUser !== true ? "text-muted-foreground" : ""}`}
                   >
                     <Lock className="inline size-4" />
                     HF Private mode: store datasets as private and enable
@@ -177,7 +185,7 @@ export function AdminPage() {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                {!proUser && (
+                {proUser !== true && (
                   <a href="https://phospho.ai/pro" target="_blank">
                     <Button size="sm" className="text-xs h-8">
                       Get phospho pro

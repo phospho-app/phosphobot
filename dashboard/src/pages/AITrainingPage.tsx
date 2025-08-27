@@ -96,7 +96,7 @@ const JsonEditor = ({
       <div className="relative">
         <textarea
           ref={editorRef}
-          className="w-full h-56 font-mono text-sm p-2 border border-gray-300 rounded"
+          className="w-full h-80 font-mono text-sm p-2 border border-gray-300 rounded"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
         />
@@ -227,14 +227,11 @@ export function AITrainingPage() {
     }
   }, [datasetInfoResponse]);
 
-  const generateHuggingFaceModelName = async (dataset: string) => {
+  const generateHuggingFaceModelName = async (dataset: string, isPrivateTraining: boolean = false) => {
     // Model name followed by 10 random characters
     const randomChars = Math.random().toString(36).substring(2, 12);
     // Remove the name/... and replace with appropriate namespace
     const [, datasetName] = dataset.split("/");
-
-    // Check if private training is enabled for PRO users
-    const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
 
     // Fetch whoami to get the username
     try {
@@ -311,11 +308,7 @@ export function AITrainingPage() {
     setTrainingState("loading");
 
     try {
-      // Generate a random model name
-      const modelName = await generateHuggingFaceModelName(selectedDataset);
-      const modelUrl = `https://huggingface.co/${modelName}`;
-
-      // Parse the edited JSON
+      // Parse the edited JSON first
       let trainingBody;
       try {
         trainingBody = JSON.parse(editableJson);
@@ -328,7 +321,13 @@ export function AITrainingPage() {
       }
 
       // Add private training flag based on admin settings and PRO status
-      trainingBody.private_mode = proUser && adminSettings?.hf_private_mode;
+      const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
+      trainingBody.private_mode = isPrivateTraining;
+
+      // Generate a random model name with correct privacy settings
+      const modelName = await generateHuggingFaceModelName(selectedDataset, isPrivateTraining);
+      const modelUrl = `https://huggingface.co/${modelName}`;
+      trainingBody.model_name = modelName;
 
       // Send the edited JSON to the training endpoint
       const response = await fetchWithBaseUrl(
@@ -504,7 +503,7 @@ export function AITrainingPage() {
                 )}
                 {datasetInfoResponse?.status == "ok" &&
                   !isDatasetInfoLoading && (
-                    <div className="bg-muted p-4 rounded-lg w-full h-64">
+                    <div className="bg-muted p-4 rounded-lg w-full h-80">
                       <pre className="font-mono text-sm whitespace-pre-wrap">
                         {editableJson ? (
                           <JsonEditor
