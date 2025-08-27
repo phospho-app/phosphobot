@@ -133,3 +133,7 @@ export type AIStatusResponse = {
   id?: string;
   status: "waiting" | "running" | "stopped" | "paused";
 };
+
+export type TeleopSettings = {
+  vr_scaling: number;
+};

@@ -1,6 +1,4 @@
-import { PhosphoVRCallout } from "@/components/callout/phospho-vr";
 import { Recorder } from "@/components/common/recorder";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -8,8 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAuth } from "@/context/AuthContext";
-import { useGlobalStore } from "@/lib/hooks";
+import { useGlobalStore, useLocalStorageState } from "@/lib/hooks";
 import { ViewVideoPage } from "@/pages/ViewVideoPage";
 import {
   BicepsFlexed,
@@ -18,18 +15,37 @@ import {
   Keyboard,
   RectangleGoggles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect } from "react";
 
 import { GamepadControl } from "./GamepadControlPage";
 import { KeyboardControl } from "./KeyboardControlPage";
 import { LeaderArmControl } from "./LeaderArmControlPage";
 import { SingleArmReplay } from "./SingleArmReplayPage";
+import { VRControl } from "./VRControlPage";
 
 export function ControlPage() {
   const showCamera = useGlobalStore((state) => state.showCamera);
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
-  const [activeTab, setActiveTab] = useState("keyboard");
-  const { proUser } = useAuth();
+  const [activeTab, setActiveTab] = useLocalStorageState("control-active-tab", "keyboard");
+
+  // Read tab from URL on mount (URL takes priority over localStorage)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+      // URL parameter overrides localStorage default
+      setActiveTab(tabParam);
+    }
+    // If no URL param, activeTab already initialized from localStorage
+  }, [setActiveTab]);
+
+  // Update URL when tab changes
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', newTab);
+    window.history.pushState({}, '', url.toString());
+  };
 
   const controlOptions = [
     {
@@ -61,7 +77,7 @@ export function ControlPage() {
 
   return (
     <div>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between gap-2">
           <div className="flex items-center gap-2 bg-muted rounded-lg p-1 border-1">
             <span className="text-sm font-medium text-muted-foreground px-2">
@@ -116,56 +132,7 @@ export function ControlPage() {
           <SingleArmReplay />
         </TabsContent>
         <TabsContent value="VR">
-          <div className="space-y-6">
-            {!proUser && <PhosphoVRCallout />}
-
-            <div className="flex flex-col gap-4 p-6 bg-background rounded-2xl border">
-              <div className="space-y-4">
-                <h4 className="font-semibold text-lg">
-                  How to connect to your robot in VR?
-                </h4>
-                <p className="text-muted-foreground">
-                  Control your robot in virtual reality using a Meta Quest 2,
-                  Meta Quest Pro, Meta Quest 3, or Meta Quest 3S. Watch the
-                  video to learn how to connect your robot in VR.
-                </p>
-              </div>
-
-              <div className="aspect-video max-w-2xl">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  src="https://www.youtube.com/embed/AQ-xgCTdj_w?si=tUw1JIWwm75gd5_9"
-                  title="Phospho VR Control Demo"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  className="rounded-lg"
-                ></iframe>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Button asChild variant="outline">
-                  <a
-                    href="https://docs.phospho.ai/examples/teleop"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Read the Docs
-                  </a>
-                </Button>
-                <Button asChild variant="outline">
-                  <a
-                    href="https://discord.gg/cbkggY6NSK"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Get Help on Discord
-                  </a>
-                </Button>
-              </div>
-            </div>
-          </div>
+          <VRControl />
         </TabsContent>
       </Tabs>
     </div>

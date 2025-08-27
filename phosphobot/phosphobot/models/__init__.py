@@ -1197,3 +1197,29 @@ class AddZMQCameraRequest(BaseModel):
         description="Topic to subscribe to. If None, will subscribes to all messages on the given TCP address.",
         examples=["camera", "wrist_camera"],
     )
+
+
+class TeleopSettings(BaseModel):
+    """
+    Model representing current teleop settings.
+    """
+
+    vr_scaling: float = Field(
+        ...,
+        description="VR scaling factor for teleoperation control.",
+        gt=0,
+        examples=[1.0, 0.5, 2.0],
+    )
+
+
+class TeleopSettingsRequest(BaseModel):
+    """
+    Request model for updating teleop settings.
+    """
+
+    vr_scaling: float = Field(
+        ...,
+        description="VR scaling factor for teleoperation control.",
+        gt=0,
+        examples=[1.0, 0.5, 2.0],
+    )
