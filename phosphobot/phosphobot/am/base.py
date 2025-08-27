@@ -432,9 +432,9 @@ class TrainingRequest(BaseTrainerConfig):
 
 class HuggingFaceTokenValidator:
     @staticmethod
-    def has_write_access(hf_token: str, hf_model_name: str) -> bool:
+    def has_write_access(hf_token: str, hf_model_name: str, private: bool) -> bool:
         """Check if the HF token has write access by attempting to create a repo."""
-        api = HfApi()
+        api = HfApi(token=hf_token)
         try:
             api.create_repo(hf_model_name, private=False, exist_ok=True, token=hf_token)
             return True  # The token has write access
@@ -446,11 +446,9 @@ class HuggingFaceTokenValidator:
 def generate_readme(
     model_type: str,
     dataset_repo_id: str,
+    training_params: BaseModel,
     folder_path: Optional[Path] = None,
     wandb_run_url: Optional[str] = None,
-    steps: Optional[int] = None,
-    epochs: Optional[int] = None,
-    batch_size: Optional[int] = None,
     error_traceback: Optional[str] = None,
     return_readme_as_bytes: bool = False,
 ):
@@ -493,9 +491,12 @@ Training was successful, try it out on your robot!
 
 - **Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
 - **Wandb run URL**: {wandb_run_url}
-- **Epochs**: {epochs}
-- **Batch size**: {batch_size}
-- **Training steps**: {steps}
+
+Training parameters:
+
+```text
+{training_params.model_dump_json(indent=2)}
+```
 
 📖 **Get Started**: [docs.phospho.ai](https://docs.phospho.ai?utm_source=huggingface_readme)
 

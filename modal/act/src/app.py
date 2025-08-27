@@ -649,7 +649,7 @@ def train(  # All these args should be verified in phosphobot
         )
 
     logger.info(
-        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
+        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name} (private_mode={private_mode})"
     )
 
     try:
@@ -661,7 +661,7 @@ def train(  # All these args should be verified in phosphobot
 
         logger.debug("Creating the HF repo...")
         if not HuggingFaceTokenValidator().has_write_access(
-            hf_token=hf_token, hf_model_name=model_name
+            hf_token=hf_token, hf_model_name=model_name, private=private_mode
         ):
             raise ValueError(
                 f"The provided HF token does not have write access to {dataset_name}"
@@ -915,10 +915,8 @@ def train(  # All these args should be verified in phosphobot
             model_type="act",
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
+            training_params=training_params,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
             return_readme_as_bytes=True,
         )
         hf_api.upload_file(
@@ -960,9 +958,7 @@ def train(  # All these args should be verified in phosphobot
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
+            training_params=training_params,
             error_traceback=str(e),
             return_readme_as_bytes=True,
         )
@@ -989,9 +985,7 @@ def train(  # All these args should be verified in phosphobot
             dataset_repo_id=dataset_name,
             folder_path=output_dir,
             wandb_run_url=wandb_run_url,
-            steps=training_params.steps,
-            epochs=None,
-            batch_size=training_params.batch_size,
+            training_params=training_params,
             error_traceback=str(e),
             return_readme_as_bytes=True,
         )

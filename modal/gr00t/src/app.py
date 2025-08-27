@@ -541,13 +541,11 @@ def train(  # All these args should be verified in phosphobot
 
     from supabase import Client, create_client
 
-    from .helper import Predictor
+    from .helper import train_gr00t
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-    predictor = Predictor()
 
     # Use user's HF token for private training, fallback to system token
     hf_token = user_hf_token or os.getenv("HF_TOKEN")
@@ -558,11 +556,11 @@ def train(  # All these args should be verified in phosphobot
         )
 
     logger.info(
-        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
+        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
 
     try:
-        predictor.predict(
+        train_gr00t(
             dataset_repo_id=dataset_name,
             hf_token=hf_token,
             wandb_api_key=wandb_api_key,
