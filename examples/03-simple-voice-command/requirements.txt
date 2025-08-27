@@ -15,7 +15,6 @@ filelock>=3.17.0
 flatbuffers>=25.1.21
 fonttools>=4.55.5
 fsspec>=2024.12.0
-future>=1.0.0
 h11>=0.16.0
 httpcore>=1.0.7
 httpx>=0.28.1
