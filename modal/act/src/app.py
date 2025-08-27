@@ -124,6 +124,7 @@ async def run_act_training(
     training_params: TrainingParamsAct,
     output_dir: str,
     wandb_enabled: bool,
+    wandb_run_id: str,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
 ):
     cmd = [
@@ -140,6 +141,7 @@ async def run_act_training(
         f"--steps={training_params.steps}",
         "--policy.device=cuda",
         f"--output_dir={output_dir}",
+        f"--wandb.run_id={wandb_run_id}",
         f"--wandb.enable={str(wandb_enabled).lower()}",
     ]
 
@@ -628,6 +630,7 @@ def train(  # All these args should be verified in phosphobot
     training_params: TrainingParamsAct | TrainingParamsActWithBbox,
     max_hf_download_retries: int = 3,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
+    wandb_run_id: str = "wandb_run_id_not_set",
     **kwargs,
 ):
     from datetime import datetime, timezone
@@ -812,6 +815,7 @@ def train(  # All these args should be verified in phosphobot
                     output_dir=str(output_dir),
                     wandb_enabled=wandb_enabled,
                     timeout_seconds=timeout_seconds,
+                    wandb_run_id=wandb_run_id,
                 )
             )
         except TimeoutError as te:
