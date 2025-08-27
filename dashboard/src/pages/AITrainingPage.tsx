@@ -96,7 +96,7 @@ const JsonEditor = ({
       <div className="relative">
         <textarea
           ref={editorRef}
-          className="w-full h-80 font-mono text-sm p-2 border border-gray-300 rounded"
+          className="w-full h-72 font-mono text-sm p-2 border border-gray-300 rounded"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
         />
@@ -227,7 +227,10 @@ export function AITrainingPage() {
     }
   }, [datasetInfoResponse]);
 
-  const generateHuggingFaceModelName = async (dataset: string, isPrivateTraining: boolean = false) => {
+  const generateHuggingFaceModelName = async (
+    dataset: string,
+    isPrivateTraining: boolean = false,
+  ) => {
     // Model name followed by 10 random characters
     const randomChars = Math.random().toString(36).substring(2, 12);
     // Remove the name/... and replace with appropriate namespace
@@ -325,7 +328,10 @@ export function AITrainingPage() {
       trainingBody.private_mode = isPrivateTraining;
 
       // Generate a random model name with correct privacy settings
-      const modelName = await generateHuggingFaceModelName(selectedDataset, isPrivateTraining);
+      const modelName = await generateHuggingFaceModelName(
+        selectedDataset,
+        isPrivateTraining,
+      );
       const modelUrl = `https://huggingface.co/${modelName}`;
       trainingBody.model_name = modelName;
 
