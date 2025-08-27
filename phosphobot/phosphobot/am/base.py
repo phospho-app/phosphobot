@@ -12,6 +12,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from phosphobot.models import InfoModel, ModelConfigurationResponse
+from phosphobot.utils import get_hf_token
 
 # Disable PyAV logs
 av.logging.set_level(None)
@@ -238,7 +239,7 @@ class BaseTrainerConfig(BaseModel):
 
 class TrainingRequest(BaseTrainerConfig):
     """Pydantic model for training request validation"""
-    
+
     private_mode: bool = Field(
         default=False,
         description="Whether to use private training (PRO users only)",
@@ -265,7 +266,7 @@ class TrainingRequest(BaseTrainerConfig):
         random_chars = "".join(
             random.choices(string.ascii_lowercase + string.digits, k=10)
         )
-        
+
         size = self.model_name.split("/")
 
         def clamp_length(name: str, max_length: int) -> str:
@@ -274,15 +275,23 @@ class TrainingRequest(BaseTrainerConfig):
                 return name[:max_length]
             return name
 
-        if self.private_mode and self.user_hf_token:
+        if self.private_mode:
             # Private mode: use user's namespace
+            if not self.user_hf_token:
+                self.user_hf_token = get_hf_token()
+
+            if not self.user_hf_token:
+                raise ValueError(
+                    "Private training requires a valid HF token in your settings."
+                )
+
             try:
                 api = HfApi(token=self.user_hf_token)
                 user_info = api.whoami()
                 username = user_info.get("name")
                 if not username:
                     raise ValueError("Could not get username from HF token")
-                
+
                 if len(size) == 1:
                     # Format: username/model_name-random
                     model_name = clamp_length(
@@ -330,7 +339,7 @@ class TrainingRequest(BaseTrainerConfig):
             # Private mode: validate with user's HF token
             if not self.user_hf_token:
                 raise ValueError("Private training requires a user HF token")
-            
+
             try:
                 api = HfApi(token=self.user_hf_token)
                 # Try to access the dataset with the user's token
@@ -343,7 +352,9 @@ class TrainingRequest(BaseTrainerConfig):
         else:
             # Public mode: validate dataset is publicly accessible
             try:
-                url = f"https://huggingface.co/api/datasets/{self.dataset_name}/tree/main"
+                url = (
+                    f"https://huggingface.co/api/datasets/{self.dataset_name}/tree/main"
+                )
                 response = requests.get(url, timeout=5)
                 if response.status_code != 200:
                     raise ValueError()
@@ -351,7 +362,7 @@ class TrainingRequest(BaseTrainerConfig):
                 raise ValueError(
                     f"Dataset {self.dataset_name} is not a valid, public Hugging Face dataset. Please check the URL and try again. Your dataset name should be in the format <username>/<dataset_name>",
                 )
-        
+
         return self
 
     @model_validator(mode="before")

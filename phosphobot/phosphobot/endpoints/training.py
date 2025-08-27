@@ -162,13 +162,12 @@ async def start_training(
             )
 
         # Set user's HF token for private training
+        request.user_hf_token = get_hf_token()
         if not request.user_hf_token:
-            request.user_hf_token = get_hf_token()
-            if not request.user_hf_token:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Private training requires a valid HF token in your settings.",
-                )
+            raise HTTPException(
+                status_code=400,
+                detail="Private training requires a valid HF token in your settings.",
+            )
     else:
         # For public training, we need to remove the user_hf_token (otherwise can't push to phospho-app)
         request.user_hf_token = None
