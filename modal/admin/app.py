@@ -696,6 +696,13 @@ def fastapi_app():
         if user_data.data:
             user_plan = user_data.data[0].get("plan", None)
 
+        # Validate PRO requirements for private training features
+        if (request.private_mode or request.user_hf_token) and user_plan != "pro":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Private training features require PRO subscription"
+            )
+
         # Handle timeout based on user plan. Default to 1 hours for normal users.
         timeout_seconds = 1 * 60 * 60  # 1 hours in seconds
         if user_plan == "pro" or user_id in id_whitelist:

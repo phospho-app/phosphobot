@@ -359,19 +359,19 @@ async def serve(
                 nonlocal last_bbox_computed
                 nonlocal policy
 
-                assert len(current_qpos) == model_specifics.state_size[0], (
-                    f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-                )
-                assert len(images) <= len(model_specifics.video_keys), (
-                    f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
-                )
+                assert (
+                    len(current_qpos) == model_specifics.state_size[0]
+                ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+                assert (
+                    len(images) <= len(model_specifics.video_keys)
+                ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
                 if len(images) > 0:
-                    assert len(images[0].shape) == 3, (
-                        f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-                    )
-                    assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
-                        f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
-                    )
+                    assert (
+                        len(images[0].shape) == 3
+                    ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+                    assert (
+                        len(images[0].shape) == 3 and images[0].shape[2] == 3
+                    ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
 
                 with torch.no_grad(), torch.autocast(device_type="cuda"):
                     current_qpos = current_qpos.copy()
@@ -644,7 +644,9 @@ def train(  # All these args should be verified in phosphobot
     hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN is not available (neither user token nor system token)")
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
     logger.info(
         f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"
@@ -714,7 +716,7 @@ def train(  # All these args should be verified in phosphobot
                 image_keys_to_keep=training_params.image_keys_to_keep,
             )
             logger.success(f"Bounding boxes computed and saved to {dataset_path}")
-            
+
             # Use user's namespace for private training, phospho-app for public
             if private_mode and user_hf_token:
                 # Get username from HF token for private training
@@ -725,10 +727,14 @@ def train(  # All these args should be verified in phosphobot
                     if username:
                         dataset_name = f"{username}/{dataset_path.name}"
                     else:
-                        logger.warning("Could not get username from HF token, using phospho-app namespace")
+                        logger.warning(
+                            "Could not get username from HF token, using phospho-app namespace"
+                        )
                         dataset_name = "phospho-app/" + dataset_path.name
                 except Exception as e:
-                    logger.warning(f"Error getting username from HF token: {e}, using phospho-app namespace")
+                    logger.warning(
+                        f"Error getting username from HF token: {e}, using phospho-app namespace"
+                    )
                     dataset_name = "phospho-app/" + dataset_path.name
             else:
                 dataset_name = "phospho-app/" + dataset_path.name
@@ -846,7 +852,7 @@ def train(  # All these args should be verified in phosphobot
 
         # We now upload the trained model to the HF repo
         hf_api = HfApi(token=hf_token)
-        
+
         # Create the model repository if it doesn't exist
         try:
             hf_api.repo_info(repo_id=model_name, repo_type="model")
@@ -860,7 +866,7 @@ def train(  # All these args should be verified in phosphobot
                 private=private_mode,
                 token=hf_token,
             )
-        
+
         files_directory = output_dir / "checkpoints" / "last" / "pretrained_model"
         output_paths: list[Path] = []
         for item in files_directory.glob("**/*"):

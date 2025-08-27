@@ -553,7 +553,9 @@ def train(  # All these args should be verified in phosphobot
     hf_token = user_hf_token or os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        raise ValueError("HF_TOKEN is not available (neither user token nor system token)")
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
     logger.info(
         f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}"

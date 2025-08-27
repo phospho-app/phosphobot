@@ -46,6 +46,7 @@ import {
   Check,
   ExternalLink,
   Loader2,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -443,6 +444,7 @@ export const ModelsCard: React.FC = () => {
                     Most recent first
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="success_rate">
+                    <ThumbsUp className="inline size-4 mr-1" />
                     Highest success rate
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="sessions_count">
@@ -497,6 +499,7 @@ export const ModelsCard: React.FC = () => {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="border-b border-dotted border-muted-foreground cursor-help">
+                              <ThumbsUp className="inline size-4 mr-1" />
                               Success rate
                             </span>
                           </TooltipTrigger>
