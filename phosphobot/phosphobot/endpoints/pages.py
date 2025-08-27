@@ -745,6 +745,10 @@ async def get_training_info(
             },
         )
 
+    logger.debug(
+        f"Fetching training info for model {request.model_id} of type {request.model_type}"
+    )
+
     try:
         token_path = str(get_home_app_path()) + "/huggingface.token"
 
@@ -788,27 +792,24 @@ async def get_training_info(
         random_suffix = "".join(
             random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=5)
         )
-        
+
         # Determine private mode from config
         private_mode = config.DEFAULT_HF_PRIVATE_MODE
-        
+
         # Set model name based on private mode
         if private_mode:
             # Use user's namespace for private training
             model_name = f"{username_or_orgid}/{request.model_type}-{request.model_id.split('/')[1]}-{random_suffix}"
-            # Set user's HF token for private training
-            user_hf_token = get_hf_token()
         else:
             # Use phospho-app namespace for public training
             model_name = f"phospho-app/{username_or_orgid}-{request.model_type}-{request.model_id.split('/')[1]}-{random_suffix}"
-            user_hf_token = None
-            
+
         training_response = TrainingRequest(
             model_type=request.model_type,
             dataset_name=request.model_id,
             model_name=model_name,
             private_mode=private_mode,
-            user_hf_token=user_hf_token,
+            user_hf_token=None,
         )
         # Replace the fields in training_response with the values from training_params dict
         if training_response.training_params is not None:
@@ -828,11 +829,7 @@ async def get_training_info(
                 },
             }
         )
-        
-        # Mask user_hf_token for display (but keep the actual value for training)
-        if training_body.get("user_hf_token"):
-            training_body["user_hf_token"] = "****"
-            
+
         return TrainingInfoResponse(
             status="ok",
             training_body=training_body,

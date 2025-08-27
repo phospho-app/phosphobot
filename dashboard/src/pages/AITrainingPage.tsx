@@ -33,11 +33,13 @@ import {
   Loader2,
   Lock,
   Pencil,
+  RotateCcw,
   Save,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
+import { useLocalStorageState } from "@/lib/hooks";
 
 // Add this after the existing imports
 const JsonEditor = ({
@@ -201,31 +203,32 @@ export function AITrainingPage() {
           model_id: selectedDataset,
           model_type: selectedModelType,
         }),
+      {
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+        refreshInterval: 0,
+      },
     );
 
-  const [editableJson, setEditableJson] = useState<string>("");
   const [currentLogFile, setCurrentLogFile] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
 
-  useEffect(() => {
-    // Try to load from localStorage first
-    const savedJson = localStorage.getItem("trainingBodyJson");
-    if (savedJson) {
-      setEditableJson(savedJson);
-    }
+  // Create a unique key for localStorage based on dataset and model type
+  const storageKey = selectedDataset && selectedModelType !== "custom"
+    ? `training-params-${selectedDataset}-${selectedModelType}`
+    : `training-params-default`;
 
-    // Update from API response when it changes
-    if (datasetInfoResponse?.training_body) {
-      const jsonString = JSON.stringify(
-        datasetInfoResponse.training_body,
-        null,
-        2,
-      );
+  // Use localStorage state that persists across page refreshes but changes with dataset/model
+  const [editableJson, setEditableJson] = useLocalStorageState(storageKey, "");
+
+  // Initialize editableJson when API data loads, but only if no stored data exists
+  useEffect(() => {
+    if (datasetInfoResponse?.training_body?.training_params && !editableJson) {
+      const trainingParams = datasetInfoResponse.training_body.training_params;
+      const jsonString = JSON.stringify(trainingParams, null, 2);
       setEditableJson(jsonString);
-      // Save to localStorage
-      localStorage.setItem("trainingBodyJson", jsonString);
     }
-  }, [datasetInfoResponse]);
+  }, [datasetInfoResponse?.training_body?.training_params, editableJson, setEditableJson, storageKey]);
 
   const generateHuggingFaceModelName = async (
     dataset: string,
@@ -311,10 +314,10 @@ export function AITrainingPage() {
     setTrainingState("loading");
 
     try {
-      // Parse the edited JSON first
-      let trainingBody;
+      // Parse the edited training parameters JSON
+      let trainingParams;
       try {
-        trainingBody = JSON.parse(editableJson);
+        trainingParams = JSON.parse(editableJson);
       } catch (error) {
         toast.error("Invalid JSON format. Please check your input: " + error, {
           duration: 5000,
@@ -325,7 +328,6 @@ export function AITrainingPage() {
 
       // Add private training flag based on admin settings and PRO status
       const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
-      trainingBody.private_mode = isPrivateTraining;
 
       // Generate a random model name with correct privacy settings
       const modelName = await generateHuggingFaceModelName(
@@ -333,7 +335,16 @@ export function AITrainingPage() {
         isPrivateTraining,
       );
       const modelUrl = `https://huggingface.co/${modelName}`;
-      trainingBody.model_name = modelName;
+
+      // Build the complete training body
+      const trainingBody = {
+        model_type: selectedModelType,
+        dataset_name: selectedDataset,
+        model_name: modelName,
+        private_mode: isPrivateTraining,
+        user_hf_token: null, // Always null - backend will handle token
+        training_params: trainingParams,
+      };
 
       // Send the edited JSON to the training endpoint
       const response = await fetchWithBaseUrl(
@@ -497,8 +508,35 @@ export function AITrainingPage() {
                   Use this to run any custom training script.
                 </div>
               )}
-              <div className="text-xs text-muted-foreground mt-4">
-                Training parameters:
+              <div className="flex justify-between items-center mt-4">
+                <div className="text-xs text-muted-foreground">
+                  Training parameters:
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          // Clear localStorage for this dataset/model combination
+                          localStorage.removeItem(storageKey);
+                          // Reset the editableJson state
+                          setEditableJson("");
+                          // Refetch the training info data
+                          mutate(["/training/info", selectedDataset, selectedModelType]);
+                          toast.success("Training parameters reset to defaults");
+                        }}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reset</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <div className="text-sm text-muted-foreground mt-2">
                 {isDatasetInfoLoading && (
@@ -516,7 +554,6 @@ export function AITrainingPage() {
                             value={editableJson}
                             onChange={(value) => {
                               setEditableJson(value);
-                              localStorage.setItem("trainingBodyJson", value);
                             }}
                           />
                         ) : (
