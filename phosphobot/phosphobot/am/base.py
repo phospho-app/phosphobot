@@ -398,6 +398,35 @@ class TrainingRequest(BaseTrainerConfig):
             # If no training params are provided, we set the default ones
             data["training_params"] = params_class()
 
+        # Generate a model name. Reuse this logic but implement it in python
+        if "model_name" not in data:
+            # Generate a random suffix of 10 characters
+            random_suffix = "".join(
+                random.choices(string.ascii_lowercase + string.digits, k=10)
+            )
+            # model name should be username/model_type-dataset_name-random_suffix
+            if data["private_mode"]:
+                # Private mode: use user's namespace
+                if not data.get("user_hf_token"):
+                    data["user_hf_token"] = get_hf_token()
+
+                if not data["user_hf_token"]:
+                    raise ValueError(
+                        "Private training requires a valid HF token in your settings."
+                    )
+
+                api = HfApi(token=data["user_hf_token"])
+                user_info = api.whoami()
+                username = user_info.get("name")
+                if not username:
+                    raise ValueError("Could not get username from HF token")
+
+                model_name = f"{username}/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
+            else:
+                # Public mode: use phospho-app namespace
+                model_name = f"phospho-app/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
+            data["model_name"] = model_name
+
         return data
 
 

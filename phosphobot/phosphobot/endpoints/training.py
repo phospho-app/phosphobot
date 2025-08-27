@@ -275,6 +275,7 @@ async def start_training(
     return StartTrainingResponse(
         message=f"Training triggered successfully, find your model at: https://huggingface.co/{request.model_name}",
         training_id=response_data.get("training_id", None),
+        model_url=response_data.get("model_url", None),
     )
 
 

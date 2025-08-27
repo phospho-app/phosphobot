@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalStore } from "@/lib/hooks";
+import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
 import {
@@ -39,7 +40,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
-import { useLocalStorageState } from "@/lib/hooks";
 
 // Add this after the existing imports
 const JsonEditor = ({
@@ -214,86 +214,42 @@ export function AITrainingPage() {
   const [showLogs, setShowLogs] = useState<boolean>(false);
 
   // Create a unique key for localStorage based on dataset and model type
-  const storageKey = selectedDataset && selectedModelType !== "custom"
-    ? `training-params-${selectedDataset}-${selectedModelType}`
-    : `training-params-default`;
+  const storageKey =
+    selectedDataset && selectedModelType !== "custom"
+      ? `training-params-${selectedDataset}-${selectedModelType}`
+      : `training-params-default`;
+
+  // Track the previous storage key to detect changes
+  const [prevStorageKey, setPrevStorageKey] = useState(storageKey);
 
   // Use localStorage state that persists across page refreshes but changes with dataset/model
   const [editableJson, setEditableJson] = useLocalStorageState(storageKey, "");
 
-  // Initialize editableJson when API data loads, but only if no stored data exists
+  // Clear localStorage and reset when storage key changes (dataset/model switch)
   useEffect(() => {
-    if (datasetInfoResponse?.training_body?.training_params && !editableJson) {
+    if (prevStorageKey !== storageKey) {
+      // Storage key changed, reset the editor to empty
+      setEditableJson("");
+      setPrevStorageKey(storageKey);
+    }
+  }, [storageKey, prevStorageKey, setEditableJson]);
+
+  // Initialize editableJson when API data loads
+  useEffect(() => {
+    if (
+      datasetInfoResponse?.training_body?.training_params &&
+      editableJson === ""
+    ) {
+      // Only initialize if editableJson is empty (no stored data)
       const trainingParams = datasetInfoResponse.training_body.training_params;
       const jsonString = JSON.stringify(trainingParams, null, 2);
       setEditableJson(jsonString);
     }
-  }, [datasetInfoResponse?.training_body?.training_params, editableJson, setEditableJson, storageKey]);
-
-  const generateHuggingFaceModelName = async (
-    dataset: string,
-    isPrivateTraining: boolean = false,
-  ) => {
-    // Model name followed by 10 random characters
-    const randomChars = Math.random().toString(36).substring(2, 12);
-    // Remove the name/... and replace with appropriate namespace
-    const [, datasetName] = dataset.split("/");
-
-    // Fetch whoami to get the username
-    try {
-      const result = await fetchWithBaseUrl(
-        "/admin/huggingface/whoami",
-        "POST",
-      );
-      // Check the status from the whoami response
-      if (result.status === "success" && result.username) {
-        const username = result.username;
-
-        if (isPrivateTraining) {
-          // Private training: use user's namespace
-          const modelPart = `${selectedModelType}-${datasetName}`;
-          // Ensure total model name doesn't exceed 96 characters
-          // username + "/" + modelPart + "-" + randomChars
-          const maxModelPartLength = 96 - username.length - 1 - 11; // 1 for "/", 11 for "-" + randomChars
-          const finalModelPart =
-            modelPart.length > maxModelPartLength
-              ? modelPart.substring(0, maxModelPartLength)
-              : modelPart;
-          return `${username}/${finalModelPart}-${randomChars}`;
-        } else {
-          // Public training: use phospho-app namespace with username prefix
-          const middlePart = `${username}-${selectedModelType}-${datasetName}`;
-          // Ensure total model name doesn't exceed 96 characters
-          // "phospho-app/" = 13 chars, "-" + randomChars = 11 chars, so middlePart max = 96 - 13 - 11 = 72
-          const maxMiddleLength = 72;
-          const finalMiddlePart =
-            middlePart.length > maxMiddleLength
-              ? middlePart.substring(0, maxMiddleLength)
-              : middlePart;
-          return `phospho-app/${finalMiddlePart}-${randomChars}`;
-        }
-      } else {
-        // Fallback without username if status is not success
-        const fallbackPart = `${selectedModelType}-${datasetName}`;
-        const maxFallbackLength = 72; // Same constraint as above
-        const finalFallbackPart =
-          fallbackPart.length > maxFallbackLength
-            ? fallbackPart.substring(0, maxFallbackLength)
-            : fallbackPart;
-        return `phospho-app/${finalFallbackPart}-${randomChars}`;
-      }
-    } catch (error) {
-      console.error("Error fetching whoami:", error);
-      // Fallback without username in case of error
-      const fallbackPart = `${selectedModelType}-${datasetName}`;
-      const maxFallbackLength = 72;
-      const finalFallbackPart =
-        fallbackPart.length > maxFallbackLength
-          ? fallbackPart.substring(0, maxFallbackLength)
-          : fallbackPart;
-      return `phospho-app/${finalFallbackPart}-${randomChars}`;
-    }
-  };
+  }, [
+    datasetInfoResponse?.training_body?.training_params,
+    editableJson,
+    setEditableJson,
+  ]);
 
   const handleTrainModel = async () => {
     if (!selectedDataset) {
@@ -329,18 +285,10 @@ export function AITrainingPage() {
       // Add private training flag based on admin settings and PRO status
       const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
 
-      // Generate a random model name with correct privacy settings
-      const modelName = await generateHuggingFaceModelName(
-        selectedDataset,
-        isPrivateTraining,
-      );
-      const modelUrl = `https://huggingface.co/${modelName}`;
-
       // Build the complete training body
       const trainingBody = {
         model_type: selectedModelType,
         dataset_name: selectedDataset,
-        model_name: modelName,
         private_mode: isPrivateTraining,
         user_hf_token: null, // Always null - backend will handle token
         training_params: trainingParams,
@@ -370,7 +318,7 @@ export function AITrainingPage() {
       setTrainingState("success");
       if (selectedModelType !== "custom") {
         toast.success(
-          `Model training started! Check progress at: ${modelUrl}`,
+          `Model training started! Check progress on Hugging Face.`,
           {
             duration: 5000,
           },
@@ -381,7 +329,7 @@ export function AITrainingPage() {
         });
       }
 
-      return { success: true, modelName };
+      return { success: true };
     } catch (error) {
       console.error("Error starting training job:", error);
       setTrainingState("idle");
@@ -525,8 +473,14 @@ export function AITrainingPage() {
                           // Reset the editableJson state
                           setEditableJson("");
                           // Refetch the training info data
-                          mutate(["/training/info", selectedDataset, selectedModelType]);
-                          toast.success("Training parameters reset to defaults");
+                          mutate([
+                            "/training/info",
+                            selectedDataset,
+                            selectedModelType,
+                          ]);
+                          toast.success(
+                            "Training parameters reset to defaults",
+                          );
                         }}
                       >
                         <RotateCcw className="h-3 w-3" />
