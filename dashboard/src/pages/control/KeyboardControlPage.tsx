@@ -416,7 +416,7 @@ export function KeyboardControl() {
     <div className="container mx-auto px-4 py-6 lg:flex lg:flex-row lg:gap-8 space-y-8 lg:space-y-0">
       <div className="md:w-1/2 space-y-6">
         <Card>
-          <CardContent className="pt-6 flex flex-col items-center gap-4">
+          <CardContent className="pt-6 flex flex-col items-center gap-2">
             <div className="flex flex-wrap items-end justify-center gap-2">
               <div className="flex flex-col gap-y-2">
                 <Label>Select Robot to Control</Label>
@@ -454,7 +454,7 @@ export function KeyboardControl() {
                 step={0.1}
               />
             </div>
-            <div className="flex justify-center items-center gap-4">
+            <div className="flex justify-center items-center gap-2">
               <Button
                 variant="default"
                 onClick={startMoving}

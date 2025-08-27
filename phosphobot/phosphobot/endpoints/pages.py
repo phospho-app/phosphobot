@@ -745,6 +745,10 @@ async def get_training_info(
             },
         )
 
+    logger.debug(
+        f"Fetching training info for model {request.model_id} of type {request.model_type}"
+    )
+
     try:
         token_path = str(get_home_app_path()) + "/huggingface.token"
 
@@ -788,10 +792,24 @@ async def get_training_info(
         random_suffix = "".join(
             random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=5)
         )
+
+        # Determine private mode from config
+        private_mode = config.DEFAULT_HF_PRIVATE_MODE
+
+        # Set model name based on private mode
+        if private_mode:
+            # Use user's namespace for private training
+            model_name = f"{username_or_orgid}/{request.model_type}-{request.model_id.split('/')[1]}-{random_suffix}"
+        else:
+            # Use phospho-app namespace for public training
+            model_name = f"phospho-app/{username_or_orgid}-{request.model_type}-{request.model_id.split('/')[1]}-{random_suffix}"
+
         training_response = TrainingRequest(
             model_type=request.model_type,
             dataset_name=request.model_id,
-            model_name=f"phospho-app/{username_or_orgid}-{request.model_type}-{request.model_id.split('/')[1]}-{random_suffix}",
+            model_name=model_name,
+            private_mode=private_mode,
+            user_hf_token=None,
         )
         # Replace the fields in training_response with the values from training_params dict
         if training_response.training_params is not None:
@@ -799,19 +817,22 @@ async def get_training_info(
                 if hasattr(training_response.training_params, key):
                     setattr(training_response.training_params, key, value)
 
+        # Prepare the training body with masked token
+        training_body = training_response.model_dump(
+            exclude={
+                "wandb_api_key": True,
+                "custom_command": True,
+                "training_params": {
+                    "path_to_gr00t_repo": True,
+                    "data_dir": True,
+                    "output_dir": True,
+                },
+            }
+        )
+
         return TrainingInfoResponse(
             status="ok",
-            training_body=training_response.model_dump(
-                exclude={
-                    "wandb_api_key": True,
-                    "custom_command": True,
-                    "training_params": {
-                        "path_to_gr00t_repo": True,
-                        "data_dir": True,
-                        "output_dir": True,
-                    },
-                }
-            ),
+            training_body=training_body,
         )
     except Exception as e:
         logger.warning(f"Error fetching training info: {e}")

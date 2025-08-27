@@ -77,7 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async (): Promise<void> => {
     await fetchWithBaseUrl("/auth/logout", "POST");
     localStorage.removeItem("session");
+    localStorage.removeItem("proUser");
     setSession(null);
+    setProUser(null);
   };
 
   const verifyEmailCode = async (
@@ -106,12 +108,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_pro_user: boolean;
       } = await fetchWithBaseUrl("/auth/check-auth", "GET");
       if (!response.authenticated) {
+        setProUser(null);
+        localStorage.removeItem("proUser");
         logout();
       }
       // Update pro user status
       setProUser(response.is_pro_user);
+      localStorage.setItem("proUser", JSON.stringify(response.is_pro_user));
     } catch (e) {
       console.error("Session validation failed:", e);
+      // Reset pro user status on validation failure
+      setProUser(null);
+      localStorage.removeItem("proUser");
       logout();
     } finally {
       setIsLoading(false);

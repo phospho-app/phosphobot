@@ -13,23 +13,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalStore } from "@/lib/hooks";
+import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
 import {
   Ban,
   CheckCircle2,
   Dumbbell,
+  Globe,
   Lightbulb,
   List,
   Loader2,
+  Lock,
   Pencil,
+  RotateCcw,
   Save,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 
 // Add this after the existing imports
 const JsonEditor = ({
@@ -88,7 +98,7 @@ const JsonEditor = ({
       <div className="relative">
         <textarea
           ref={editorRef}
-          className="w-full h-56 font-mono text-sm p-2 border border-gray-300 rounded"
+          className="w-full h-72 font-mono text-sm p-2 border border-gray-300 rounded"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
         />
@@ -178,6 +188,7 @@ export function AITrainingPage() {
     ["/admin/settings/tokens"],
     ([url]) => fetcher(url, "POST"),
   );
+  const { data: adminSettings } = useSWR(["/admin/settings"], fetcher);
   const { data: datasetsList } = useSWR<DatasetListResponse>(
     ["/dataset/list"],
     ([url]) => fetcher(url, "POST"),
@@ -192,68 +203,53 @@ export function AITrainingPage() {
           model_id: selectedDataset,
           model_type: selectedModelType,
         }),
+      {
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+        refreshInterval: 0,
+      },
     );
 
-  const [editableJson, setEditableJson] = useState<string>("");
   const [currentLogFile, setCurrentLogFile] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
 
+  // Create a unique key for localStorage based on dataset and model type
+  const storageKey =
+    selectedDataset && selectedModelType !== "custom"
+      ? `training-params-${selectedDataset}-${selectedModelType}`
+      : `training-params-default`;
+
+  // Track the previous storage key to detect changes
+  const [prevStorageKey, setPrevStorageKey] = useState(storageKey);
+
+  // Use localStorage state that persists across page refreshes but changes with dataset/model
+  const [editableJson, setEditableJson] = useLocalStorageState(storageKey, "");
+
+  // Clear localStorage and reset when storage key changes (dataset/model switch)
   useEffect(() => {
-    // Try to load from localStorage first
-    const savedJson = localStorage.getItem("trainingBodyJson");
-    if (savedJson) {
-      setEditableJson(savedJson);
+    if (prevStorageKey !== storageKey) {
+      // Storage key changed, reset the editor to empty
+      setEditableJson("");
+      setPrevStorageKey(storageKey);
     }
+  }, [storageKey, prevStorageKey, setEditableJson]);
 
-    // Update from API response when it changes
-    if (datasetInfoResponse?.training_body) {
-      const jsonString = JSON.stringify(
-        datasetInfoResponse.training_body,
-        null,
-        2,
-      );
+  // Initialize editableJson when API data loads
+  useEffect(() => {
+    if (
+      datasetInfoResponse?.training_body?.training_params &&
+      editableJson === ""
+    ) {
+      // Only initialize if editableJson is empty (no stored data)
+      const trainingParams = datasetInfoResponse.training_body.training_params;
+      const jsonString = JSON.stringify(trainingParams, null, 2);
       setEditableJson(jsonString);
-      // Save to localStorage
-      localStorage.setItem("trainingBodyJson", jsonString);
     }
-  }, [datasetInfoResponse]);
-
-  const generateHuggingFaceModelName = async (dataset: string) => {
-    // Model name followed by 10 random characters
-    const randomChars = Math.random().toString(36).substring(2, 12);
-    // Remove the name/... and replace with phospho-app/...
-    const [, datasetName] = dataset.split("/");
-
-    // Fetch whoami to get the username
-    let middlePart = "";
-    try {
-      const result = await fetchWithBaseUrl(
-        "/admin/huggingface/whoami",
-        "POST",
-      );
-      // Check the status from the whoami response
-      if (result.status === "success" && result.username) {
-        // Include username in the model name if status is success
-        middlePart = `${result.username}-${selectedModelType}-${datasetName}`;
-      } else {
-        // Fallback without username if status is not success
-        middlePart = `${selectedModelType}-${datasetName}`;
-      }
-    } catch (error) {
-      console.error("Error fetching whoami:", error);
-      // Fallback without username in case of error
-      middlePart = `${selectedModelType}-${datasetName}`;
-    }
-    // Ensure total model name doesn't exceed 96 characters
-    // "phospho-app/" = 13 chars, "-" + randomChars = 11 chars, so middlePart max = 96 - 13 - 11 = 72
-    const maxMiddleLength = 72;
-    if (middlePart.length > maxMiddleLength) {
-      middlePart = middlePart.substring(0, maxMiddleLength);
-    }
-
-    const modelName = `phospho-app/${middlePart}-${randomChars}`;
-    return modelName;
-  };
+  }, [
+    datasetInfoResponse?.training_body?.training_params,
+    editableJson,
+    setEditableJson,
+  ]);
 
   const handleTrainModel = async () => {
     if (!selectedDataset) {
@@ -274,14 +270,10 @@ export function AITrainingPage() {
     setTrainingState("loading");
 
     try {
-      // Generate a random model name
-      const modelName = await generateHuggingFaceModelName(selectedDataset);
-      const modelUrl = `https://huggingface.co/${modelName}`;
-
-      // Parse the edited JSON
-      let trainingBody;
+      // Parse the edited training parameters JSON
+      let trainingParams;
       try {
-        trainingBody = JSON.parse(editableJson);
+        trainingParams = JSON.parse(editableJson);
       } catch (error) {
         toast.error("Invalid JSON format. Please check your input: " + error, {
           duration: 5000,
@@ -289,6 +281,18 @@ export function AITrainingPage() {
         setTrainingState("idle");
         return { success: false, error: "Invalid JSON format" };
       }
+
+      // Add private training flag based on admin settings and PRO status
+      const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
+
+      // Build the complete training body
+      const trainingBody = {
+        model_type: selectedModelType,
+        dataset_name: selectedDataset,
+        private_mode: isPrivateTraining,
+        user_hf_token: null, // Always null - backend will handle token
+        training_params: trainingParams,
+      };
 
       // Send the edited JSON to the training endpoint
       const response = await fetchWithBaseUrl(
@@ -314,7 +318,7 @@ export function AITrainingPage() {
       setTrainingState("success");
       if (selectedModelType !== "custom") {
         toast.success(
-          `Model training started! Check progress at: ${modelUrl}`,
+          `Model training started! Check progress on Hugging Face.`,
           {
             duration: 5000,
           },
@@ -325,7 +329,7 @@ export function AITrainingPage() {
         });
       }
 
-      return { success: true, modelName };
+      return { success: true };
     } catch (error) {
       console.error("Error starting training job:", error);
       setTrainingState("idle");
@@ -452,8 +456,41 @@ export function AITrainingPage() {
                   Use this to run any custom training script.
                 </div>
               )}
-              <div className="text-xs text-muted-foreground mt-4">
-                Training parameters:
+              <div className="flex justify-between items-center mt-4">
+                <div className="text-xs text-muted-foreground">
+                  Training parameters:
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          // Clear localStorage for this dataset/model combination
+                          localStorage.removeItem(storageKey);
+                          // Reset the editableJson state
+                          setEditableJson("");
+                          // Refetch the training info data
+                          mutate([
+                            "/training/info",
+                            selectedDataset,
+                            selectedModelType,
+                          ]);
+                          toast.success(
+                            "Training parameters reset to defaults",
+                          );
+                        }}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reset</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <div className="text-sm text-muted-foreground mt-2">
                 {isDatasetInfoLoading && (
@@ -464,14 +501,13 @@ export function AITrainingPage() {
                 )}
                 {datasetInfoResponse?.status == "ok" &&
                   !isDatasetInfoLoading && (
-                    <div className="bg-muted p-4 rounded-lg w-full h-64">
+                    <div className="bg-muted p-4 rounded-lg w-full h-80">
                       <pre className="font-mono text-sm whitespace-pre-wrap">
                         {editableJson ? (
                           <JsonEditor
                             value={editableJson}
                             onChange={(value) => {
                               setEditableJson(value);
-                              localStorage.setItem("trainingBodyJson", value);
                             }}
                           />
                         ) : (
@@ -504,19 +540,65 @@ export function AITrainingPage() {
                 </div>
               )}
 
-              <Button
-                variant="secondary"
-                className="flex w-full mt-4"
-                onClick={handleTrainModel}
-                disabled={
-                  !selectedDataset ||
-                  trainingState !== "idle" ||
-                  isDatasetInfoLoading ||
-                  datasetInfoResponse?.status === "error"
-                }
-              >
-                {renderButtonContent()}
-              </Button>
+              <div className="flex gap-2 items-center mt-4">
+                <Button
+                  variant="secondary"
+                  className="flex flex-1"
+                  onClick={handleTrainModel}
+                  disabled={
+                    !selectedDataset ||
+                    trainingState !== "idle" ||
+                    isDatasetInfoLoading ||
+                    datasetInfoResponse?.status === "error"
+                  }
+                >
+                  {renderButtonContent()}
+                </Button>
+
+                {/* Privacy Status Icon */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {proUser ? (
+                        <a href="/admin">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                          >
+                            {adminSettings?.hf_private_mode ? (
+                              <Lock className="size-4" />
+                            ) : (
+                              <Globe className="size-4" />
+                            )}
+                          </Button>
+                        </a>
+                      ) : (
+                        <a
+                          href="https://phospho.ai/pro"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                          >
+                            <Globe className="size-4" />
+                          </Button>
+                        </a>
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {proUser && adminSettings?.hf_private_mode
+                        ? "Private training enabled - click to manage settings"
+                        : proUser
+                          ? "Public training - click to manage settings"
+                          : "Public training - upgrade to PRO for private training"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
 
               {selectedModelType === "custom" &&
                 (showLogs || currentLogFile) && (
