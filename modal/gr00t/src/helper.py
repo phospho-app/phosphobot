@@ -87,23 +87,7 @@ def train_gr00t(
     validation_dataset_name: str | None = None,
     private_mode: bool = False,
 ):
-    steps = None
-
     hf_api = HfApi(token=hf_token)
-
-    # Create the model repository if it doesn't exist
-    try:
-        hf_api.repo_info(repo_id=hf_model_name, repo_type="model")
-        logger.info(f"Model repository {hf_model_name} already exists.")
-    except Exception:
-        logger.info(f"Creating model repository {hf_model_name}")
-        hf_api.create_repo(
-            repo_id=hf_model_name,
-            repo_type="model",
-            exist_ok=True,
-            private=private_mode,
-            token=hf_token,
-        )
 
     try:
         # Set up Weights & Biases if API key is provided
@@ -173,7 +157,7 @@ def train_gr00t(
             training_params=training_params,
         )
         trainer = Gr00tTrainer(config)
-        trainer.train(timeout_seconds=timeout_seconds)
+        trainer.train(timeout_seconds=timeout_seconds, private_mode=private_mode)
 
         # Upload model folder to Modal volume
         try:
