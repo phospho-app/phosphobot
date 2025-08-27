@@ -465,7 +465,10 @@ task_categories:
 - robotics                                               
 ---
 
-# {model_type} Model - phospho Training Pipeline
+# {model_type} model - 🧪 phosphobot training pipeline
+
+**Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
+**Wandb run URL**: {wandb_run_url}
 
 """
     if error_traceback:
@@ -480,19 +483,14 @@ We faced an issue while training your model.
 """
     else:
         readme += """
-## This model was trained using **phospho**.
+## This model was trained using **[🧪phospho](https://phospho.ai)**
 
 Training was successful, try it out on your robot!
 
 """
 
     readme += f"""
-## Training parameters:
-
-- **Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
-- **Wandb run URL**: {wandb_run_url}
-
-Training parameters:
+## Training parameters
 
 ```text
 {training_params.model_dump_json(indent=2)}
