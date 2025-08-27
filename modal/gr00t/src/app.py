@@ -535,6 +535,7 @@ def train(  # All these args should be verified in phosphobot
     user_hf_token: str | None = None,
     private_mode: bool = False,
     timeout_seconds: int = TRAINING_TIMEOUT,
+    wandb_run_id: str | None = None,
     **kwargs,
 ):
     from datetime import datetime, timezone
@@ -558,6 +559,11 @@ def train(  # All these args should be verified in phosphobot
     logger.info(
         f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
+
+    # Set the wandb run id if it is not set, using the environment variable
+    if wandb_run_id:
+        logger.info(f"Setting WANDB_RUN_ID to {wandb_run_id}")
+        os.environ["WANDB_RUN_ID"] = wandb_run_id
 
     try:
         train_gr00t(

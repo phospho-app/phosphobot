@@ -225,6 +225,92 @@ def generate_huggingface_model_name(dataset):
     return f"{dataset}-{random_chars}"
 
 
+def generate_wandb_run_id() -> str:
+    """
+    Generates a random run id for WandB, wtarting with an adjective and an animal (human readable)
+    """
+    adjectives = [
+        "gentle",
+        "happy",
+        "aggressive",
+        "proud",
+        "sad",
+        "funny",
+        "serious",
+        "boring",
+        "exciting",
+        "junior",
+        "senior",
+        "mega",
+        "blurry",
+        "digital",
+        "bullish",
+        "bearish",
+        "fast",
+        "accelerated",
+        "massive",
+        "tiny",
+        "maxxed",
+        "giga",
+        "supa",
+        "hot",
+        "cold",
+        "frozen",
+        "burning",
+        "cooked",
+        "raw",
+        "testing",
+        "dark",
+    ]
+    animals = [
+        "pandas",
+        "tigers",
+        "lions",
+        "elephants",
+        "giraffes",
+        "dogs",
+        "cats",
+        "snakes",
+        "birds",
+        "fishes",
+        "whales",
+        "dolphins",
+        "sharks",
+        "crocodiles",
+        "junior",
+        "pl",
+        "gazelles",
+        "cheetahs",
+        "bears",
+        "bulls",
+        "wolves",
+        "foxes",
+        "horses",
+        "ponies",
+        "chickens",
+        "penguins",
+        "tarentulas",
+        "scorpions",
+        "spiders",
+        "ants",
+        "bees",
+        "rats",
+        "doggies",
+        "rabbits",
+        "kitties",
+        "quarks",
+    ]
+
+    # Choose a random adjective and an animal
+    adjective = random.choice(adjectives)
+    animal = random.choice(animals)
+
+    # Add a random number between 1 and 1000
+    number = random.randint(1, 1000)
+
+    return f"{adjective}-{animal}-{number}"
+
+
 class StartServerRequest(BaseModel):
     model_id: str
     model_type: Literal["gr00t", "ACT", "ACT_BBOX"]
@@ -739,6 +825,8 @@ def fastapi_app():
                     detail=f"You have already {PRO_TRAININGS_LIMIT} active trainings, please wait for one to finish.",
                 )
 
+        # We create a run id
+
         # Check the user quota: max 3 trainings per month for free users, 100 per month for pro users.
         # It resets on the 1st of each month.
         current_month = datetime.now(timezone.utc).month
@@ -786,6 +874,10 @@ def fastapi_app():
         for key, value in request_data.items():
             supabase_data[key] = value
 
+        # We generate a run id for WandB
+        wandb_run_id = generate_wandb_run_id()
+        supabase_data["wandb_run_id"] = wandb_run_id
+
         try:
             row = supabase_client.table("trainings").insert(supabase_data).execute()
             training_id = row.data[0]["id"]
@@ -811,6 +903,7 @@ def fastapi_app():
             training_id=training_id,
             training_params=request.training_params,
             timeout_seconds=timeout_seconds,
+            wandb_run_id=wandb_run_id,
         )
         # Update the training row with the function_call_id
         try:
