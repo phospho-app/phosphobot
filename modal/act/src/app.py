@@ -143,6 +143,7 @@ async def run_act_training(
         f"--output_dir={output_dir}",
         f"--wandb.run_id={wandb_run_id}",
         f"--wandb.enable={str(wandb_enabled).lower()}",
+        f"--job_name={wandb_run_id}",
     ]
 
     logger.info(f"Starting training with command: {' '.join(cmd)}")
