@@ -9,6 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/context/AuthContext";
 import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
@@ -23,6 +29,34 @@ export function VRControl() {
     "vr-how-to-connect-accordion",
     "",
   );
+
+  // Logarithmic scaling functions for the slider
+  // Map linear slider position (0-100) to logarithmic scaling value (0.1-3.0)
+  const sliderToScaling = (sliderValue: number): number => {
+    // Map 0-50 to 0.1-1.0 and 50-100 to 1.0-3.0 logarithmically
+    if (sliderValue <= 50) {
+      // Lower half: 0.1 to 1.0
+      const normalizedValue = sliderValue / 50; // 0 to 1
+      return 0.1 * Math.pow(10, normalizedValue); // 0.1 to 1.0 logarithmically
+    } else {
+      // Upper half: 1.0 to 3.0
+      const normalizedValue = (sliderValue - 50) / 50; // 0 to 1
+      return 1.0 * Math.pow(3, normalizedValue); // 1.0 to 3.0 logarithmically
+    }
+  };
+
+  // Map scaling value (0.1-3.0) to linear slider position (0-100)
+  const scalingToSlider = (scalingValue: number): number => {
+    if (scalingValue <= 1.0) {
+      // Lower half: map 0.1-1.0 to 0-50
+      const logValue = Math.log10(scalingValue / 0.1); // 0 to 1
+      return logValue * 50; // 0 to 50
+    } else {
+      // Upper half: map 1.0-3.0 to 50-100
+      const logValue = Math.log(scalingValue / 1.0) / Math.log(3); // 0 to 1
+      return 50 + logValue * 50; // 50 to 100
+    }
+  };
 
   const { data: settings, mutate: mutateSettings } = useSWR<TeleopSettings>(
     ["/teleop/settings/read"],
@@ -61,8 +95,9 @@ export function VRControl() {
   );
 
   const handleScalingChange = (value: number[]) => {
-    const newValue = value[0];
-    updateTeleopSetting("vr_scaling", newValue);
+    const sliderValue = value[0];
+    const scalingValue = sliderToScaling(sliderValue);
+    updateTeleopSetting("vr_scaling", scalingValue);
   };
 
   return (
@@ -135,20 +170,43 @@ export function VRControl() {
           <div className="space-y-4">
             <h3 className="font-semibold text-base">Settings</h3>
             <div className="space-y-2">
-              <Label htmlFor="scaling-slider">
-                Scaling: {settings?.vr_scaling.toFixed(1) ?? "1.0"}
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="scaling-slider">
+                  Sensitivity: {settings?.vr_scaling.toFixed(1) ?? "1.0"}
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-muted-foreground cursor-help">
+                        ⓘ
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>
+                        <strong>Default</strong>: 1.0 (real-life scale)
+                        <br />
+                        <strong>Low values</strong>: Robot barely moves when you
+                        move a lot
+                        <br />
+                        <strong>High values</strong>: Robot moves a lot when you
+                        move a little
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Slider
                 id="scaling-slider"
-                min={0.1}
-                max={3.0}
-                step={0.1}
-                value={[settings?.vr_scaling ?? 1.0]}
+                min={0}
+                max={100}
+                step={1}
+                value={[scalingToSlider(settings?.vr_scaling ?? 1.0)]}
                 onValueChange={handleScalingChange}
                 className="w-full"
               />
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>0.1</span>
+                <span className="font-medium">1.0</span>
                 <span>3.0</span>
               </div>
             </div>
