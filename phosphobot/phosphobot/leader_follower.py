@@ -35,7 +35,18 @@ async def leader_follower_loop(
     - Applies gravity compensation to the leader
     - Makes the follower mirror the leader's current joint positions
     """
-    logger.info("Starting leader-follower control.")
+    logger.info(
+        f"Starting leader-follower control with {len(robot_pairs)} pairs of robots:"
+        + ", ".join(
+            f"{pair.leader.name} -> {pair.follower.name}" for pair in robot_pairs
+        )
+        + f"\ninvert_controls={invert_controls}\nenable_gravity_compensation={enable_gravity_compensation}"
+        + (
+            f"\ncompensation_values={compensation_values}"
+            if compensation_values
+            else ""
+        )
+    )
     loop_period = 1 / 150 if not enable_gravity_compensation else 1 / 60
 
     # Check if the initial position is set, otherwise move them
@@ -78,12 +89,12 @@ async def leader_follower_loop(
                     )
                     await asyncio.sleep(0.05)
         else:
-            assert isinstance(leader, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
-            assert isinstance(follower, SO100Hardware), (
-                "Gravity compensation is only supported for SO100Hardware."
-            )
+            assert isinstance(
+                leader, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
+            assert isinstance(
+                follower, SO100Hardware
+            ), "Gravity compensation is only supported for SO100Hardware."
             leader_current_voltage = leader.current_voltage()
             if (
                 leader_current_voltage is None
@@ -172,12 +183,12 @@ async def leader_follower_loop(
                 )
 
             else:
-                assert isinstance(leader, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
-                assert isinstance(follower, SO100Hardware), (
-                    "Gravity compensation is only supported for SO100Hardware."
-                )
+                assert isinstance(
+                    leader, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
+                assert isinstance(
+                    follower, SO100Hardware
+                ), "Gravity compensation is only supported for SO100Hardware."
                 # Calculate gravity compensation torque
                 # Update PyBullet simulation for gravity calculation
                 for i, idx in enumerate(joint_indices):
