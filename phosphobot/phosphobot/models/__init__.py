@@ -1102,6 +1102,10 @@ class StartTrainingResponse(StatusResponse):
         ...,
         description="ID of the training to start. This is the ID returned by the training request.",
     )
+    model_url: Optional[str] = Field(
+        None,
+        description="URL to the Hugging Face model card.",
+    )
 
 
 class CancelTrainingRequest(BaseModel):
