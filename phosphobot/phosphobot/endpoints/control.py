@@ -44,6 +44,8 @@ from phosphobot.models import (
     StartLeaderArmControlRequest,
     StartServerRequest,
     StatusResponse,
+    TeleopSettings,
+    TeleopSettingsRequest,
     TemperatureReadResponse,
     TemperatureWriteRequest,
     TorqueControlRequest,
@@ -1020,9 +1022,9 @@ async def spawn_inference_server(
             )
             robots_to_control.remove(robot)
 
-    assert all(isinstance(robot, BaseManipulator) for robot in robots_to_control), (
-        "All robots must be manipulators for AI control"
-    )
+    assert all(
+        isinstance(robot, BaseManipulator) for robot in robots_to_control
+    ), "All robots must be manipulators for AI control"
 
     # Get the modal host and port here
     _, _, server_info = await setup_ai_control(
@@ -1112,9 +1114,9 @@ async def start_ai_control(
             )
             robots_to_control.remove(robot)
 
-    assert all(isinstance(robot, BaseManipulator) for robot in robots_to_control), (
-        "All robots must be manipulators for AI control"
-    )
+    assert all(
+        isinstance(robot, BaseManipulator) for robot in robots_to_control
+    ), "All robots must be manipulators for AI control"
 
     # Get the modal host and port here
     model, model_spawn_config, server_info = await setup_ai_control(
@@ -1342,3 +1344,44 @@ async def get_robot_config(
         status_code=400,
         detail=f"Robot {robot.name} does not support configuration retrieval.",
     )
+
+
+@router.post(
+    "/teleop/settings/read",
+    response_model=TeleopSettings,
+    summary="Read Teleop Settings",
+    description="Get current teleoperation settings.",
+)
+async def read_teleop_settings(
+    teleop_manager: TeleopManager = Depends(get_teleop_manager),
+) -> TeleopSettings:
+    """
+    Get current teleoperation settings.
+    """
+    return teleop_manager.settings
+
+
+@router.post(
+    "/teleop/settings",
+    response_model=StatusResponse,
+    summary="Update Teleop Settings",
+    description="Update teleoperation settings such as VR scaling factor.",
+)
+async def update_teleop_settings(
+    settings: TeleopSettingsRequest,
+    teleop_manager: TeleopManager = Depends(get_teleop_manager),
+) -> StatusResponse:
+    """
+    Update teleoperation settings.
+    """
+    settings_dict = settings.model_dump()
+
+    for attr_name, value in settings_dict.items():
+        if hasattr(teleop_manager, attr_name):
+            setattr(teleop_manager, attr_name, value)
+        else:
+            logger.warning(
+                f"Attempted to set non-existent attribute '{attr_name}' on TeleopManager"
+            )
+
+    return StatusResponse()

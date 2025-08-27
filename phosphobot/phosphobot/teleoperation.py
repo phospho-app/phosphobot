@@ -14,7 +14,12 @@ from pydantic import ValidationError
 
 from phosphobot.hardware import BaseManipulator
 from phosphobot.hardware.base import BaseMobileRobot
-from phosphobot.models import AppControlData, RobotStatus, UDPServerInformationResponse
+from phosphobot.models import (
+    AppControlData,
+    RobotStatus,
+    UDPServerInformationResponse,
+    TeleopSettings,
+)
 from phosphobot.robot import RobotConnectionManager
 from phosphobot.utils import get_local_network_ip
 
@@ -32,6 +37,7 @@ class TeleopManager:
     states: Dict[Literal["left", "right"], RobotState]
     action_counter: int
     last_report: datetime
+    vr_scaling: float
     MOVE_TIMEOUT: float = 1.0  # seconds
     MAX_INSTRUCTIONS_PER_SEC: int = 200
 
@@ -44,6 +50,7 @@ class TeleopManager:
         self.action_counter = 0
         self.last_report = datetime.now()
         self.robot_id = robot_id
+        self.vr_scaling = 1.0  # Default VR scaling factor
 
         # rate limiting window
         self._window_start: datetime = datetime.now()
@@ -166,6 +173,8 @@ class TeleopManager:
         initial_orientation_rad = getattr(robot, "initial_orientation_rad", np.zeros(3))
 
         target_position = target_pos + initial_position
+        # Rescale the target position
+        target_position *= self.vr_scaling
         target_orientation_rad = np.deg2rad(target_orient_deg) + initial_orientation_rad
 
         # if robot.is_moving, wait for it to stop
@@ -355,6 +364,13 @@ class TeleopManager:
                 await websocket.send_text(update.model_dump_json())
 
         return updates
+
+    @property
+    def settings(self) -> TeleopSettings:
+        """Return current teleop settings."""
+        from phosphobot.models import TeleopSettings
+
+        return TeleopSettings(vr_scaling=self.vr_scaling)
 
 
 teleop_manager = None
