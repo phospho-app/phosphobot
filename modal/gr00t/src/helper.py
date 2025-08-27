@@ -157,7 +157,11 @@ def train_gr00t(
             training_params=training_params,
         )
         trainer = Gr00tTrainer(config)
-        trainer.train(timeout_seconds=timeout_seconds, private_mode=private_mode)
+        trainer.train(
+            timeout_seconds=timeout_seconds,
+            private_mode=private_mode,
+            hf_token=hf_token,
+        )
 
         # Upload model folder to Modal volume
         try:

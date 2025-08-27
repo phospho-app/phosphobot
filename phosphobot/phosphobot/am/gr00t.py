@@ -1184,7 +1184,10 @@ class Gr00tTrainer(BaseTrainer):
         self.config = config
 
     def train(
-        self, timeout_seconds: Optional[int] = None, private_mode: bool = False
+        self,
+        timeout_seconds: Optional[int] = None,
+        private_mode: bool = False,
+        hf_token: Optional[str] = None,
     ) -> None:
         """
         You can pass a timeout in seconds to the training process.
@@ -1204,7 +1207,7 @@ class Gr00tTrainer(BaseTrainer):
 
         if self.config.model_name is not None:
             # We check if the user has write access to the model-id
-            hf_token = os.getenv("HF_TOKEN")
+            hf_token = hf_token or os.getenv("HF_TOKEN")
             if hf_token is None:
                 raise ValueError(
                     "HF_TOKEN environment variable is not set. Please set it to your Hugging Face token."
