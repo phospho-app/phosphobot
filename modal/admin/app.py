@@ -700,7 +700,7 @@ def fastapi_app():
         if (request.private_mode or request.user_hf_token) and user_plan != "pro":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Private training features require PRO subscription"
+                detail="Private training features require PRO subscription",
             )
 
         # Handle timeout based on user plan. Default to 1 hours for normal users.
@@ -778,7 +778,8 @@ def fastapi_app():
         }
 
         request_data = request.model_dump(
-            exclude_unset=True, exclude={"wandb_api_key", "training_params"}
+            exclude_unset=True,
+            exclude={"wandb_api_key", "training_params", "user_hf_token"},
         )
         if request.training_params:
             supabase_data["training_params"] = request.training_params.model_dump()
