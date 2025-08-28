@@ -154,8 +154,12 @@ jobs:
           cd ../bullet3
           python setup.py build
           python setup.py install
-          cd ../phosphobot
-          sed -i '' 's/# pybullet = { path = "..\/bullet3", editable = true }/pybullet = { path = "..\/bullet3", editable = true }/' phosphobot/pyproject.toml
+
+      - name: Replace pybullet path in pyproject.toml
+        run: |
+          cd phosphobot
+          ls -la
+          sed -i '' 's/# pybullet = { path = "..\/bullet3", editable = true }/pybullet = { path = "..\/bullet3", editable = true }/' pyproject.toml
           uv python pin 3.10
           CXX=g++ uv sync --dev
 
