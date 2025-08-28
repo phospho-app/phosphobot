@@ -1,3 +1,5 @@
+"use client";
+
 import { PhosphoProCallout } from "@/components/callout/phospho-pro";
 import { AutoComplete, type Option } from "@/components/common/autocomplete";
 import { CopyButton } from "@/components/common/copy-button";
@@ -25,7 +27,6 @@ import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
 import {
-  Ban,
   CheckCircle2,
   Dumbbell,
   Globe,
@@ -33,15 +34,13 @@ import {
   List,
   Loader2,
   Lock,
-  Pencil,
   RotateCcw,
-  Save,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 
-// Add this after the existing imports
 const JsonEditor = ({
   value,
   onChange,
@@ -49,114 +48,34 @@ const JsonEditor = ({
   value: string;
   onChange: (value: string) => void;
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState("");
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
+  };
 
-  useEffect(() => {
+  const handleBlur = () => {
     try {
-      // Format the JSON when it's not being edited
-      if (!isEditing) {
-        const parsed = JSON.parse(value);
-        const formatted = JSON.stringify(parsed, null, 2);
-        if (formatted !== value) {
-          onChange(formatted);
-        }
+      // Validate and format JSON on blur
+      const parsed = JSON.parse(value);
+      const formatted = JSON.stringify(parsed, null, 2);
+      if (formatted !== value) {
+        onChange(formatted);
       }
     } catch (e) {
-      console.error("Invalid JSON format:", e);
-    }
-  }, [value, isEditing, onChange]);
-
-  const handleEdit = () => {
-    setEditValue(value);
-    setIsEditing(true);
-    setTimeout(() => {
-      editorRef.current?.focus();
-    }, 0);
-  };
-
-  const handleSave = () => {
-    try {
-      // Try to parse to validate JSON
-      JSON.parse(editValue);
-      onChange(editValue);
-      setIsEditing(false);
-    } catch (e) {
-      toast.error("Invalid JSON format. Please check your input: " + e, {
-        duration: 5000,
-      });
+      // Keep invalid JSON as-is, user will see error when training
+      console.log("Invalid JSON format:", e);
     }
   };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <div className="relative">
-        <textarea
-          ref={editorRef}
-          className="w-full h-72 font-mono text-sm p-2 border border-gray-300 rounded"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-        />
-        <div className="absolute bottom-2 right-2 flex gap-2">
-          <Button variant="outline" onClick={handleCancel}>
-            <Ban className="size-4 mr-2" />
-            Cancel
-          </Button>
-          <Button variant="default" onClick={handleSave}>
-            <Save className="size-4 mr-2" />
-            Save
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="relative group">
-      <div className="cursor-pointer" onClick={handleEdit}>
-        {formatJsonDisplay(value)}
-      </div>
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex gap-x-2">
-          <Button variant="outline" onClick={handleEdit}>
-            <Pencil className="size-4" />
-            Edit
-          </Button>
-          <CopyButton text={value} hint="Copy the json" variant="outline" />
-        </div>
-      </div>
-    </div>
+    <textarea
+      className="w-full h-72 font-mono text-sm p-3 border border-input rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      value={value}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      placeholder="Enter JSON training parameters..."
+      spellCheck={false}
+    />
   );
-};
-
-// Add this helper function to format the JSON display
-const formatJsonDisplay = (jsonString: string) => {
-  try {
-    const obj = JSON.parse(jsonString);
-    return (
-      <div className="text-left">
-        {Object.entries(obj).map(([key, value]) => (
-          <div key={key} className="mb-1">
-            <span className="font-semibold text-green-500">{key}</span>
-            <span className="text-muted-foreground">: </span>
-            <span className="text-primary">
-              {typeof value === "object"
-                ? JSON.stringify(value, null, 2)
-                : String(value)}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  } catch (e) {
-    console.log("Invalid JSON format:", e);
-    return <div className="text-red-500">Invalid JSON format</div>;
-  }
 };
 
 interface DatasetListResponse {
@@ -212,6 +131,7 @@ export function AITrainingPage() {
 
   const [currentLogFile, setCurrentLogFile] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
+  const [lightbulbOn, setLightbulbOn] = useState(false);
 
   // Create a unique key for localStorage based on dataset and model type
   const storageKey =
@@ -420,32 +340,86 @@ export function AITrainingPage() {
                     emptyMessage="Make sure this is a public dataset available on Hugging Face."
                   />
                 </div>
-                <div className="flex-1/4 flex flex-row md:flex-col gap-2 w-full mb-1">
+                <div className="flex-1/4 flex flex-col gap-2 w-full mb-1">
                   <div className="text-xs text-muted-foreground">
                     Type of model to train:
                   </div>
-                  <Select
-                    defaultValue={selectedModelType}
-                    onValueChange={(value) =>
-                      setSelectedModelType(
-                        value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-full border rounded-md p-2">
-                      <SelectValue placeholder="Select model type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ACT_BBOX">
-                        BB-ACT (recommended)
-                      </SelectItem>
-                      <SelectItem value="ACT">ACT</SelectItem>
-                      <SelectItem value="gr00t">
-                        gr00t-n1.5 (updated)
-                      </SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      defaultValue={selectedModelType}
+                      onValueChange={(value) => {
+                        setSelectedModelType(
+                          value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
+                        );
+                        setLightbulbOn(true);
+                      }}
+                    >
+                      <SelectTrigger className="w-full border rounded-md p-2">
+                        <SelectValue placeholder="Select model type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ACT_BBOX">
+                          BB-ACT (recommended)
+                        </SelectItem>
+                        <SelectItem value="ACT">ACT</SelectItem>
+                        <SelectItem value="gr00t">
+                          gr00t-n1.5 (updated)
+                        </SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="p-0 w-8 h-8 flex-shrink-0"
+                            onClick={() => setLightbulbOn(false)}
+                          >
+                            <Lightbulb
+                              className={`size-5 ${
+                                lightbulbOn ? "text-green-500" : ""
+                              }`}
+                            />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="p-4">
+                          <p className="font-bold mb-2">Training Tips</p>
+                          <ul className="list-disc list-inside space-y-2 text-sm">
+                            <li>
+                              If your training fails with a{" "}
+                              <code>Timeout error</code>, lower the number of
+                              steps or epochs.
+                            </li>
+                            <li>
+                              If your training fails with a{" "}
+                              <code>Cuda out of memory error</code>, lower the
+                              batch size.
+                            </li>
+                          </ul>
+                          {selectedModelType === "ACT_BBOX" && (
+                            <>
+                              <p className="font-bold mt-3 mb-2">
+                                BB-ACT Model Tips
+                              </p>
+                              <ul className="list-disc list-inside space-y-2 text-sm">
+                                <li>
+                                  Set <code>target_detection_instruction</code>{" "}
+                                  to the object you want to detect (e.g., "red
+                                  lego brick").
+                                </li>
+                                <li>
+                                  <code>image_key</code> should correspond to
+                                  your context camera's key.
+                                </li>
+                              </ul>
+                            </>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </div>
               </div>
               {selectedModelType === "custom" && (
@@ -458,7 +432,7 @@ export function AITrainingPage() {
               )}
               <div className="flex justify-between items-center mt-4">
                 <div className="text-xs text-muted-foreground">
-                  Training parameters:
+                  Training parameters
                 </div>
                 <TooltipProvider>
                   <Tooltip>
@@ -491,6 +465,13 @@ export function AITrainingPage() {
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+                <div className="absolute top-2 right-2">
+                  <CopyButton
+                    text={editableJson}
+                    hint="Copy JSON"
+                    variant="outline"
+                  />
+                </div>
               </div>
               <div className="text-sm text-muted-foreground mt-2">
                 {isDatasetInfoLoading && (
@@ -501,19 +482,19 @@ export function AITrainingPage() {
                 )}
                 {datasetInfoResponse?.status == "ok" &&
                   !isDatasetInfoLoading && (
-                    <div className="bg-muted p-4 rounded-lg w-full h-80">
-                      <pre className="font-mono text-sm whitespace-pre-wrap">
-                        {editableJson ? (
-                          <JsonEditor
-                            value={editableJson}
-                            onChange={(value) => {
-                              setEditableJson(value);
-                            }}
-                          />
-                        ) : (
-                          "No data available"
-                        )}
-                      </pre>
+                    <div className="w-full">
+                      {editableJson ? (
+                        <JsonEditor
+                          value={editableJson}
+                          onChange={(value) => {
+                            setEditableJson(value);
+                          }}
+                        />
+                      ) : (
+                        <div className="bg-muted p-4 rounded-lg text-center text-muted-foreground">
+                          No data available
+                        </div>
+                      )}
                     </div>
                   )}
                 {datasetInfoResponse?.status == "error" &&
@@ -524,21 +505,6 @@ export function AITrainingPage() {
                     </div>
                   )}
               </div>
-
-              {selectedModelType === "ACT_BBOX" && (
-                <div className="text-xs text-muted-foreground mt-4">
-                  This model works by recognizing objects in images.
-                  <br />
-                  Make sure to pass:
-                  <br />
-                  <code>target_detection_instruction</code> is the object you
-                  want to detect in the images, e.g. "red lego brick", "blue
-                  ball", "plushy toy", etc.
-                  <br />
-                  <code>image_key</code> corresponds to the key of your context
-                  camera, which overviews the scene.
-                </div>
-              )}
 
               <div className="flex gap-2 items-center mt-4">
                 <Button
@@ -564,7 +530,7 @@ export function AITrainingPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-10 w-10 p-0 bg-transparent"
                           >
                             {adminSettings?.hf_private_mode ? (
                               <Lock className="size-4" />
@@ -582,7 +548,7 @@ export function AITrainingPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-10 w-10 p-0 bg-transparent"
                           >
                             <Globe className="size-4" />
                           </Button>
@@ -608,17 +574,6 @@ export function AITrainingPage() {
                     onClose={() => setShowLogs(false)}
                   />
                 )}
-
-              <div className="flex flex-row mt-4 items-center align-center">
-                <Lightbulb className="size-4 mr-2 text-muted-foreground" />
-                Tips
-              </div>
-              <div className="text-muted-foreground text-sm mt-2">
-                - If your training fails with a <code>Timeout error</code>,
-                lower the number of steps or epochs.
-                <br />- If your training fails with a{" "}
-                <code>Cuda out of memory error</code>, lower the batch size.
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
