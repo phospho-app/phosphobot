@@ -144,11 +144,18 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      - name: Set up Python and install the project
+      - name: Initialize and build bullet3 submodule
         run: |
+          git submodule update --init bullet3
           cd phosphobot
+          uv venv --python 3.10
+          source .venv/bin/activate
+          cd ../bullet3
+          python setup.py build
+          python setup.py install
+          cd phosphobot
+          sed -i '' 's/# pybullet = { path = "..\/bullet3", editable = true }/pybullet = { path = "..\/bullet3", editable = true }/' phosphobot/pyproject.toml
           uv python pin 3.10
-          uv python install
           CXX=g++ uv sync --dev
 
       - name: Print version
