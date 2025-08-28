@@ -1,4 +1,4 @@
-import controlschema from "@/assets/ControlSchema.png";
+import controlschema from "@/assets/ControlSchema.jpg";
 import { LoadingPage } from "@/components/common/loading";
 import { SpeedSelect } from "@/components/common/speed-select";
 import { Button } from "@/components/ui/button";
