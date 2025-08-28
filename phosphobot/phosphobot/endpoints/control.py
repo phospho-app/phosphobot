@@ -22,7 +22,7 @@ from phosphobot.ai_control import CustomAIControlSignal, setup_ai_control
 from phosphobot.camera import AllCameras, get_all_cameras
 from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware.base import BaseManipulator
-from phosphobot.leader_follower import RobotPair, leader_follower_loop
+from phosphobot.leader_follower import RobotPair, start_leader_follower_loop
 from phosphobot.models import (
     AIControlStatusResponse,
     AIStatusResponse,
@@ -892,7 +892,7 @@ async def start_leader_follower(
 
     # Add background task to run the control loop
     background_tasks.add_task(
-        background_task_log_exceptions(leader_follower_loop),
+        start_leader_follower_loop,
         robot_pairs=robot_pairs,
         control_signal=signal_leader_follower,
         invert_controls=request.invert_controls,
