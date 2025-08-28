@@ -150,6 +150,7 @@ jobs:
           cd phosphobot
           uv venv --python 3.10
           source .venv/bin/activate
+          uv pip install setuptools wheel numpy
           cd ../bullet3
           python setup.py build
           python setup.py install

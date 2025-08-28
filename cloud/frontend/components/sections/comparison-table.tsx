@@ -10,7 +10,7 @@ export default function ComparisonTable() {
         <>
           <div>VR Control with Meta Quest 2, Pro, 3, 3s</div>
           <div className="text-xs text-medium-gray">
-            (access to the{" "}
+            Access the{" "}
             <a
               href="https://www.meta.com/en-gb/experiences/phospho-teleoperation/8873978782723478/?srsltid=AfmBOorMv4FFiW1uSPvz9cEgsrwhRa5r0-eQ7P-9RRSLcchwzJkBTzoB"
               target="_blank"
@@ -18,8 +18,8 @@ export default function ComparisonTable() {
               className="text-phospho-green hover:text-phospho-green-dark underline transition-colors"
             >
               phospho teleoperation app
-            </a>
-            )
+            </a>{" "}
+            to control your robot in VR.
           </div>
         </>
       ),
@@ -29,6 +29,19 @@ export default function ComparisonTable() {
     { name: "Trainings per month", free: "3", pro: "100" },
     { name: "Max training duration", free: "1h", pro: "3h" },
     { name: "Max number of parallel AI trainings", free: "1", pro: "8" },
+    {
+      name: (
+        <>
+          <div>Private mode</div>
+          <div className="text-xs text-medium-gray">
+            Store datasets as private on Hugging Face by default, train models
+            on private datasets, and keep your trained models private.
+          </div>
+        </>
+      ),
+      free: false,
+      pro: true,
+    },
     {
       name: "Private channel on Discord with the team",
       free: false,

@@ -20,16 +20,6 @@ const faqData: FAQItem[] = [
       "To manage your subscription, simply use the Stripe link sent to your email when you signed up.\n\nNeed help? Contact us anytime at contact@phospho.ai.",
   },
   {
-    question: "Why does training longer matter?",
-    answer:
-      'Training time impacts how well your robot learns. Researchers from Stanford, Berkeley, and Meta [recommend training ACT models for "very long" durations.](https://docs.google.com/document/d/1FVIZfoALXg_ZkYKaYVh-qOlaXveq5CtvJHXkY25eYhs/edit?tab=t.0#heading=h.2xiz3mdijyv4) In their experiments, they trained each task for over 5 hours.\n\nSimilarly, NVIDIA\'s Gr00t team trains their models for 10x longer than the phosphobot default.\n\nLonger training require powerful GPUs and expensive hardware, which phosphobot helps you access and manage efficiently.',
-  },
-  {
-    question: "What robots are compatible?",
-    answer:
-      "phosphobot is open source and designed to work with virtually any robot.\n\nYou can find the current list of supported robots on our [GitHub](https://github.com/phospho-app/phosphobot).",
-  },
-  {
     question: "Is the Meta Quest headset included?",
     answer:
       "By subscribing, you'll get access to our [Meta Quest app](https://www.meta.com/en-gb/experiences/phospho-teleoperation/8873978782723478/?srsltid=AfmBOorMv4FFiW1uSPvz9cEgsrwhRa5r0-eQ7P-9RRSLcchwzJkBTzoB), which is compatible with **Meta Quest** 2, **Pro**, **3**, and **3s**.\n\nThe device itself needs to be bought separately.\n\nWe recommend the MQ 3S, which we use on a daily basis.",
@@ -38,6 +28,22 @@ const faqData: FAQItem[] = [
     question: "I bought a phosphobot starter pack. Do I have phospho pro?",
     answer:
       "Yes, you have access to 1 month of free phospho pro. Please reach out at contact@phospho.ai with your order details and we'll help you set up your account.",
+  },
+  {
+    question:
+      "I bought a phosphobot starter pack. Do I need to subscribe to get access to the Meta Quest app?",
+    answer:
+      "In the phosphobot starter pack, you receive a lifetime access to the Meta Quest app. You don't need to subscribe to use the app.\n\nHowever, you will need to subscribe to access the other phospho pro features, such as training longer and using more advanced models.",
+  },
+  {
+    question: "What robots are compatible?",
+    answer:
+      "phosphobot is open source and designed to work with virtually any robot.\n\nYou can find the current list of supported robots on our [GitHub](https://github.com/phospho-app/phosphobot).",
+  },
+  {
+    question: "Why does training longer matter?",
+    answer:
+      'Training time impacts how well your robot learns. Researchers from Stanford, Berkeley, and Meta [recommend training ACT models for "very long" durations.](https://docs.google.com/document/d/1FVIZfoALXg_ZkYKaYVh-qOlaXveq5CtvJHXkY25eYhs/edit?tab=t.0#heading=h.2xiz3mdijyv4) In their experiments, they trained each task for over 5 hours.\n\nSimilarly, NVIDIA\'s Gr00t team trains their models for 10x longer than the phosphobot default.\n\nLonger training require powerful GPUs and expensive hardware, which phosphobot helps you access and manage efficiently.',
   },
 ];
 
