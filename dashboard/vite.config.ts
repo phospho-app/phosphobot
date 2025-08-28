@@ -23,6 +23,7 @@ export default defineConfig({
           // UI libraries (all Radix UI components)
           "vendor-ui": [
             "@radix-ui/react-accordion",
+            "@radix-ui/react-alert-dialog",
             "@radix-ui/react-avatar",
             "@radix-ui/react-checkbox",
             "@radix-ui/react-dialog",
@@ -30,12 +31,15 @@ export default defineConfig({
             "@radix-ui/react-label",
             "@radix-ui/react-popover",
             "@radix-ui/react-progress",
+            "@radix-ui/react-radio-group",
             "@radix-ui/react-select",
             "@radix-ui/react-separator",
             "@radix-ui/react-slider",
             "@radix-ui/react-slot",
             "@radix-ui/react-switch",
             "@radix-ui/react-tabs",
+            "@radix-ui/react-toggle",
+            "@radix-ui/react-toggle-group",
             "@radix-ui/react-tooltip",
             "lucide-react",
           ],
@@ -45,6 +49,20 @@ export default defineConfig({
 
           // Animation and UI effects
           "vendor-animation": ["framer-motion", "sonner"],
+
+          // Chunk for the charting library
+          "vendor-charts": ["recharts"],
+
+          // Chunk for the code editor
+          "vendor-codemirror": [
+            "@uiw/codemirror-theme-vscode",
+            "@uiw/react-codemirror",
+            "@codemirror/lang-javascript",
+            "@codemirror/lang-json",
+            "@codemirror/lang-python",
+            "@codemirror/language",
+            "@codemirror/lint",
+          ],
         },
       },
     },
