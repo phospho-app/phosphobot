@@ -467,8 +467,8 @@ task_categories:
 
 # {model_type} model - 🧪 phosphobot training pipeline
 
-**Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
-**Wandb run URL**: {wandb_run_url}
+- **Dataset**: [{dataset_repo_id}](https://huggingface.co/datasets/{dataset_repo_id})
+- **Wandb run id**: {wandb_run_url}
 
 """
     if error_traceback:
