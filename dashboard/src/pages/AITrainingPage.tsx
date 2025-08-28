@@ -390,20 +390,13 @@ export function AITrainingPage() {
                             className="p-0 w-8 h-8 flex-shrink-0"
                             onClick={() => setLightbulbOn(false)}
                           >
-                            <span className="relative flex size-5">
-                              <Lightbulb
-                                className={`absolute size-5 ${
-                                  lightbulbOn ? "text-green-500" : ""
-                                }`}
-                              />
-                              <Lightbulb
-                                className={`relative size-5 ${
-                                  lightbulbOn
-                                    ? "text-green-500 animate-ping"
-                                    : ""
-                                }`}
-                              />
-                            </span>
+                            <Lightbulb
+                              className={`size-5 ${
+                                lightbulbOn
+                                  ? "text-green-500 animate-pulse"
+                                  : ""
+                              }`}
+                            />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent className="p-4">
