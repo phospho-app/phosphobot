@@ -80,6 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("proUser");
     setSession(null);
     setProUser(null);
+    // Redirect to main page if we're on a protected route
+    if (
+      window.location.pathname === "/train" ||
+      window.location.pathname === "/inference"
+    ) {
+      window.location.href = "/";
+    }
   };
 
   const verifyEmailCode = async (

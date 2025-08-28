@@ -26,8 +26,8 @@ import {
   Mail,
   TestTubeDiagonal,
 } from "lucide-react";
-import useSWR from "swr";
 import { useNavigate } from "react-router-dom";
+import useSWR from "swr";
 
 const routeMap = [
   { path: "/", title: "Dashboard" },
@@ -205,13 +205,13 @@ export function AccountTopBar() {
             target="_blank"
           >
             <Mail className="mr-1 h-4 w-4" />
-            Contact Us
+            Contact us
           </a>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout}>
           <LogOut className="mr-1 h-4 w-4" />
-          Logout
+          Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,5 +1,3 @@
-"use client";
-
 import { PhosphoProCallout } from "@/components/callout/phospho-pro";
 import { AutoComplete, type Option } from "@/components/common/autocomplete";
 import { CopyButton } from "@/components/common/copy-button";
@@ -14,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +28,6 @@ import {
   Dumbbell,
   Globe,
   Lightbulb,
-  List,
   Loader2,
   Lock,
   RotateCcw,
@@ -68,7 +64,7 @@ const JsonEditor = ({
 
   return (
     <textarea
-      className="w-full h-72 font-mono text-sm p-3 border border-input rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      className="w-full h-56 font-mono text-sm p-3 border border-input rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
       value={value}
       onChange={handleChange}
       onBlur={handleBlur}
@@ -308,289 +304,257 @@ export function AITrainingPage() {
   };
 
   return (
-    <div className="container mx-auto py-8 flex flex-col gap-2">
+    <div className="container mx-auto py-2 flex flex-col gap-2">
       {!proUser && <PhosphoProCallout />}
-
-      <Tabs defaultValue="train">
-        <div className="flex justify-between">
-          <TabsList className="flex flex-col md:flex-row gap-4 border-1">
-            <TabsTrigger value="train">
-              <Dumbbell className="size-4 mr-2" />
-              Train AI model
-            </TabsTrigger>
-            <TabsTrigger value="view">
-              <List className="size-4 mr-2" />
-              View trained models
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="train">
-          <Card className="w-full">
-            <CardContent>
-              <div className="flex flex-col md:flex-row gap-2 items-end">
-                <div className="flex-1/2 flex flex-row md:flex-col gap-2 w-full">
-                  <div className="text-xs text-muted-foreground md:w-1/2">
-                    Dataset ID on Hugging Face:
-                  </div>
-                  <AutoComplete
-                    key="dataset-autocomplete"
-                    options={
-                      datasetsList?.pushed_datasets.map((dataset) => ({
-                        value: dataset,
-                        label: dataset,
-                      })) ?? []
-                    }
-                    value={{
-                      value: selectedDataset,
-                      label: selectedDataset,
-                    }}
-                    disabled={selectedModelType === "custom"}
-                    onValueChange={(option: Option) => {
-                      setSelectedDataset(option.value);
-                    }}
-                    placeholder="e.g. username/dataset-name"
-                    className="w-full"
-                    emptyMessage="Make sure this is a public dataset available on Hugging Face."
-                  />
-                </div>
-                <div className="flex-1/4 flex flex-col gap-2 w-full mb-1">
-                  <div className="text-xs text-muted-foreground">
-                    Type of model to train:
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      defaultValue={selectedModelType}
-                      onValueChange={(value) => {
-                        setSelectedModelType(
-                          value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
-                        );
-                        setLightbulbOn(true);
-                      }}
-                    >
-                      <SelectTrigger className="w-full border rounded-md p-2">
-                        <SelectValue placeholder="Select model type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ACT_BBOX">
-                          BB-ACT (recommended)
-                        </SelectItem>
-                        <SelectItem value="ACT">ACT</SelectItem>
-                        <SelectItem value="gr00t">
-                          gr00t-n1.5 (updated)
-                        </SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="p-0 w-8 h-8 flex-shrink-0"
-                            onClick={() => setLightbulbOn(false)}
-                          >
-                            <Lightbulb
-                              className={`size-5 ${
-                                lightbulbOn
-                                  ? "text-green-500 animate-pulse"
-                                  : ""
-                              }`}
-                            />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent className="p-4">
-                          <p className="font-bold">Training Tips</p>
-                          <ul className="list-disc list-inside space-y-2 text-sm">
-                            <li>
-                              If your training fails with a{" "}
-                              <code>Timeout error</code>, lower the number of
-                              steps or epochs.
-                            </li>
-                            <li>
-                              If your training fails with a{" "}
-                              <code>Cuda out of memory error</code>, lower the
-                              batch size.
-                            </li>
-                          </ul>
-                          {selectedModelType === "ACT_BBOX" && (
-                            <>
-                              <p className="font-bold mt-3">
-                                BB-ACT Model Tips
-                              </p>
-                              <ul className="list-disc list-inside space-y-2 text-sm">
-                                <li>
-                                  Set <code>target_detection_instruction</code>{" "}
-                                  to the object you want to detect (e.g., "red
-                                  lego brick").
-                                </li>
-                                <li>
-                                  <code>image_key</code> should correspond to
-                                  your context camera's key.
-                                </li>
-                              </ul>
-                            </>
-                          )}
-                          {selectedModelType === "custom" && (
-                            <>
-                              <p className="font-bold mt-3">
-                                You have selected a custom model type.
-                              </p>
-                              <p className="text-sm">
-                                Pressing the "Train AI model" will run the
-                                command written. Use this to run any custom
-                                training script.
-                              </p>
-                            </>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
+      <Card className="w-full">
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-2 items-end">
+            <div className="flex-1/2 flex flex-row md:flex-col gap-2 w-full">
+              <div className="text-xs text-muted-foreground md:w-1/2">
+                Dataset ID on Hugging Face:
               </div>
-
-              <div className="flex justify-between items-center">
-                <div className="flex flex-row items-center justify-start gap-2">
-                  <div className="text-xs text-muted-foreground">
-                    Training parameters
-                  </div>
-                  {isDatasetInfoLoading && (
-                    <Loader2 className="size-4 animate-spin" />
-                  )}
-                </div>
-                <div className="flex flex-row items-center justify-end gap-2">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={() => {
-                            // Clear localStorage for this dataset/model combination
-                            localStorage.removeItem(storageKey);
-                            // Reset the editableJson state
-                            setEditableJson("");
-                            // Refetch the training info data
-                            mutate([
-                              "/training/info",
-                              selectedDataset,
-                              selectedModelType,
-                            ]);
-                            toast.success(
-                              "Training parameters reset to defaults",
-                            );
-                          }}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Reset</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <CopyButton
-                    text={editableJson}
-                    hint="Copy JSON"
-                    variant="ghost"
-                  />
-                </div>
+              <AutoComplete
+                key="dataset-autocomplete"
+                options={
+                  datasetsList?.pushed_datasets.map((dataset) => ({
+                    value: dataset,
+                    label: dataset,
+                  })) ?? []
+                }
+                value={{
+                  value: selectedDataset,
+                  label: selectedDataset,
+                }}
+                disabled={selectedModelType === "custom"}
+                onValueChange={(option: Option) => {
+                  setSelectedDataset(option.value);
+                }}
+                placeholder="e.g. username/dataset-name"
+                className="w-full"
+                emptyMessage="Make sure this is a public dataset available on Hugging Face."
+              />
+            </div>
+            <div className="flex-1/4 flex flex-col gap-2 w-full mb-1">
+              <div className="text-xs text-muted-foreground">
+                Type of model to train:
               </div>
-              <div className="text-sm text-muted-foreground mt-2">
-                {datasetInfoResponse?.status !== "error" && (
-                  <div className="w-full">
-                    <JsonEditor
-                      value={editableJson}
-                      onChange={setEditableJson}
-                    />
-                  </div>
-                )}
-                {datasetInfoResponse?.status === "error" &&
-                  !isDatasetInfoLoading && (
-                    <div className="text-red-500">
-                      {datasetInfoResponse.message ||
-                        "Error fetching dataset info."}
-                    </div>
-                  )}
-              </div>
-
-              <div className="flex gap-2 items-center mt-4">
-                <Button
-                  variant="secondary"
-                  className="flex flex-1"
-                  onClick={handleTrainModel}
-                  disabled={
-                    (selectedModelType !== "custom" && !selectedDataset) ||
-                    trainingState === "loading" ||
-                    isDatasetInfoLoading ||
-                    datasetInfoResponse?.status === "error"
-                  }
+              <div className="flex items-center gap-2">
+                <Select
+                  defaultValue={selectedModelType}
+                  onValueChange={(value) => {
+                    setSelectedModelType(
+                      value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
+                    );
+                    setLightbulbOn(true);
+                  }}
                 >
-                  {renderButtonContent()}
-                </Button>
-
-                {/* Privacy Status Icon */}
+                  <SelectTrigger className="w-full border rounded-md p-2">
+                    <SelectValue placeholder="Select model type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACT_BBOX">
+                      BB-ACT (recommended)
+                    </SelectItem>
+                    <SelectItem value="ACT">ACT</SelectItem>
+                    <SelectItem value="gr00t">gr00t-n1.5 (updated)</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      {proUser ? (
-                        <a href="/admin">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0 bg-transparent"
-                          >
-                            {adminSettings?.hf_private_mode ? (
-                              <Lock className="size-4" />
-                            ) : (
-                              <Globe className="size-4" />
-                            )}
-                          </Button>
-                        </a>
-                      ) : (
-                        <a
-                          href="https://phospho.ai/pro"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0 bg-transparent"
-                          >
-                            <Globe className="size-4" />
-                          </Button>
-                        </a>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="p-0 w-8 h-8 flex-shrink-0"
+                        onClick={() => setLightbulbOn(false)}
+                      >
+                        <Lightbulb
+                          className={`size-5 ${
+                            lightbulbOn ? "text-green-500 animate-pulse" : ""
+                          }`}
+                        />
+                      </Button>
                     </TooltipTrigger>
-                    <TooltipContent>
-                      {proUser && adminSettings?.hf_private_mode
-                        ? "Private training enabled - click to manage settings"
-                        : proUser
-                          ? "Public training - click to manage settings"
-                          : "Public training - upgrade to PRO for private training"}
+                    <TooltipContent className="p-4">
+                      <p className="font-bold">Training Tips</p>
+                      <ul className="list-disc list-inside space-y-2 text-sm">
+                        <li>
+                          If your training fails with a{" "}
+                          <code>Timeout error</code>, lower the number of steps
+                          or epochs.
+                        </li>
+                        <li>
+                          If your training fails with a{" "}
+                          <code>Cuda out of memory error</code>, lower the batch
+                          size.
+                        </li>
+                      </ul>
+                      {selectedModelType === "ACT_BBOX" && (
+                        <>
+                          <p className="font-bold mt-3">BB-ACT Model Tips</p>
+                          <ul className="list-disc list-inside space-y-2 text-sm">
+                            <li>
+                              Set <code>target_detection_instruction</code> to
+                              the object you want to detect (e.g., "red lego
+                              brick").
+                            </li>
+                            <li>
+                              <code>image_key</code> should correspond to your
+                              context camera's key.
+                            </li>
+                          </ul>
+                        </>
+                      )}
+                      {selectedModelType === "custom" && (
+                        <>
+                          <p className="font-bold mt-3">
+                            You have selected a custom model type.
+                          </p>
+                          <p className="text-sm">
+                            Pressing the "Train AI model" will run the command
+                            written. Use this to run any custom training script.
+                          </p>
+                        </>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
+            </div>
+          </div>
 
-              {selectedModelType === "custom" &&
-                (showLogs || currentLogFile) && (
-                  <LogStream
-                    logFile={currentLogFile}
-                    isLoading={trainingState === "loading"}
-                    onClose={() => setShowLogs(false)}
-                  />
-                )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="view">
-          <ModelsCard />
-        </TabsContent>
-      </Tabs>
+          <div className="flex justify-between items-center">
+            <div className="flex flex-row items-center justify-start gap-2">
+              <div className="text-xs text-muted-foreground">
+                Training parameters
+              </div>
+              {isDatasetInfoLoading && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+            </div>
+            <div className="flex flex-row items-center justify-end gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        // Clear localStorage for this dataset/model combination
+                        localStorage.removeItem(storageKey);
+                        // Reset the editableJson state
+                        setEditableJson("");
+                        // Refetch the training info data
+                        mutate([
+                          "/training/info",
+                          selectedDataset,
+                          selectedModelType,
+                        ]);
+                        toast.success("Training parameters reset to defaults");
+                      }}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Reset</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <CopyButton
+                text={editableJson}
+                hint="Copy JSON"
+                variant="ghost"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground mt-2">
+            {datasetInfoResponse?.status !== "error" && (
+              <div className="w-full">
+                <JsonEditor value={editableJson} onChange={setEditableJson} />
+              </div>
+            )}
+            {datasetInfoResponse?.status === "error" &&
+              !isDatasetInfoLoading && (
+                <div className="text-red-500">
+                  {datasetInfoResponse.message ||
+                    "Error fetching dataset info."}
+                </div>
+              )}
+          </div>
+
+          <div className="flex gap-2 items-center mt-4">
+            <Button
+              variant="secondary"
+              className="flex flex-1"
+              onClick={handleTrainModel}
+              disabled={
+                (selectedModelType !== "custom" && !selectedDataset) ||
+                trainingState === "loading" ||
+                isDatasetInfoLoading ||
+                datasetInfoResponse?.status === "error"
+              }
+            >
+              {renderButtonContent()}
+            </Button>
+
+            {/* Privacy Status Icon */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {proUser ? (
+                    <a href="/admin">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 p-0 bg-transparent"
+                      >
+                        {adminSettings?.hf_private_mode ? (
+                          <Lock className="size-4" />
+                        ) : (
+                          <Globe className="size-4" />
+                        )}
+                      </Button>
+                    </a>
+                  ) : (
+                    <a
+                      href="https://phospho.ai/pro"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 p-0 bg-transparent"
+                      >
+                        <Globe className="size-4" />
+                      </Button>
+                    </a>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {proUser && adminSettings?.hf_private_mode
+                    ? "Private training enabled - click to manage settings"
+                    : proUser
+                      ? "Public training - click to manage settings"
+                      : "Public training - upgrade to PRO for private training"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          {selectedModelType === "custom" && (showLogs || currentLogFile) && (
+            <LogStream
+              logFile={currentLogFile}
+              isLoading={trainingState === "loading"}
+              onClose={() => setShowLogs(false)}
+            />
+          )}
+        </CardContent>
+      </Card>
+      <ModelsCard />
     </div>
   );
 }
