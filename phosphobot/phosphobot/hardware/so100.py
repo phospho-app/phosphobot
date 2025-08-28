@@ -183,6 +183,29 @@ class SO100Hardware(BaseManipulator):
                 "Motors torque is disabled. Motors must have torque enabled to change PID coefficients. Enable torque first."
             )
 
+    def _get_pid_gains_motor(self, servo_id: int) -> Optional[Tuple[int, int, int]]:
+        """
+        Get the PID gains for the Feetech servo.
+
+        :servo_id: Joint ID (0-6)
+        :return: Tuple of (p_gain, i_gain, d_gain)
+        """
+        try:
+            p_gain = self.motors_bus.read(
+                "P_Coefficient", motor_names=self.servo_id_to_motor_name[servo_id]
+            )
+            i_gain = self.motors_bus.read(
+                "I_Coefficient", motor_names=self.servo_id_to_motor_name[servo_id]
+            )
+            d_gain = self.motors_bus.read(
+                "D_Coefficient", motor_names=self.servo_id_to_motor_name[servo_id]
+            )
+            return int(p_gain), int(i_gain), int(d_gain)
+        except Exception as e:
+            logger.warning(f"Error reading PID gains: {e}")
+            self.update_motor_errors()
+            return None
+
     def update_motor_errors(self):
         """
         Every time a motor communication error is detected, increment the error counter.
