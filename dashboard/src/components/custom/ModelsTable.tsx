@@ -1,12 +1,6 @@
 import { CopyButton } from "@/components/common/copy-button";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,19 +184,37 @@ const ModelRow: React.FC<{ model: SupabaseTrainingModel }> = ({ model }) => {
     <>
       <TableRow>
         <TableCell className="w-20">
-          {status === "Succeeded" && (
-            <Check className="h-4 w-4 inline mr-1 text-green-500" />
-          )}
-          {status === "Running" && (
-            <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
-          )}
-          {status === "Failed" && (
-            <X className="h-4 w-4 inline mr-1 text-red-500" />
-          )}
-          {status === "Canceled" && (
-            <Ban className="h-4 w-4 inline mr-1 text-gray-500" />
-          )}
-          <span className="text-sm">{status}</span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                {status === "Succeeded" && (
+                  <Check className="h-4 w-4 inline mr-1 text-green-500" />
+                )}
+                {status === "Running" && (
+                  <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                )}
+                {status === "Failed" && (
+                  <X className="h-4 w-4 inline mr-1 text-red-500" />
+                )}
+                {status === "Canceled" && (
+                  <Ban className="h-4 w-4 inline mr-1 text-gray-500" />
+                )}
+                <span className="text-sm">{status}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {status === "Succeeded" && (
+                  <>Go to the AI Control page to try out this model</>
+                )}
+                {status === "Running" && (
+                  <>Training is currently in progress.</>
+                )}
+                {status === "Failed" && (
+                  <>Check the error log on the Hugging Face model page.</>
+                )}
+                {status === "Canceled" && <>Training was canceled.</>}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </TableCell>
         <TableCell className="min-w-0 w-48">
           <div className="flex items-center flex-row justify-between">
@@ -375,58 +387,57 @@ export const ModelsCard: React.FC = () => {
 
   return (
     <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Trained Models</CardTitle>
-        <CardDescription>
-          If you get a "Failed" status, please check the error log on the
-          Hugging Face model page.
-        </CardDescription>
-      </CardHeader>
       <CardContent className="flex flex-col gap-y-4">
         <div className="flex justify-between items-center w-full">
-          {filteredAndSortedModels.length > itemsPerPage && (
-            <Pagination className="flex justify-start gap-x-2">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    className={
-                      currentPage === 1
-                        ? "text-xs pointer-events-none opacity-50"
-                        : "text-xs cursor-pointer"
-                    }
-                  />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        onClick={() => setCurrentPage(page)}
-                        isActive={currentPage === page}
-                        className="text-xs cursor-pointer"
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() =>
-                      setCurrentPage(Math.min(totalPages, currentPage + 1))
-                    }
-                    className={
-                      currentPage === totalPages
-                        ? "text-xs pointer-events-none opacity-50"
-                        : "text-xs cursor-pointer"
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold">Trainings</h2>
+            {filteredAndSortedModels.length > itemsPerPage && (
+              <Pagination className="flex justify-start gap-x-2">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() =>
+                        setCurrentPage(Math.max(1, currentPage - 1))
+                      }
+                      className={
+                        currentPage === 1
+                          ? "text-xs pointer-events-none opacity-50"
+                          : "text-xs cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          onClick={() => setCurrentPage(page)}
+                          isActive={currentPage === page}
+                          className="text-xs cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
+                  )}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() =>
+                        setCurrentPage(Math.min(totalPages, currentPage + 1))
+                      }
+                      className={
+                        currentPage === totalPages
+                          ? "text-xs pointer-events-none opacity-50"
+                          : "text-xs cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+          </div>
           <div></div>
           <div className="flex items-center gap-4">
+            <ModelStatusFilter onStatusChange={setStatusFilter} />
             {/* Sort by dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -453,7 +464,6 @@ export const ModelsCard: React.FC = () => {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            <ModelStatusFilter onStatusChange={setStatusFilter} />
           </div>
         </div>
 

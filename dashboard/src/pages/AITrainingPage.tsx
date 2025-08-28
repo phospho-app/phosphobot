@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -25,23 +24,19 @@ import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
 import {
-  Ban,
   CheckCircle2,
   Dumbbell,
   Globe,
   Lightbulb,
-  List,
   Loader2,
   Lock,
-  Pencil,
   RotateCcw,
-  Save,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 
-// Add this after the existing imports
 const JsonEditor = ({
   value,
   onChange,
@@ -49,114 +44,34 @@ const JsonEditor = ({
   value: string;
   onChange: (value: string) => void;
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState("");
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
+  };
 
-  useEffect(() => {
+  const handleBlur = () => {
     try {
-      // Format the JSON when it's not being edited
-      if (!isEditing) {
-        const parsed = JSON.parse(value);
-        const formatted = JSON.stringify(parsed, null, 2);
-        if (formatted !== value) {
-          onChange(formatted);
-        }
+      // Validate and format JSON on blur
+      const parsed = JSON.parse(value);
+      const formatted = JSON.stringify(parsed, null, 2);
+      if (formatted !== value) {
+        onChange(formatted);
       }
     } catch (e) {
-      console.error("Invalid JSON format:", e);
-    }
-  }, [value, isEditing, onChange]);
-
-  const handleEdit = () => {
-    setEditValue(value);
-    setIsEditing(true);
-    setTimeout(() => {
-      editorRef.current?.focus();
-    }, 0);
-  };
-
-  const handleSave = () => {
-    try {
-      // Try to parse to validate JSON
-      JSON.parse(editValue);
-      onChange(editValue);
-      setIsEditing(false);
-    } catch (e) {
-      toast.error("Invalid JSON format. Please check your input: " + e, {
-        duration: 5000,
-      });
+      // Keep invalid JSON as-is, user will see error when training
+      console.log("Invalid JSON format:", e);
     }
   };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <div className="relative">
-        <textarea
-          ref={editorRef}
-          className="w-full h-72 font-mono text-sm p-2 border border-gray-300 rounded"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-        />
-        <div className="absolute bottom-2 right-2 flex gap-2">
-          <Button variant="outline" onClick={handleCancel}>
-            <Ban className="size-4 mr-2" />
-            Cancel
-          </Button>
-          <Button variant="default" onClick={handleSave}>
-            <Save className="size-4 mr-2" />
-            Save
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="relative group">
-      <div className="cursor-pointer" onClick={handleEdit}>
-        {formatJsonDisplay(value)}
-      </div>
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex gap-x-2">
-          <Button variant="outline" onClick={handleEdit}>
-            <Pencil className="size-4" />
-            Edit
-          </Button>
-          <CopyButton text={value} hint="Copy the json" variant="outline" />
-        </div>
-      </div>
-    </div>
+    <textarea
+      className="w-full h-56 font-mono text-sm p-3 border border-input rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      value={value}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      placeholder="Enter JSON training parameters..."
+      spellCheck={false}
+    />
   );
-};
-
-// Add this helper function to format the JSON display
-const formatJsonDisplay = (jsonString: string) => {
-  try {
-    const obj = JSON.parse(jsonString);
-    return (
-      <div className="text-left">
-        {Object.entries(obj).map(([key, value]) => (
-          <div key={key} className="mb-1">
-            <span className="font-semibold text-green-500">{key}</span>
-            <span className="text-muted-foreground">: </span>
-            <span className="text-primary">
-              {typeof value === "object"
-                ? JSON.stringify(value, null, 2)
-                : String(value)}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  } catch (e) {
-    console.log("Invalid JSON format:", e);
-    return <div className="text-red-500">Invalid JSON format</div>;
-  }
 };
 
 interface DatasetListResponse {
@@ -195,7 +110,7 @@ export function AITrainingPage() {
   );
   const { data: datasetInfoResponse, isLoading: isDatasetInfoLoading } =
     useSWR<TrainingInfoResponse>(
-      selectedDataset || selectedModelType === "custom"
+      selectedModelType === "custom" || selectedDataset
         ? ["/training/info", selectedDataset, selectedModelType]
         : null,
       ([url]) =>
@@ -212,12 +127,10 @@ export function AITrainingPage() {
 
   const [currentLogFile, setCurrentLogFile] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
+  const [lightbulbOn, setLightbulbOn] = useState(false);
 
   // Create a unique key for localStorage based on dataset and model type
-  const storageKey =
-    selectedDataset && selectedModelType !== "custom"
-      ? `training-params-${selectedDataset}-${selectedModelType}`
-      : `training-params-default`;
+  const storageKey = `training-params-${selectedDataset}-${selectedModelType}`;
 
   // Track the previous storage key to detect changes
   const [prevStorageKey, setPrevStorageKey] = useState(storageKey);
@@ -237,6 +150,7 @@ export function AITrainingPage() {
   // Initialize editableJson when API data loads
   useEffect(() => {
     if (
+      selectedModelType !== "custom" &&
       datasetInfoResponse?.training_body?.training_params &&
       editableJson === ""
     ) {
@@ -244,18 +158,30 @@ export function AITrainingPage() {
       const trainingParams = datasetInfoResponse.training_body.training_params;
       const jsonString = JSON.stringify(trainingParams, null, 2);
       setEditableJson(jsonString);
+    } else if (
+      selectedModelType === "custom" &&
+      datasetInfoResponse?.training_body?.custom_command &&
+      editableJson === ""
+    ) {
+      // For custom models, use the custom command as the initial JSON
+      const jsonString = JSON.stringify(
+        datasetInfoResponse.training_body,
+        null,
+        2,
+      );
+      setEditableJson(jsonString);
     }
   }, [
     datasetInfoResponse?.training_body?.training_params,
+    datasetInfoResponse?.training_body?.custom_command,
     editableJson,
     setEditableJson,
+    selectedModelType,
   ]);
 
   const handleTrainModel = async () => {
-    if (!selectedDataset) {
-      toast.error("Please select a dataset to train the model.", {
-        duration: 5000,
-      });
+    if (selectedModelType !== "custom" && !selectedDataset) {
+      toast.error("Please select a dataset to train the model.");
       return;
     }
 
@@ -286,47 +212,50 @@ export function AITrainingPage() {
       const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
 
       // Build the complete training body
-      const trainingBody = {
-        model_type: selectedModelType,
-        dataset_name: selectedDataset,
-        private_mode: isPrivateTraining,
-        user_hf_token: null, // Always null - backend will handle token
-        training_params: trainingParams,
-      };
+      let response;
+      if (selectedModelType !== "custom") {
+        const trainingBody = {
+          model_type: selectedModelType,
+          dataset_name: selectedDataset,
+          private_mode: isPrivateTraining,
+          user_hf_token: null, // Always null - backend will handle token
+          training_params: trainingParams,
+        };
 
-      // Send the edited JSON to the training endpoint
-      const response = await fetchWithBaseUrl(
-        selectedModelType !== "custom"
-          ? "/training/start"
-          : "/training/start-custom",
-        "POST",
-        trainingBody,
-      );
+        // Send the edited JSON to the training endpoint
+        response = await fetchWithBaseUrl(
+          "/training/start",
+          "POST",
+          trainingBody,
+        );
+      } else {
+        // For custom models, send the custom command directly
+        const customCommand = trainingParams.custom_command || editableJson;
+        response = await fetchWithBaseUrl("/training/start-custom", "POST", {
+          custom_command: customCommand,
+        });
+      }
 
       if (!response) {
         setTrainingState("idle");
         return;
       }
-
       if (selectedModelType === "custom" && response.message) {
         setCurrentLogFile(response.message);
+        setShowLogs(true);
       }
-
-      // After successful notification, wait 1 second then show success
-      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       setTrainingState("success");
       if (selectedModelType !== "custom") {
         toast.success(
           `Model training started! Check progress on Hugging Face.`,
-          {
-            duration: 5000,
-          },
         );
       } else {
-        toast.success("Custom training job started! Check logs for details.", {
-          duration: 5000,
-        });
+        toast.success("Custom training job started! Check logs for details.");
+        // Automatically reset the Training State to idle after 500ms
+        setTimeout(() => {
+          setTrainingState("idle");
+        }, 500);
       }
 
       return { success: true };
@@ -353,21 +282,21 @@ export function AITrainingPage() {
       case "loading":
         return (
           <>
-            <Loader2 className="size-5 mr-2 animate-spin" />
+            <Loader2 className="size-4 mr-2 animate-spin" />
             Starting...
           </>
         );
       case "success":
         return (
           <>
-            <CheckCircle2 className="size-5 mr-2 text-green-500" />
+            <CheckCircle2 className="size-4 mr-2 text-green-500" />
             Training job started
           </>
         );
       default:
         return (
           <>
-            <Dumbbell className="size-5 mr-2" />
+            <Dumbbell className="size-4 mr-2" />
             Train AI model
           </>
         );
@@ -375,257 +304,257 @@ export function AITrainingPage() {
   };
 
   return (
-    <div className="container mx-auto py-8 flex flex-col gap-2">
+    <div className="container mx-auto py-2 flex flex-col gap-2">
       {!proUser && <PhosphoProCallout />}
-
-      <Tabs defaultValue="train">
-        <div className="flex justify-between">
-          <TabsList className="flex flex-col md:flex-row gap-4 border-1">
-            <TabsTrigger value="train">
-              <Dumbbell className="size-4 mr-2" />
-              Train AI model
-            </TabsTrigger>
-            <TabsTrigger value="view">
-              <List className="size-4 mr-2" />
-              View trained models
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="train">
-          <Card className="w-full">
-            <CardContent>
-              <div className="flex flex-col md:flex-row gap-2 items-end">
-                <div className="flex-1/2 flex flex-row md:flex-col gap-2 w-full">
-                  <div className="text-xs text-muted-foreground md:w-1/2">
-                    Dataset ID on Hugging Face:
-                  </div>
-                  <AutoComplete
-                    key="dataset-autocomplete"
-                    options={
-                      datasetsList?.pushed_datasets.map((dataset) => ({
-                        value: dataset,
-                        label: dataset,
-                      })) ?? []
-                    }
-                    value={{
-                      value: selectedDataset,
-                      label: selectedDataset,
-                    }}
-                    disabled={selectedModelType === "custom"}
-                    onValueChange={(option: Option) => {
-                      setSelectedDataset(option.value);
-                    }}
-                    placeholder="e.g. username/dataset-name"
-                    className="w-full"
-                    emptyMessage="Make sure this is a public dataset available on Hugging Face."
-                  />
-                </div>
-                <div className="flex-1/4 flex flex-row md:flex-col gap-2 w-full mb-1">
-                  <div className="text-xs text-muted-foreground">
-                    Type of model to train:
-                  </div>
-                  <Select
-                    defaultValue={selectedModelType}
-                    onValueChange={(value) =>
-                      setSelectedModelType(
-                        value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-full border rounded-md p-2">
-                      <SelectValue placeholder="Select model type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ACT_BBOX">
-                        BB-ACT (recommended)
-                      </SelectItem>
-                      <SelectItem value="ACT">ACT</SelectItem>
-                      <SelectItem value="gr00t">
-                        gr00t-n1.5 (updated)
-                      </SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+      <Card className="w-full">
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-2 items-end">
+            <div className="flex-1/2 flex flex-row md:flex-col gap-2 w-full">
+              <div className="text-xs text-muted-foreground md:w-1/2">
+                Dataset ID on Hugging Face:
               </div>
-              {selectedModelType === "custom" && (
-                <div className="text-xs text-muted-foreground mt-4">
-                  You have selected a custom model type.
-                  <br />
-                  Pressing the "Train AI model" will run the command written.
-                  Use this to run any custom training script.
-                </div>
-              )}
-              <div className="flex justify-between items-center mt-4">
-                <div className="text-xs text-muted-foreground">
-                  Training parameters:
-                </div>
+              <AutoComplete
+                key="dataset-autocomplete"
+                options={
+                  datasetsList?.pushed_datasets.map((dataset) => ({
+                    value: dataset,
+                    label: dataset,
+                  })) ?? []
+                }
+                value={{
+                  value: selectedDataset,
+                  label: selectedDataset,
+                }}
+                disabled={selectedModelType === "custom"}
+                onValueChange={(option: Option) => {
+                  setSelectedDataset(option.value);
+                }}
+                placeholder="e.g. username/dataset-name"
+                className="w-full"
+                emptyMessage="Make sure this is a public dataset available on Hugging Face."
+              />
+            </div>
+            <div className="flex-1/4 flex flex-col gap-2 w-full mb-1">
+              <div className="text-xs text-muted-foreground">
+                Type of model to train:
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  defaultValue={selectedModelType}
+                  onValueChange={(value) => {
+                    setSelectedModelType(
+                      value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
+                    );
+                    setLightbulbOn(true);
+                  }}
+                >
+                  <SelectTrigger className="w-full border rounded-md p-2">
+                    <SelectValue placeholder="Select model type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACT_BBOX">
+                      BB-ACT (recommended)
+                    </SelectItem>
+                    <SelectItem value="ACT">ACT</SelectItem>
+                    <SelectItem value="gr00t">gr00t-n1.5 (updated)</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => {
-                          // Clear localStorage for this dataset/model combination
-                          localStorage.removeItem(storageKey);
-                          // Reset the editableJson state
-                          setEditableJson("");
-                          // Refetch the training info data
-                          mutate([
-                            "/training/info",
-                            selectedDataset,
-                            selectedModelType,
-                          ]);
-                          toast.success(
-                            "Training parameters reset to defaults",
-                          );
-                        }}
+                        size="icon"
+                        className="p-0 w-8 h-8 flex-shrink-0"
+                        onClick={() => setLightbulbOn(false)}
                       >
-                        <RotateCcw className="h-3 w-3" />
+                        <Lightbulb
+                          className={`size-5 ${
+                            lightbulbOn ? "text-green-500 animate-pulse" : ""
+                          }`}
+                        />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Reset</p>
+                    <TooltipContent className="p-4">
+                      <p className="font-bold">Training Tips</p>
+                      <ul className="list-disc list-inside space-y-2 text-sm">
+                        <li>
+                          If your training fails with a{" "}
+                          <code>Timeout error</code>, lower the number of steps
+                          or epochs.
+                        </li>
+                        <li>
+                          If your training fails with a{" "}
+                          <code>Cuda out of memory error</code>, lower the batch
+                          size.
+                        </li>
+                      </ul>
+                      {selectedModelType === "ACT_BBOX" && (
+                        <>
+                          <p className="font-bold mt-3">BB-ACT Model Tips</p>
+                          <ul className="list-disc list-inside space-y-2 text-sm">
+                            <li>
+                              Set <code>target_detection_instruction</code> to
+                              the object you want to detect (e.g., "red lego
+                              brick").
+                            </li>
+                            <li>
+                              <code>image_key</code> should correspond to your
+                              context camera's key.
+                            </li>
+                          </ul>
+                        </>
+                      )}
+                      {selectedModelType === "custom" && (
+                        <>
+                          <p className="font-bold mt-3">
+                            You have selected a custom model type.
+                          </p>
+                          <p className="text-sm">
+                            Pressing the "Train AI model" will run the command
+                            written. Use this to run any custom training script.
+                          </p>
+                        </>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <div className="text-sm text-muted-foreground mt-2">
-                {isDatasetInfoLoading && (
-                  <div className="flex flex-row items-center">
-                    <Loader2 className="size-4 mr-2 animate-spin" />
-                    Loading training parameters...
-                  </div>
-                )}
-                {datasetInfoResponse?.status == "ok" &&
-                  !isDatasetInfoLoading && (
-                    <div className="bg-muted p-4 rounded-lg w-full h-80">
-                      <pre className="font-mono text-sm whitespace-pre-wrap">
-                        {editableJson ? (
-                          <JsonEditor
-                            value={editableJson}
-                            onChange={(value) => {
-                              setEditableJson(value);
-                            }}
-                          />
-                        ) : (
-                          "No data available"
-                        )}
-                      </pre>
-                    </div>
-                  )}
-                {datasetInfoResponse?.status == "error" &&
-                  !isDatasetInfoLoading && (
-                    <div className="text-red-500">
-                      {datasetInfoResponse.message ||
-                        "Error fetching dataset info."}
-                    </div>
-                  )}
-              </div>
+            </div>
+          </div>
 
-              {selectedModelType === "ACT_BBOX" && (
-                <div className="text-xs text-muted-foreground mt-4">
-                  This model works by recognizing objects in images.
-                  <br />
-                  Make sure to pass:
-                  <br />
-                  <code>target_detection_instruction</code> is the object you
-                  want to detect in the images, e.g. "red lego brick", "blue
-                  ball", "plushy toy", etc.
-                  <br />
-                  <code>image_key</code> corresponds to the key of your context
-                  camera, which overviews the scene.
+          <div className="flex justify-between items-center">
+            <div className="flex flex-row items-center justify-start gap-2">
+              <div className="text-xs text-muted-foreground">
+                Training parameters
+              </div>
+              {isDatasetInfoLoading && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+            </div>
+            <div className="flex flex-row items-center justify-end gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        // Clear localStorage for this dataset/model combination
+                        localStorage.removeItem(storageKey);
+                        // Reset the editableJson state
+                        setEditableJson("");
+                        // Refetch the training info data
+                        mutate([
+                          "/training/info",
+                          selectedDataset,
+                          selectedModelType,
+                        ]);
+                        toast.success("Training parameters reset to defaults");
+                      }}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Reset</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <CopyButton
+                text={editableJson}
+                hint="Copy JSON"
+                variant="ghost"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground mt-2">
+            {datasetInfoResponse?.status !== "error" && (
+              <div className="w-full">
+                <JsonEditor value={editableJson} onChange={setEditableJson} />
+              </div>
+            )}
+            {datasetInfoResponse?.status === "error" &&
+              !isDatasetInfoLoading && (
+                <div className="text-red-500">
+                  {datasetInfoResponse.message ||
+                    "Error fetching dataset info."}
                 </div>
               )}
+          </div>
 
-              <div className="flex gap-2 items-center mt-4">
-                <Button
-                  variant="secondary"
-                  className="flex flex-1"
-                  onClick={handleTrainModel}
-                  disabled={
-                    !selectedDataset ||
-                    trainingState !== "idle" ||
-                    isDatasetInfoLoading ||
-                    datasetInfoResponse?.status === "error"
-                  }
-                >
-                  {renderButtonContent()}
-                </Button>
+          <div className="flex gap-2 items-center mt-4">
+            <Button
+              variant="secondary"
+              className="flex flex-1"
+              onClick={handleTrainModel}
+              disabled={
+                (selectedModelType !== "custom" && !selectedDataset) ||
+                trainingState === "loading" ||
+                isDatasetInfoLoading ||
+                datasetInfoResponse?.status === "error"
+              }
+            >
+              {renderButtonContent()}
+            </Button>
 
-                {/* Privacy Status Icon */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      {proUser ? (
-                        <a href="/admin">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0"
-                          >
-                            {adminSettings?.hf_private_mode ? (
-                              <Lock className="size-4" />
-                            ) : (
-                              <Globe className="size-4" />
-                            )}
-                          </Button>
-                        </a>
-                      ) : (
-                        <a
-                          href="https://phospho.ai/pro"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0"
-                          >
-                            <Globe className="size-4" />
-                          </Button>
-                        </a>
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {proUser && adminSettings?.hf_private_mode
-                        ? "Private training enabled - click to manage settings"
-                        : proUser
-                          ? "Public training - click to manage settings"
-                          : "Public training - upgrade to PRO for private training"}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+            {/* Privacy Status Icon */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {proUser ? (
+                    <a href="/admin">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 p-0 bg-transparent"
+                      >
+                        {adminSettings?.hf_private_mode ? (
+                          <Lock className="size-4" />
+                        ) : (
+                          <Globe className="size-4" />
+                        )}
+                      </Button>
+                    </a>
+                  ) : (
+                    <a
+                      href="https://phospho.ai/pro"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 p-0 bg-transparent"
+                      >
+                        <Globe className="size-4" />
+                      </Button>
+                    </a>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {proUser && adminSettings?.hf_private_mode
+                    ? "Private training enabled - click to manage settings"
+                    : proUser
+                      ? "Public training - click to manage settings"
+                      : "Public training - upgrade to PRO for private training"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
 
-              {selectedModelType === "custom" &&
-                (showLogs || currentLogFile) && (
-                  <LogStream
-                    logFile={currentLogFile}
-                    isLoading={trainingState === "loading"}
-                    onClose={() => setShowLogs(false)}
-                  />
-                )}
-
-              <div className="flex flex-row mt-4 items-center align-center">
-                <Lightbulb className="size-4 mr-2 text-muted-foreground" />
-                Tips
-              </div>
-              <div className="text-muted-foreground text-sm mt-2">
-                - If your training fails with a <code>Timeout error</code>,
-                lower the number of steps or epochs.
-                <br />- If your training fails with a{" "}
-                <code>Cuda out of memory error</code>, lower the batch size.
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="view">
-          <ModelsCard />
-        </TabsContent>
-      </Tabs>
+          {selectedModelType === "custom" && (showLogs || currentLogFile) && (
+            <LogStream
+              logFile={currentLogFile}
+              isLoading={trainingState === "loading"}
+              onClose={() => setShowLogs(false)}
+            />
+          )}
+        </CardContent>
+      </Card>
+      <ModelsCard />
     </div>
   );
 }

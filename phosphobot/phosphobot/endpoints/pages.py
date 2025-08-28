@@ -735,7 +735,8 @@ async def get_training_info(
     request: TrainingInfoRequest,
 ) -> TrainingInfoResponse:
     """
-    Fetch the info.json from the model repo and return the training info.
+    - Fetch the info.json from the model repo and return the training info.
+    - If the model type is "custom", return a custom command to run the training.
     """
     if request.model_type == "custom":
         return TrainingInfoResponse(
@@ -745,6 +746,11 @@ async def get_training_info(
             },
         )
 
+    if request.model_id is None or request.model_id.strip() == "":
+        raise HTTPException(
+            status_code=400,
+            detail="Model ID is required to fetch training info.",
+        )
     logger.debug(
         f"Fetching training info for model {request.model_id} of type {request.model_type}"
     )

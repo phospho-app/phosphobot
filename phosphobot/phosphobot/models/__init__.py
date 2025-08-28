@@ -426,7 +426,9 @@ class StatusResponse(BaseModel):
 
 
 class TrainingInfoRequest(BaseModel):
-    model_id: str = Field(..., description="Hugging Face model id to get training info")
+    model_id: Optional[str] = Field(
+        None, description="Hugging Face model id to get training info"
+    )
     model_type: Literal["gr00t", "ACT", "ACT_BBOX", "custom"]
 
 
