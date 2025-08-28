@@ -235,7 +235,7 @@ export function AITrainingPage() {
       } else {
         // For custom models, send the custom command directly
         const customCommand = trainingParams.custom_command || editableJson;
-        response = fetchWithBaseUrl("/training/start-custom", "POST", {
+        response = await fetchWithBaseUrl("/training/start-custom", "POST", {
           custom_command: customCommand,
         });
       }
@@ -244,14 +244,10 @@ export function AITrainingPage() {
         setTrainingState("idle");
         return;
       }
-
       if (selectedModelType === "custom" && response.message) {
         setCurrentLogFile(response.message);
         setShowLogs(true);
       }
-
-      // After successful notification, wait 1 second then show success
-      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       setTrainingState("success");
       if (selectedModelType !== "custom") {
@@ -290,21 +286,21 @@ export function AITrainingPage() {
       case "loading":
         return (
           <>
-            <Loader2 className="size-5 mr-2 animate-spin" />
+            <Loader2 className="size-4 mr-2 animate-spin" />
             Starting...
           </>
         );
       case "success":
         return (
           <>
-            <CheckCircle2 className="size-5 mr-2 text-green-500" />
+            <CheckCircle2 className="size-4 mr-2 text-green-500" />
             Training job started
           </>
         );
       default:
         return (
           <>
-            <Dumbbell className="size-5 mr-2" />
+            <Dumbbell className="size-4 mr-2" />
             Train AI model
           </>
         );
@@ -394,15 +390,24 @@ export function AITrainingPage() {
                             className="p-0 w-8 h-8 flex-shrink-0"
                             onClick={() => setLightbulbOn(false)}
                           >
-                            <Lightbulb
-                              className={`size-5 ${
-                                lightbulbOn ? "text-green-500" : ""
-                              }`}
-                            />
+                            <span className="relative flex size-5">
+                              <Lightbulb
+                                className={`absolute size-5 ${
+                                  lightbulbOn ? "text-green-500" : ""
+                                }`}
+                              />
+                              <Lightbulb
+                                className={`relative size-5 ${
+                                  lightbulbOn
+                                    ? "text-green-500 animate-ping"
+                                    : ""
+                                }`}
+                              />
+                            </span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent className="p-4">
-                          <p className="font-bold mb-2">Training Tips</p>
+                          <p className="font-bold">Training Tips</p>
                           <ul className="list-disc list-inside space-y-2 text-sm">
                             <li>
                               If your training fails with a{" "}
@@ -417,7 +422,7 @@ export function AITrainingPage() {
                           </ul>
                           {selectedModelType === "ACT_BBOX" && (
                             <>
-                              <p className="font-bold mt-3 mb-2">
+                              <p className="font-bold mt-3">
                                 BB-ACT Model Tips
                               </p>
                               <ul className="list-disc list-inside space-y-2 text-sm">
@@ -434,13 +439,16 @@ export function AITrainingPage() {
                             </>
                           )}
                           {selectedModelType === "custom" && (
-                            <div className="text-xs text-muted-foreground mt-4">
-                              You have selected a custom model type.
-                              <br />
-                              Pressing the "Train AI model" will run the command
-                              written. Use this to run any custom training
-                              script.
-                            </div>
+                            <>
+                              <p className="font-bold mt-3">
+                                You have selected a custom model type.
+                              </p>
+                              <p className="text-sm">
+                                Pressing the "Train AI model" will run the
+                                command written. Use this to run any custom
+                                training script.
+                              </p>
+                            </>
                           )}
                         </TooltipContent>
                       </Tooltip>
@@ -449,7 +457,7 @@ export function AITrainingPage() {
                 </div>
               </div>
 
-              <div className="flex justify-between items-center mt-4">
+              <div className="flex justify-between items-center">
                 <div className="flex flex-row items-center justify-start gap-2">
                   <div className="text-xs text-muted-foreground">
                     Training parameters
@@ -458,42 +466,42 @@ export function AITrainingPage() {
                     <Loader2 className="size-4 animate-spin" />
                   )}
                 </div>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => {
-                          // Clear localStorage for this dataset/model combination
-                          localStorage.removeItem(storageKey);
-                          // Reset the editableJson state
-                          setEditableJson("");
-                          // Refetch the training info data
-                          mutate([
-                            "/training/info",
-                            selectedDataset,
-                            selectedModelType,
-                          ]);
-                          toast.success(
-                            "Training parameters reset to defaults",
-                          );
-                        }}
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Reset</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <div className="absolute top-2 right-2">
+                <div className="flex flex-row items-center justify-end gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            // Clear localStorage for this dataset/model combination
+                            localStorage.removeItem(storageKey);
+                            // Reset the editableJson state
+                            setEditableJson("");
+                            // Refetch the training info data
+                            mutate([
+                              "/training/info",
+                              selectedDataset,
+                              selectedModelType,
+                            ]);
+                            toast.success(
+                              "Training parameters reset to defaults",
+                            );
+                          }}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Reset</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <CopyButton
                     text={editableJson}
                     hint="Copy JSON"
-                    variant="outline"
+                    variant="ghost"
                   />
                 </div>
               </div>
