@@ -114,7 +114,7 @@ export function AITrainingPage() {
   );
   const { data: datasetInfoResponse, isLoading: isDatasetInfoLoading } =
     useSWR<TrainingInfoResponse>(
-      selectedDataset || selectedModelType === "custom"
+      selectedModelType === "custom" || selectedDataset
         ? ["/training/info", selectedDataset, selectedModelType]
         : null,
       ([url]) =>
@@ -134,10 +134,7 @@ export function AITrainingPage() {
   const [lightbulbOn, setLightbulbOn] = useState(false);
 
   // Create a unique key for localStorage based on dataset and model type
-  const storageKey =
-    selectedDataset && selectedModelType !== "custom"
-      ? `training-params-${selectedDataset}-${selectedModelType}`
-      : `training-params-default`;
+  const storageKey = `training-params-${selectedDataset}-${selectedModelType}`;
 
   // Track the previous storage key to detect changes
   const [prevStorageKey, setPrevStorageKey] = useState(storageKey);
@@ -157,6 +154,7 @@ export function AITrainingPage() {
   // Initialize editableJson when API data loads
   useEffect(() => {
     if (
+      selectedModelType !== "custom" &&
       datasetInfoResponse?.training_body?.training_params &&
       editableJson === ""
     ) {
@@ -164,18 +162,30 @@ export function AITrainingPage() {
       const trainingParams = datasetInfoResponse.training_body.training_params;
       const jsonString = JSON.stringify(trainingParams, null, 2);
       setEditableJson(jsonString);
+    } else if (
+      selectedModelType === "custom" &&
+      datasetInfoResponse?.training_body?.custom_command &&
+      editableJson === ""
+    ) {
+      // For custom models, use the custom command as the initial JSON
+      const jsonString = JSON.stringify(
+        datasetInfoResponse.training_body,
+        null,
+        2,
+      );
+      setEditableJson(jsonString);
     }
   }, [
     datasetInfoResponse?.training_body?.training_params,
+    datasetInfoResponse?.training_body?.custom_command,
     editableJson,
     setEditableJson,
+    selectedModelType,
   ]);
 
   const handleTrainModel = async () => {
-    if (!selectedDataset) {
-      toast.error("Please select a dataset to train the model.", {
-        duration: 5000,
-      });
+    if (selectedModelType !== "custom" && !selectedDataset) {
+      toast.error("Please select a dataset to train the model.");
       return;
     }
 
@@ -206,22 +216,29 @@ export function AITrainingPage() {
       const isPrivateTraining = proUser && adminSettings?.hf_private_mode;
 
       // Build the complete training body
-      const trainingBody = {
-        model_type: selectedModelType,
-        dataset_name: selectedDataset,
-        private_mode: isPrivateTraining,
-        user_hf_token: null, // Always null - backend will handle token
-        training_params: trainingParams,
-      };
+      let response;
+      if (selectedModelType !== "custom") {
+        const trainingBody = {
+          model_type: selectedModelType,
+          dataset_name: selectedDataset,
+          private_mode: isPrivateTraining,
+          user_hf_token: null, // Always null - backend will handle token
+          training_params: trainingParams,
+        };
 
-      // Send the edited JSON to the training endpoint
-      const response = await fetchWithBaseUrl(
-        selectedModelType !== "custom"
-          ? "/training/start"
-          : "/training/start-custom",
-        "POST",
-        trainingBody,
-      );
+        // Send the edited JSON to the training endpoint
+        response = await fetchWithBaseUrl(
+          "/training/start",
+          "POST",
+          trainingBody,
+        );
+      } else {
+        // For custom models, send the custom command directly
+        const customCommand = trainingParams.custom_command || editableJson;
+        response = fetchWithBaseUrl("/training/start-custom", "POST", {
+          custom_command: customCommand,
+        });
+      }
 
       if (!response) {
         setTrainingState("idle");
@@ -230,6 +247,7 @@ export function AITrainingPage() {
 
       if (selectedModelType === "custom" && response.message) {
         setCurrentLogFile(response.message);
+        setShowLogs(true);
       }
 
       // After successful notification, wait 1 second then show success
@@ -239,14 +257,13 @@ export function AITrainingPage() {
       if (selectedModelType !== "custom") {
         toast.success(
           `Model training started! Check progress on Hugging Face.`,
-          {
-            duration: 5000,
-          },
         );
       } else {
-        toast.success("Custom training job started! Check logs for details.", {
-          duration: 5000,
-        });
+        toast.success("Custom training job started! Check logs for details.");
+        // Automatically reset the Training State to idle after 500ms
+        setTimeout(() => {
+          setTrainingState("idle");
+        }, 500);
       }
 
       return { success: true };
@@ -416,23 +433,30 @@ export function AITrainingPage() {
                               </ul>
                             </>
                           )}
+                          {selectedModelType === "custom" && (
+                            <div className="text-xs text-muted-foreground mt-4">
+                              You have selected a custom model type.
+                              <br />
+                              Pressing the "Train AI model" will run the command
+                              written. Use this to run any custom training
+                              script.
+                            </div>
+                          )}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
                 </div>
               </div>
-              {selectedModelType === "custom" && (
-                <div className="text-xs text-muted-foreground mt-4">
-                  You have selected a custom model type.
-                  <br />
-                  Pressing the "Train AI model" will run the command written.
-                  Use this to run any custom training script.
-                </div>
-              )}
+
               <div className="flex justify-between items-center mt-4">
-                <div className="text-xs text-muted-foreground">
-                  Training parameters
+                <div className="flex flex-row items-center justify-start gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    Training parameters
+                  </div>
+                  {isDatasetInfoLoading && (
+                    <Loader2 className="size-4 animate-spin" />
+                  )}
                 </div>
                 <TooltipProvider>
                   <Tooltip>
@@ -474,30 +498,15 @@ export function AITrainingPage() {
                 </div>
               </div>
               <div className="text-sm text-muted-foreground mt-2">
-                {isDatasetInfoLoading && (
-                  <div className="flex flex-row items-center">
-                    <Loader2 className="size-4 mr-2 animate-spin" />
-                    Loading training parameters...
+                {datasetInfoResponse?.status !== "error" && (
+                  <div className="w-full">
+                    <JsonEditor
+                      value={editableJson}
+                      onChange={setEditableJson}
+                    />
                   </div>
                 )}
-                {datasetInfoResponse?.status == "ok" &&
-                  !isDatasetInfoLoading && (
-                    <div className="w-full">
-                      {editableJson ? (
-                        <JsonEditor
-                          value={editableJson}
-                          onChange={(value) => {
-                            setEditableJson(value);
-                          }}
-                        />
-                      ) : (
-                        <div className="bg-muted p-4 rounded-lg text-center text-muted-foreground">
-                          No data available
-                        </div>
-                      )}
-                    </div>
-                  )}
-                {datasetInfoResponse?.status == "error" &&
+                {datasetInfoResponse?.status === "error" &&
                   !isDatasetInfoLoading && (
                     <div className="text-red-500">
                       {datasetInfoResponse.message ||
@@ -512,8 +521,8 @@ export function AITrainingPage() {
                   className="flex flex-1"
                   onClick={handleTrainModel}
                   disabled={
-                    !selectedDataset ||
-                    trainingState !== "idle" ||
+                    (selectedModelType !== "custom" && !selectedDataset) ||
+                    trainingState === "loading" ||
                     isDatasetInfoLoading ||
                     datasetInfoResponse?.status === "error"
                   }
