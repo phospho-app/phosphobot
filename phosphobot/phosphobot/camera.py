@@ -1170,9 +1170,6 @@ class AllCameras:
                     video=cv2.VideoCapture(index),
                     disable=self.disabled_cameras is not None
                     and index in self.disabled_cameras,
-                    width=1280,
-                    height=480,
-                    fps=30,
                     camera_id=index,
                 )
                 # Set the camera_id to the first position and reindex
