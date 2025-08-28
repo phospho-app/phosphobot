@@ -231,7 +231,7 @@ class LeaderFollowerThread(threading.Thread):
         self,
         leader: BaseManipulator,
         follower: BaseManipulator,
-        pos_rad: List[float],
+        pos_rad: np.ndarray,
     ) -> None:
         """Follower mirrors the leader's position."""
         if self.invert_controls:
@@ -258,7 +258,7 @@ class LeaderFollowerThread(threading.Thread):
         self,
         leader: SO100Hardware,
         follower: SO100Hardware,
-        pos_rad: List[float],
+        pos_rad: np.ndarray,
     ) -> None:
         """
         Performs a single control step with gravity compensation.
