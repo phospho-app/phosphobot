@@ -23,6 +23,10 @@ import { useGlobalStore } from "@/lib/hooks";
 import { useLocalStorageState } from "@/lib/hooks";
 import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import type { AdminTokenSettings } from "@/types";
+import { json, jsonParseLinter } from "@codemirror/lang-json";
+import { linter } from "@codemirror/lint";
+import { vscodeDark } from "@uiw/codemirror-theme-vscode";
+import CodeMirror from "@uiw/react-codemirror";
 import {
   CheckCircle2,
   Dumbbell,
@@ -32,8 +36,7 @@ import {
   Lock,
   RotateCcw,
 } from "lucide-react";
-import type React from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 
@@ -44,36 +47,33 @@ const JsonEditor = ({
   value: string;
   onChange: (value: string) => void;
 }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value);
-  };
+  const handleChange = useCallback(
+    (val: string) => {
+      onChange(val);
+    },
+    [onChange],
+  );
 
-  const handleBlur = () => {
-    try {
-      // Validate and format JSON on blur
-      const parsed = JSON.parse(value);
-      const formatted = JSON.stringify(parsed, null, 2);
-      if (formatted !== value) {
-        onChange(formatted);
-      }
-    } catch (e) {
-      // Keep invalid JSON as-is, user will see error when training
-      console.log("Invalid JSON format:", e);
-    }
-  };
+  // The jsonParseLinter provides diagnostics for syntax errors
+  const jsonLinter = linter(jsonParseLinter());
 
   return (
-    <textarea
-      className="w-full h-56 font-mono text-sm p-3 border border-input rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+    <CodeMirror
       value={value}
+      height="224px" // Corresponds to the original h-56
+      theme={vscodeDark}
+      extensions={[json(), jsonLinter]}
       onChange={handleChange}
-      onBlur={handleBlur}
-      placeholder="Enter JSON training parameters..."
-      spellCheck={false}
+      basicSetup={{
+        lineNumbers: false,
+        foldGutter: false,
+        dropCursor: true,
+        allowMultipleSelections: false,
+        indentOnInput: true,
+      }}
     />
   );
 };
-
 interface DatasetListResponse {
   pushed_datasets: string[];
   local_datasets: string[];
