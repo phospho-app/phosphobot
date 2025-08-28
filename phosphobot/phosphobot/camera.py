@@ -740,13 +740,12 @@ try:
                 config.enable_device(self.device_serial)
 
                 # Configure streams
+                # Intialize at 30FPS
                 config.enable_stream(
-                    stream_type=rs.stream.color,
-                    format=rs.format.bgr8,
+                    stream_type=rs.stream.color, format=rs.format.bgr8, framerate=30
                 )
                 config.enable_stream(
-                    stream_type=rs.stream.depth,
-                    format=rs.format.z16,
+                    stream_type=rs.stream.depth, format=rs.format.z16, framerate=30
                 )
 
                 # Add a small delay to ensure device is ready
