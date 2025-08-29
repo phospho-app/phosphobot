@@ -89,6 +89,17 @@ class PyBulletSimulation:
         else:
             raise ValueError("Invalid simulation mode")
 
+        try:
+            import pybullet_data
+
+            data_path = pybullet_data.getDataPath()
+            p.setAdditionalSearchPath(data_path)
+            logger.debug(f"Added pybullet_data search path: {data_path}")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"Failed to set additional search path for pybullet_data: {e}")
+
     def stop(self) -> None:
         """
         Cleanup the simulation environment.

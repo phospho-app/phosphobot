@@ -228,10 +228,6 @@ class BaseManipulator(BaseRobot):
             self.sim.reset()
 
         logger.info(f"Loading URDF file: {self.URDF_FILE_PATH}")
-        if not os.path.exists(self.URDF_FILE_PATH):
-            raise FileNotFoundError(
-                f"URDF file not found: {self.URDF_FILE_PATH}\nCurrent path: {os.getcwd()}"
-            )
         self.p_robot_id, num_joints, actuated_joints = self.sim.load_urdf(
             urdf_path=self.URDF_FILE_PATH,
             axis=axis,
