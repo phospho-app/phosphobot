@@ -74,7 +74,7 @@ def generate_modality_json(data_dir: Path) -> tuple[int, int]:
     return number_of_robots, number_of_cameras
 
 
-def train_gr00t(
+def train_gr00t_on_modal(
     dataset_repo_id: str,
     hf_token: str,
     hf_model_name: str,
