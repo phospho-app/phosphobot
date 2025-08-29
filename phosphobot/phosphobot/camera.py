@@ -394,9 +394,6 @@ class BaseCamera(ABC):
             logger.warning(f"{self.camera_name} Error generating frames: {str(e)}")
             self.stop()
 
-    async def generate_depth_frames(self):
-        return await self.generate_rgb_frames(is_video_frame=False)
-
 
 class VideoCamera(threading.Thread, BaseCamera):
     camera_type: CameraTypes = "classic"

@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, Literal, Optional, List, Tuple
+from typing import Any, Dict, Literal, Optional, List, Tuple, cast
 
 import numpy as np
 from loguru import logger
@@ -27,7 +27,7 @@ class SO100Hardware(BaseManipulator):
     GRIPPER_JOINT_INDEX = 5
 
     # Feetech settings
-    motors = {
+    motors: Dict[str, List[object]] = {
         # name: (index, model)
         "shoulder_pan": [1, "sts3215"],
         "shoulder_lift": [2, "sts3215"],
@@ -66,7 +66,7 @@ class SO100Hardware(BaseManipulator):
 
     @property
     def servo_id_to_motor_name(self) -> Dict[int, str]:
-        output: Dict[int, str] = {v[0]: k for k, v in self.motors.items()}
+        output: Dict[int, str] = {cast(int, v[0]): k for k, v in self.motors.items()}
         return output
 
     @classmethod

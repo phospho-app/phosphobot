@@ -404,8 +404,8 @@ class JsonEpisode(BaseEpisode):
 
         return cls(**data_dict)
 
-    def delete(self):
-        os.remove(self.json_path)
+    def delete(self) -> None:
+        os.remove(self._json_episode_path)
 
 
 class BaseDataset:

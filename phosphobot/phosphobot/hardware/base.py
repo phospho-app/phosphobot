@@ -749,12 +749,12 @@ class BaseManipulator(BaseRobot):
                 # Normalize the angles to [min_value, max_value]
                 output_position = min_value + (max_value - min_value) * (
                     output_position_rad + np.pi
-                ) / (2 * np.pi)
+                ) / (2 * np.pi)  # type: ignore
 
             elif source_unit == "rad":
                 output_position = min_value + (max_value - min_value) * (
                     output_position + np.pi
-                ) / (2 * np.pi)
+                ) / (2 * np.pi)  # type: ignore
         else:
             raise ValueError(
                 f"Invalid unit: {unit}. Must be one of ['rad', 'motor_units', 'degrees']"

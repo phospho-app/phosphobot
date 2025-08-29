@@ -2473,8 +2473,16 @@ class Stats(BaseModel):
             # For the first episode the shape is (3,)
             # For the next ones the shape is (3,1,3)
             # We keep min and max of the first episode only
-            self.min = self.min.reshape(3, 1, 1)
-            self.max = self.max.reshape(3, 1, 1)
+            if self.min is not None:
+                self.min = self.min.reshape(3, 1, 1)
+            else:
+                # use (0, 0, 0) as min for the first episode
+                self.min = np.zeros((3, 1, 1), dtype=np.float32)
+            if self.max is not None:
+                self.max = self.max.reshape(3, 1, 1)
+            else:
+                # Use (1, 1, 1) as max for the first episode
+                self.max = np.ones((3, 1, 1), dtype=np.float32)
 
 
 class StatsModel(BaseModel):

@@ -139,6 +139,7 @@ class UnitreeGo2(BaseMobileRobot):
         """
         if self._connection_loop is None:
             self._create_event_loop_thread()
+        assert self._connection_loop is not None, "Event loop is not initialized"
 
         # Use the dedicated event loop
         future = asyncio.run_coroutine_threadsafe(coro, self._connection_loop)
