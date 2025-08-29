@@ -1212,21 +1212,6 @@ class Gr00tTrainer(BaseTrainer):
             # We set the validation data dir to None to avoid passing it to the training script
             val_data_dir = None
 
-        # Find the total number of frames in the dataset in meta / info.json
-        with open(data_dir / "meta" / "info.json", "r") as f:
-            info = json.load(f)
-            total_frames = info["total_frames"]
-
-        steps = (
-            total_frames
-            * self.config.training_params.epochs
-            // self.config.training_params.batch_size
-            + 1
-        )
-        logger.info(
-            f"Will train for {self.config.training_params.epochs} epochs, which is {steps} steps"
-        )
-
         asyncio.run(
             self._call_training_script(
                 data_dir=data_dir,

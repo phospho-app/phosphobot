@@ -159,7 +159,7 @@ async def start_training(
     tokens = get_tokens()
     if not tokens.MODAL_API_URL:
         raise HTTPException(
-            status_code=500,  # Use 500 for server config issue
+            status_code=400,
             detail="Modal API URL not found. Server configuration is incomplete.",
         )
 
@@ -214,9 +214,6 @@ async def start_training(
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             training_request_body = request.model_dump()
-            logger.debug(
-                f"Calling modal training service with body: {training_request_body}"
-            )
             response = await client.post(
                 f"{tokens.MODAL_API_URL}/train",
                 json=training_request_body,

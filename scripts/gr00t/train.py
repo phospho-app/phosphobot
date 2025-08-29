@@ -8,7 +8,7 @@ config = tyro.cli(Gr00tTrainerConfig)
 path_to_gr00t_folder = Path(__file__).parent.parent.parent / "Isaac-GR00T"
 
 # Useful parameters to change
-config.training_params.epochs = 20
+config.training_params.num_epochs = 20
 config.training_params.batch_size = 64
 config.training_params.learning_rate = 0.0002
 

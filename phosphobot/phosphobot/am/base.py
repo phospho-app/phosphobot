@@ -169,11 +169,12 @@ class TrainingParamsGr00T(BaseModel):
         le=128,
         serialization_alias="batch-size",
     )
-    epochs: int = Field(
+    num_epochs: int = Field(
         default=10,
         description="Number of epochs to train for.",
         gt=0,
         le=100,
+        serialization_alias="num-epochs",
     )
     save_steps: int = Field(
         default=1_000,
