@@ -1229,7 +1229,7 @@ class Gr00tTrainer(BaseTrainer):
         )
 
         asyncio.run(
-            self.run_gr00t_training(
+            self._call_training_script(
                 data_dir=data_dir,
                 output_dir=output_dir,
                 validation_data_dir=val_data_dir,
@@ -1341,9 +1341,9 @@ class Gr00tTrainer(BaseTrainer):
 
     async def _call_training_script(
         self,
-        data_dir: str,
-        output_dir: str,
-        validation_data_dir: Optional[str],
+        data_dir: Path,
+        output_dir: Path,
+        validation_data_dir: Optional[Path],
         number_of_robots: int,
         number_of_cameras: int,
         timeout_seconds: Optional[int] = None,

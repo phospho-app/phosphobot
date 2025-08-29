@@ -831,6 +831,7 @@ async def get_training_info(
                 "training_params": {
                     "data_dir": True,
                     "output_dir": True,
+                    "validation_data_dir": True,
                 },
             }
         )
