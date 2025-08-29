@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 import httpx
 import numpy as np
 
@@ -90,7 +90,7 @@ class RemotePhosphobot(BaseRobot):
             logger.warning(f"Failed to disconnect from remote phosphobot: {e}")
             raise Exception(f"Disconnection failed: {e}")
 
-    def get_observation(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_observation(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 
@@ -137,7 +137,7 @@ class RemotePhosphobot(BaseRobot):
             params={"robot_id": self.robot_id},
         )
 
-    def get_info_for_dataset(self):
+    def get_info_for_dataset(self) -> dict:
         """
         Not implemented
         """
@@ -147,7 +147,7 @@ class RemotePhosphobot(BaseRobot):
         self,
         target_position: np.ndarray,
         target_orientation_rad: Optional[np.ndarray],
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Move the robot to the target position and orientation asynchronously.
@@ -223,7 +223,7 @@ class RemotePhosphobot(BaseRobot):
 
     def forward_kinematics(
         self, sync_robot_pos: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the end effector position and orientation of the robot.
         """
@@ -297,7 +297,7 @@ class RemotePhosphobot(BaseRobot):
             return
         await self.async_client.post("/move/sleep", params={"robot_id": self.robot_id})
 
-    def enable_torque(self):
+    def enable_torque(self) -> None:
         """
         Enable the torque of the robot.
         """
@@ -311,7 +311,7 @@ class RemotePhosphobot(BaseRobot):
             params={"robot_id": self.robot_id},
         )
 
-    def disable_torque(self):
+    def disable_torque(self) -> None:
         """
         Disable the torque of the robot.
         """
@@ -375,7 +375,7 @@ class RemotePhosphobot(BaseRobot):
         angles: List[float],
         unit: str = "rad",
         joints_ids: Optional[List[int]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Write joint positions to the robot.
@@ -417,7 +417,7 @@ class RemotePhosphobot(BaseRobot):
         return np.array(joints["angles"])
 
     @property
-    def actuated_joints(self) -> list[int]:
+    def actuated_joints(self) -> List[int]:
         """
         Get the list of actuated joints.
 

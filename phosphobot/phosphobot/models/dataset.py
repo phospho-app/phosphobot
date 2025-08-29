@@ -6,7 +6,7 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Literal, Optional, cast
+from typing import Any, List, Literal, Optional, cast
 
 import numpy as np
 from huggingface_hub import (
@@ -351,7 +351,7 @@ class JsonEpisode(BaseEpisode):
         robots: List[BaseRobot],
         instruction: Optional[str] = None,
         freq: Optional[int] = None,  # Optional for JSON, might be useful for metadata
-        **kwargs,
+        **kwargs: Any,
     ) -> "JsonEpisode":
         start_timestamp = time.time()
         created_at_string = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -374,10 +374,10 @@ class JsonEpisode(BaseEpisode):
         logger.info(f"Starting new JSON episode for dataset '{dataset_name}'.")
         return cls(steps=[], metadata=metadata)
 
-    async def append_step(self, step: Step, **kwargs) -> None:
+    async def append_step(self, step: Step, **kwargs: Any) -> None:
         self.add_step(step)  # Uses BaseEpisode.add_step
 
-    async def save(self, **kwargs) -> None:
+    async def save(self, **kwargs: Any) -> None:
         if not self.steps:
             logger.warning("JSON Episode has no steps. Skipping save.")
             return
@@ -404,8 +404,8 @@ class JsonEpisode(BaseEpisode):
 
         return cls(**data_dict)
 
-    def delete(self):
-        os.remove(self.json_path)
+    def delete(self) -> None:
+        os.remove(self._json_episode_path)
 
 
 class BaseDataset:
@@ -600,7 +600,7 @@ It's compatible with LeRobot.
 To get started in robotics, [get your own phospho starter pack.](https://robots.phospho.ai).
 """
 
-    def push_dataset_to_hub(self, branch_path: Optional[str] = None):
+    def push_dataset_to_hub(self, branch_path: Optional[str] = None) -> None:
         """
         Push the dataset to the Hugging Face Hub.
 

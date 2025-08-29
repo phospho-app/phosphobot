@@ -26,6 +26,8 @@ class ControlSignal:
 
 
 class AIControlSignal(ControlSignal):
+    _status: Literal["stopped", "running", "paused", "waiting"]
+
     def __init__(self):
         super().__init__()
         self._status = "stopped"

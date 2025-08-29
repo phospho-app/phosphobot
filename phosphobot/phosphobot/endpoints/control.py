@@ -2,7 +2,7 @@ import asyncio
 import json
 import traceback
 from copy import copy
-from typing import cast, Optional
+from typing import Optional, cast
 
 import httpx
 import json_numpy  # type: ignore
@@ -17,6 +17,7 @@ from fastapi import (
 )
 from loguru import logger
 from scipy.spatial.transform import Rotation as R
+from supabase_auth.types import Session as SupabaseSession
 
 from phosphobot.ai_control import CustomAIControlSignal, setup_ai_control
 from phosphobot.camera import AllCameras, get_all_cameras
@@ -92,7 +93,7 @@ signal_vr_control = ControlSignal()
 async def move_init(
     robot_id: Optional[int] = None,
     teleop_manager: TeleopManager = Depends(get_teleop_manager),
-):
+) -> StatusResponse:
     """
     Initialize the robot to its initial position before starting the teleoperation.
     """
@@ -122,7 +123,7 @@ async def move_teleop_ws(
     websocket: WebSocket,
     rcm: RobotConnectionManager = Depends(get_rcm),
     teleop_manager: TeleopManager = Depends(get_teleop_manager),
-):
+) -> None:
     teleop_manager.robot_id = None
 
     if not await rcm.robots:
@@ -151,7 +152,7 @@ async def move_teleop_ws(
 async def move_teleop_udp(
     udp_server: UDPServer = Depends(get_udp_server),
     teleop_manager: TeleopManager = Depends(get_teleop_manager),
-):
+) -> UDPServerInformationResponse:
     """
     Start a UDP server to send and receive teleoperation data to the robot.
     """
@@ -163,7 +164,7 @@ async def move_teleop_udp(
 @router.post("/move/teleop/udp/stop", response_model=StatusResponse)
 async def stop_teleop_udp(
     udp_server: UDPServer = Depends(get_udp_server),
-):
+) -> StatusResponse:
     """
     Stop the UDP server main loop.
     """
@@ -256,7 +257,7 @@ async def move_to_absolute_position(
         else:
             orientation_residual = 0
 
-        async def try_moving_to_target():
+        async def try_moving_to_target() -> None:
             nonlocal \
                 current_position, \
                 current_orientation, \
@@ -280,8 +281,8 @@ async def move_to_absolute_position(
                 current_position, current_orientation = robot.forward_kinematics()
                 position_residual = np.linalg.norm(current_position - target_position)
                 if use_angles:
-                    orientation_residual = np.linalg.norm(
-                        current_orientation - target_orientation_rad
+                    orientation_residual = float(
+                        np.linalg.norm(current_orientation - target_orientation_rad)
                     )
 
         await try_moving_to_target()
@@ -550,7 +551,7 @@ async def end_effector_read(
 async def read_voltage(
     robot_id: int = 0,
     rcm: RobotConnectionManager = Depends(get_rcm),
-):
+) -> VoltageReadResponse:
     """
     Read voltage of the robot.
     """
@@ -576,7 +577,7 @@ async def read_voltage(
 async def read_temperature(
     robot_id: int = 0,
     rcm: RobotConnectionManager = Depends(get_rcm),
-):
+) -> TemperatureReadResponse:
     """
     Read temperature of the robot.
     """
@@ -629,7 +630,7 @@ async def write_temperature(
 async def read_torque(
     robot_id: int = 0,
     rcm: RobotConnectionManager = Depends(get_rcm),
-):
+) -> TorqueReadResponse:
     """
     Read torque of the robot.
     """
@@ -867,12 +868,7 @@ async def start_leader_follower(
                     detail=f"Follower must be an instance of SO100Hardware for robot pair {i}.",
                 )
         else:
-            valid_robot_types = (
-                SO100Hardware,
-                PiperHardware,
-                RemotePhosphobot,
-                URDFLoader,
-            )
+            valid_robot_types = (BaseManipulator, RemotePhosphobot)
             if not isinstance(leader, valid_robot_types):
                 raise HTTPException(
                     status_code=400,
@@ -999,7 +995,7 @@ async def spawn_inference_server(
     query: StartServerRequest,
     rcm: RobotConnectionManager = Depends(get_rcm),
     all_cameras: AllCameras = Depends(get_all_cameras),
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> SpawnStatusResponse:
     """
     Start an inference server and return the server info.
@@ -1050,7 +1046,7 @@ async def start_ai_control(
     background_tasks: BackgroundTasks,
     rcm: RobotConnectionManager = Depends(get_rcm),
     all_cameras: AllCameras = Depends(get_all_cameras),
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> AIControlStatusResponse:
     """
     Start the auto control by AI
@@ -1177,7 +1173,7 @@ async def start_ai_control(
 async def stop_ai_control(
     background_tasks: BackgroundTasks,
     rcm: RobotConnectionManager = Depends(get_rcm),
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> StatusResponse:
     """
     Stop the auto control by AI
@@ -1187,7 +1183,7 @@ async def stop_ai_control(
 
     # Call the /stop endpoint in Modal
     @background_task_log_exceptions
-    async def stop_modal():
+    async def stop_modal() -> None:
         async with httpx.AsyncClient(timeout=5) as client:
             await client.post(
                 url=f"{tokens.MODAL_API_URL}/stop",
@@ -1248,15 +1244,12 @@ async def resume_ai_control(
 @router.post(
     "/ai-control/feedback",
     response_model=StatusResponse,
-    summary="Feedback about the auto control session",
+    summary="Feedback about the AI control session",
 )
 async def feedback_ai_control(
     request: FeedbackRequest,
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> StatusResponse:
-    """
-    Feedback about the auto control session
-    """
     supabase_client = await get_client()
 
     await (

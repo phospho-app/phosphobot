@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Coroutine, Dict, List, Optional, Union
 
 import numpy as np
 from loguru import logger
@@ -10,19 +10,18 @@ from loguru import logger
 from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware import (
     SO100Hardware,
-    PiperHardware,
-    RemotePhosphobot,
     get_sim,
-    URDFLoader,
+    RemotePhosphobot,
+    BaseManipulator,
 )
-from phosphobot.hardware.base import BaseManipulator
+from phosphobot.hardware.sim import PyBulletSimulation
 from phosphobot.utils import background_task_log_exceptions
 
 
 @dataclass
 class RobotPair:
-    leader: SO100Hardware | PiperHardware | RemotePhosphobot | URDFLoader
-    follower: SO100Hardware | PiperHardware | RemotePhosphobot | URDFLoader
+    leader: Union[BaseManipulator, RemotePhosphobot]
+    follower: Union[BaseManipulator, RemotePhosphobot]
 
 
 class LeaderFollowerThread(threading.Thread):
@@ -39,8 +38,8 @@ class LeaderFollowerThread(threading.Thread):
         invert_controls: bool,
         enable_gravity_compensation: bool,
         compensation_values: Optional[Dict[str, int]],
-        sim,
-    ):
+        sim: PyBulletSimulation,
+    ) -> None:
         super().__init__()
         self.robot_pairs = robot_pairs
         self.control_signal = control_signal
@@ -52,11 +51,11 @@ class LeaderFollowerThread(threading.Thread):
         self.original_pid_gains: Dict[str, list] = {}
         self.warning_dropping_joints_displayed = False
 
-    def _run_async(self, coro):
+    def _run_async(self, coro: Coroutine) -> Any:
         """Helper function to run async code from within the thread."""
         return asyncio.run(coro)
 
-    def _setup_robots(self):
+    def _setup_robots(self) -> None:
         """Initializes robots, moves them to the initial position, and sets up PID gains."""
         logger.info("Setting up robots for leader-follower control.")
 
@@ -144,7 +143,7 @@ class LeaderFollowerThread(threading.Thread):
                     )
                     time.sleep(0.05)
 
-    def _cleanup_robots(self):
+    def _cleanup_robots(self) -> None:
         """Resets PID gains to their original values and disables torque."""
         logger.info("Cleaning up and resetting robots.")
         for pair in self.robot_pairs:
@@ -181,7 +180,7 @@ class LeaderFollowerThread(threading.Thread):
             leader.disable_torque()
             follower.disable_torque()
 
-    def run(self):
+    def run(self) -> None:
         """The main control loop of the thread."""
         self._setup_robots()
         logger.info(
@@ -213,9 +212,19 @@ class LeaderFollowerThread(threading.Thread):
                         continue
 
                     if self.enable_gravity_compensation:
-                        self._gravity_compensation_step(leader, follower, pos_rad)
+                        assert isinstance(
+                            leader, SO100Hardware
+                        ), "Gravity compensation is only supported for SO100Hardware."
+                        assert isinstance(
+                            follower, SO100Hardware
+                        ), "Gravity compensation is only supported for SO100Hardware."
+                        self._gravity_compensation_step(
+                            leader=leader, follower=follower, pos_rad=pos_rad
+                        )
                     else:
-                        self._simple_mirroring_step(leader, follower, pos_rad)
+                        self._simple_mirroring_step(
+                            leader=leader, follower=follower, pos_rad=pos_rad
+                        )
 
                 elapsed = time.perf_counter() - start_time
                 sleep_time = max(0, self.loop_period - elapsed)
@@ -229,8 +238,8 @@ class LeaderFollowerThread(threading.Thread):
 
     def _simple_mirroring_step(
         self,
-        leader: BaseManipulator,
-        follower: BaseManipulator,
+        leader: Union[BaseManipulator, RemotePhosphobot],
+        follower: Union[BaseManipulator, RemotePhosphobot],
         pos_rad: np.ndarray,
     ) -> None:
         """Follower mirrors the leader's position."""
@@ -342,8 +351,8 @@ async def start_leader_follower_loop(
     invert_controls: bool,
     enable_gravity_compensation: bool,
     compensation_values: Optional[Dict[str, int]],
-    sim=get_sim(),
-):
+    sim: PyBulletSimulation = get_sim(),
+) -> None:
     """
     FastAPI background task that starts and manages the leader-follower
     control loop in a dedicated thread.

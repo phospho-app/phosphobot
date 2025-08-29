@@ -146,7 +146,7 @@ class LeRobotDataset(BaseDataset):
 
         logger.debug("Meta models initialization/loading complete.")
 
-    def load_episodes(self):
+    def load_episodes(self) -> None:
         """Loads all episodes from the dataset."""
         if self.episodes_model is None:
             # Load it
@@ -157,7 +157,7 @@ class LeRobotDataset(BaseDataset):
                 "EpisodesModel not initialized in LeRobotDataset. Call initialize_meta_models_if_needed first."
             )
 
-        episodes = []
+        episodes: List[BaseEpisode] = []
         for episodes_features in self.episodes_model.episodes:
             episode = LeRobotEpisode.from_parquet(
                 self.get_episode_data_path(episodes_features.episode_index),
@@ -180,7 +180,7 @@ class LeRobotDataset(BaseDataset):
             raise ValueError("InfoModel not initialized in LeRobotDataset.")
         return self.info_model.total_frames
 
-    def save_all_meta_models(self):
+    def save_all_meta_models(self) -> None:
         """Saves all currently loaded meta models to disk."""
         logger.debug(f"Saving all meta models for dataset: {self.dataset_name}")
         if self.info_model:
@@ -2473,8 +2473,16 @@ class Stats(BaseModel):
             # For the first episode the shape is (3,)
             # For the next ones the shape is (3,1,3)
             # We keep min and max of the first episode only
-            self.min = self.min.reshape(3, 1, 1)
-            self.max = self.max.reshape(3, 1, 1)
+            if self.min is not None:
+                self.min = self.min.reshape(3, 1, 1)
+            else:
+                # use (0, 0, 0) as min for the first episode
+                self.min = np.zeros((3, 1, 1), dtype=np.float32)
+            if self.max is not None:
+                self.max = self.max.reshape(3, 1, 1)
+            else:
+                # Use (1, 1, 1) as max for the first episode
+                self.max = np.ones((3, 1, 1), dtype=np.float32)
 
 
 class StatsModel(BaseModel):

@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Tuple, Optional
+from typing import Any, Callable, Dict, List, Literal, Tuple, Optional, Union
 
 import cv2
 import zmq
@@ -69,7 +69,7 @@ class BaseInferenceServer:
     Can add custom endpoints by calling `register_endpoint`.
     """
 
-    def __init__(self, host: str = "*", port: int = 5555):
+    def __init__(self, host: str = "*", port: int = 5555) -> None:
         self.running = True
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
@@ -80,7 +80,7 @@ class BaseInferenceServer:
         self.register_endpoint("ping", self._handle_ping, requires_input=False)
         self.register_endpoint("kill", self._kill_server, requires_input=False)
 
-    def _kill_server(self):
+    def _kill_server(self) -> None:
         """
         Kill the server.
         """
@@ -94,7 +94,7 @@ class BaseInferenceServer:
 
     def register_endpoint(
         self, name: str, handler: Callable, requires_input: bool = True
-    ):
+    ) -> None:
         """
         Register a new endpoint to the server.
 
@@ -186,7 +186,7 @@ class RobotInferenceServer(BaseInferenceServer):
     Server with three endpoints for real robot policies
     """
 
-    def __init__(self, model: BasePolicy, host: str = "*", port: int = 5555):
+    def __init__(self, model: BasePolicy, host: str = "*", port: int = 5555) -> None:
         super().__init__(host, port)
         self.register_endpoint("get_action", model.get_action)
         self.register_endpoint(
@@ -194,7 +194,7 @@ class RobotInferenceServer(BaseInferenceServer):
         )
 
     @staticmethod
-    def start_server(policy: BasePolicy, port: int):
+    def start_server(policy: BasePolicy, port: int) -> None:
         server = RobotInferenceServer(policy, port=port)
         server.run()
 
@@ -202,7 +202,7 @@ class RobotInferenceServer(BaseInferenceServer):
 class BaseInferenceClient:
     def __init__(
         self, host: str = "localhost", port: int = 5555, timeout_ms: int = 15000
-    ):
+    ) -> None:
         self.context = zmq.Context()
 
         self.host = host
@@ -211,7 +211,7 @@ class BaseInferenceClient:
         self.version = 2
         self._init_socket()
 
-    def _init_socket(self):
+    def _init_socket(self) -> None:
         """Initialize or reinitialize the socket with current settings"""
         self.socket = self.context.socket(zmq.REQ)
         self.socket.connect(f"tcp://{self.host}:{self.port}")
@@ -224,7 +224,7 @@ class BaseInferenceClient:
             self._init_socket()  # Recreate socket for next attempt
             return False
 
-    def kill_server(self):
+    def kill_server(self) -> None:
         """
         Kill the server.
         """
@@ -264,7 +264,7 @@ class BaseInferenceClient:
             # legacy: the handler's own dict
             return resp
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Cleanup resources on destruction"""
         self.socket.close()
         self.context.term()
@@ -303,7 +303,7 @@ class ComponentStatistics(BaseModel):
         extra = "allow"
 
     @model_validator(mode="before")
-    def collect_active_components(self):
+    def collect_active_components(self) -> "ComponentStatistics":
         """
         Collect names and values of all fields containing valid Stats before validation.
         Ensures extra fields are included in active_components.
@@ -488,8 +488,8 @@ class Gr00tN1(ActionModel):
         ],  # These values are read from the values in experiment_cfg/metadata.json
         server_url: str = "localhost",
         server_port: int = 5555,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         super().__init__(server_url, server_port)
         self.client = ExternalRobotInferenceClient(host=server_url, port=server_port)
         self.action_keys = action_keys
@@ -715,7 +715,7 @@ class Gr00tN1(ActionModel):
         min_angle: Optional[float] = None,
         max_angle: Optional[float] = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         """
         AI control loop that runs in the background and sends actions to the robot.
         It uses the model to get the actions based on the current state of the robot and the cameras.
@@ -933,29 +933,28 @@ class Gr00tTrainerConfig(BaseTrainerConfig):
     training_params: TrainingParamsGr00T
 
 
-def check_for_nans_null_in_value(value):
+def check_for_nans_null_in_value(value: Union[list, tuple, pd.DataFrame]) -> bool:
     """
     Check if a value contains NaN/null, including nested lists
     """
-    if pd.isna(value).any():
-        return True
-
-    if pd.isnull(value).any():
-        return True
-
     if isinstance(value, (list, tuple)):
         for item in value:
             if check_for_nans_null_in_value(item):
                 return True
+    else:
+        if pd.isna(value).any():
+            return True
+        if pd.isnull(value).any():
+            return True
 
     return False
 
 
-def check_parquet_files(folder_path):
+def check_parquet_files(folder_path: Path) -> None:
     """
     Check all parquet files in a folder for NaN/null values in the action/observation column
 
-    Will raise an error if it finds any NaN/null values in the action/observation column.
+    Raise an error if any NaN/null values in the action/observation column.
     """
     folder_path = Path(folder_path)
 
@@ -1024,7 +1023,7 @@ def check_parquet_files(folder_path):
         )
 
 
-def generate_modality_json(data_dir) -> tuple[int, int]:
+def generate_modality_json(data_dir: Path) -> Tuple[int, int]:
     # Load the metadata file to get image keys
     with open(data_dir / "meta" / "info.json", "r") as f:
         metadata = json.load(f)
@@ -1072,106 +1071,6 @@ def generate_modality_json(data_dir) -> tuple[int, int]:
         json.dump(modality_json, f, indent=4)
 
     return number_of_robots, number_of_cameras
-
-
-async def run_gr00t_training(
-    data_dir,
-    output_dir,
-    batch_size,
-    epochs,
-    number_of_robots,
-    number_of_cameras,
-    learning_rate,
-    save_steps: int,
-    wandb_enabled: bool,
-    validation_data_dir=None,
-    timeout_seconds: Optional[int] = None,
-    gr00t_repo_path: str = ".",
-):
-    cmd = [
-        "python",
-        f"{gr00t_repo_path}/scripts/gr00t_finetune.py",
-        "--dataset-path",
-        str(data_dir),
-    ]
-
-    if validation_data_dir is not None:
-        logger.info(f"Using validation dataset from {validation_data_dir}")
-        cmd.extend(["--validation-dataset-path", str(validation_data_dir)])
-    else:
-        logger.info("No validation dataset provided. No validation will be done.")
-
-    # Add remaining arguments
-    cmd.extend(
-        [
-            # Only 1 GPU for now
-            # Open an issue for multi-GPU support
-            "--num-gpus",
-            "1",
-            "--output-dir",
-            str(output_dir),
-            "--batch-size",
-            str(batch_size),
-            "--num-epochs",
-            str(epochs),
-            "--save-steps",
-            str(save_steps),
-            "--num-arms",
-            str(number_of_robots),
-            "--num-cams",
-            str(number_of_cameras),
-            "--learning_rate",
-            str(learning_rate),
-            "--report_to",
-            "wandb" if wandb_enabled else "tensorboard",
-            "--video_backend",
-            "torchvision_av",
-        ]
-    )
-
-    logger.info(f"Starting training with command: {' '.join(cmd)}")
-
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        # 512 KB buffer size, default is 64 but seems to be too small
-        limit=512 * 1024,
-    )
-
-    output_lines = []
-
-    async def read_output():
-        assert process.stdout is not None
-        async for line in process.stdout:
-            stripped_line = line.decode().strip()
-            print(stripped_line)
-            output_lines.append(stripped_line)
-
-    try:
-        if timeout_seconds is None:
-            # No timeout
-            await read_output()
-        else:
-            # Timeout
-            await asyncio.wait_for(read_output(), timeout=timeout_seconds)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
-        logger.error(f"Training process timed out after {timeout_seconds} seconds.")
-        raise TimeoutError(
-            f"Training process exceeded timeout of {timeout_seconds} seconds. Please consider lowering the number of epochs and/or batch size."
-        )
-
-    await process.wait()
-
-    if process.returncode != 0:
-        error_output = "\n".join(output_lines[-10:])
-        error_msg = f"Training process failed with exit code {process.returncode}:\n{error_output}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
-    return output_lines
 
 
 class Gr00tTrainer(BaseTrainer):
@@ -1231,7 +1130,7 @@ class Gr00tTrainer(BaseTrainer):
                     repo_type="dataset",
                     revision=selected_branch,
                     local_dir=str(data_dir),
-                    token=os.getenv("HF_TOKEN"),
+                    token=hf_token,
                 )
                 DATASET_PATH = Path(dataset_path_as_str)
                 logger.info(
@@ -1278,8 +1177,8 @@ class Gr00tTrainer(BaseTrainer):
                         repo_id=self.config.training_params.validation_dataset_name,
                         repo_type="dataset",
                         revision=selected_branch,
-                        local_dir=str(val_data_dir),
-                        token=os.getenv("HF_TOKEN"),
+                        local_dir=(val_data_dir),
+                        token=hf_token,
                     )
                     VAL_DATASET_PATH = Path(dataset_path_val_str)
                     logger.info(
@@ -1313,36 +1212,14 @@ class Gr00tTrainer(BaseTrainer):
             # We set the validation data dir to None to avoid passing it to the training script
             val_data_dir = None
 
-        # Find the total number of frames in the dataset in meta / info.json
-        with open(data_dir / "meta" / "info.json", "r") as f:
-            info = json.load(f)
-            total_frames = info["total_frames"]
-
-        steps = (
-            total_frames
-            * self.config.training_params.epochs
-            // self.config.training_params.batch_size
-            + 1
-        )
-
-        logger.info(
-            f"Will train for {self.config.training_params.epochs} epochs, which is {steps} steps"
-        )
-
         asyncio.run(
-            run_gr00t_training(
+            self._call_training_script(
                 data_dir=data_dir,
                 output_dir=output_dir,
-                batch_size=self.config.training_params.batch_size,
-                epochs=self.config.training_params.epochs,
+                validation_data_dir=val_data_dir,
                 number_of_robots=number_of_robots,
                 number_of_cameras=number_of_cameras,
-                learning_rate=self.config.training_params.learning_rate,
-                save_steps=self.config.training_params.save_steps,
-                wandb_enabled=self.config.wandb_api_key is not None,
-                validation_data_dir=val_data_dir,
                 timeout_seconds=timeout_seconds,
-                gr00t_repo_path=self.config.training_params.path_to_gr00t_repo,
             )
         )
         logger.info("Training finished")
@@ -1351,13 +1228,13 @@ class Gr00tTrainer(BaseTrainer):
             logger.info(f"Uploading model to Hugging Face as {self.config.model_name}")
 
             # Upload using huggingface_hub
-            api = HfApi(token=os.getenv("HF_TOKEN"))
+            api = HfApi(token=hf_token)
             files_directory = output_dir
 
             api.create_repo(
                 repo_id=self.config.model_name,
                 repo_type="model",
-                private=False,
+                private=private_mode,
                 exist_ok=True,
             )
 
@@ -1441,12 +1318,110 @@ class Gr00tTrainer(BaseTrainer):
             # Get the model URL
             huggingface_model_url = f"https://huggingface.co/{self.config.model_name}"
             logger.info(f"Model successfully uploaded to {huggingface_model_url}")
-
-            logger.info("Model successfully uploaded to Hugging Face")
+        else:
             logger.info(
-                f"Find your trained model on Hugging Face: {huggingface_model_url}"
+                "Skipping upload to Hugging Face. Provide a model-id to enable automatic upload to Hugging Face"
             )
 
+    async def _call_training_script(
+        self,
+        data_dir: Path,
+        output_dir: Path,
+        validation_data_dir: Optional[Path],
+        number_of_robots: int,
+        number_of_cameras: int,
+        timeout_seconds: Optional[int] = None,
+        gr00t_repo_path: str = ".",
+    ) -> List[str]:
+        training_params = self.config.training_params
+        wandb_enabled = self.config.wandb_api_key is not None
+
+        cmd = [
+            "python",
+            f"{gr00t_repo_path}/scripts/gr00t_finetune.py",
+            "--dataset-path",
+            str(data_dir),
+        ]
+
+        if validation_data_dir is not None:
+            logger.info(f"Using validation dataset from {validation_data_dir}")
+            cmd.extend(["--validation-dataset-path", str(validation_data_dir)])
         else:
-            logger.info("Skipping upload to Hugging Face")
-            logger.info("Provide a model-id to enable automatic upload to Hugging Face")
+            logger.info("No validation dataset provided. No validation will be done.")
+
+        # Add remaining arguments
+        cmd.extend(
+            [
+                # Only 1 GPU for now
+                # Open an issue for multi-GPU support
+                "--num-gpus",
+                "1",
+                "--output-dir",
+                str(output_dir),
+                "--num-arms",
+                str(number_of_robots),
+                "--num-cams",
+                str(number_of_cameras),
+                "--report_to",
+                "wandb" if wandb_enabled else "tensorboard",
+                "--video_backend",
+                "torchvision_av",
+            ]
+        )
+
+        # Adds all extra parameters from the training_params
+        training_params_dict = training_params.model_dump(
+            by_alias=True,
+            exclude_none=True,
+            exclude={
+                "data_dir": True,
+                "output_dir": True,
+                "validation_data_dir": True,
+            },
+        )
+        for key, value in training_params_dict.items():
+            cmd.extend([f"--{key}", str(value)])
+
+        logger.info(f"Starting training with command: {' '.join(cmd)}")
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            # 512 KB buffer size, default is 64 but seems to be too small
+            limit=512 * 1024,
+        )
+
+        output_lines = []
+
+        async def read_output() -> None:
+            assert process.stdout is not None
+            async for line in process.stdout:
+                stripped_line = line.decode().strip()
+                print(stripped_line)
+                output_lines.append(stripped_line)
+
+        try:
+            if timeout_seconds is None:
+                # No timeout
+                await read_output()
+            else:
+                # Timeout
+                await asyncio.wait_for(read_output(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            logger.error(f"Training process timed out after {timeout_seconds} seconds.")
+            raise TimeoutError(
+                f"Training process exceeded timeout of {timeout_seconds} seconds. Please consider lowering the number of epochs and/or batch size."
+            )
+
+        await process.wait()
+
+        if process.returncode != 0:
+            error_output = "\n".join(output_lines[-10:])
+            error_msg = f"Training process failed with exit code {process.returncode}:\n{error_output}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        return output_lines

@@ -135,16 +135,22 @@ async def run_act_training(
         f"--dataset.root={dataset_path}",
         "--policy.type=act",
         "--policy.push_to_hub=false",
-        f"--batch_size={training_params.batch_size}",
-        "--wandb.project=phosphobot-ACT",
-        f"--save_freq={training_params.save_steps}",
-        f"--steps={training_params.steps}",
         "--policy.device=cuda",
         f"--output_dir={output_dir}",
+        "--wandb.project=phosphobot-ACT",
         f"--wandb.run_id={wandb_run_id}",
         f"--wandb.enable={str(wandb_enabled).lower()}",
         f"--job_name={wandb_run_id}",
     ]
+
+    # Add any other training parameters that are not None
+    training_params_dict = training_params.model_dump(
+        by_alias=True,
+        exclude_none=True,
+        exclude=["target_detection_instruction", "image_key", "image_key_to_keep"],
+    )
+    for key, value in training_params_dict.items():
+        cmd.append(f"--{key}={value}")
 
     logger.info(f"Starting training with command: {' '.join(cmd)}")
 

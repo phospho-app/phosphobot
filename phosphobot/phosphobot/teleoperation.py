@@ -41,7 +41,9 @@ class TeleopManager:
     MOVE_TIMEOUT: float = 1.0  # seconds
     MAX_INSTRUCTIONS_PER_SEC: int = 200
 
-    def __init__(self, rcm: RobotConnectionManager, robot_id: Optional[int] = None):
+    def __init__(
+        self, rcm: RobotConnectionManager, robot_id: Optional[int] = None
+    ) -> None:
         self.rcm = rcm
         self.states: Dict[str, RobotState] = {
             "left": RobotState(),
@@ -155,7 +157,7 @@ class TeleopManager:
 
     async def _process_control_data_manipulator(
         self, control_data: AppControlData, robot: BaseManipulator
-    ):
+    ) -> bool:
         """
         We transform the control data into a target position, orientation and gripper state.
         We then move the robot to that position and orientation.
@@ -207,10 +209,11 @@ class TeleopManager:
         robot.control_gripper(open_command=target_open)
         robot.update_object_gripping_status()
         self.action_counter += 1
+        return True
 
     async def _process_control_data_mobile_robot(
         self, control_data: AppControlData, robot: BaseMobileRobot
-    ):
+    ) -> bool:
         """
         We use the control_data.direction_x and control_data.direction_y to move the mobile robot.
         These values are between -1 and 1, where 0 means no movement.
@@ -258,6 +261,7 @@ class TeleopManager:
                 timeout=0.1,
             )
             self.action_counter += 1
+            return True
         except asyncio.TimeoutError:
             logger.warning(
                 f"move_robot timed out for mobile robot {robot.name}; skipping this command"
@@ -413,7 +417,7 @@ class _TeleopProtocol(asyncio.DatagramProtocol):
             ).encode("utf-8"),
         }
 
-    def connection_made(self, transport: asyncio.BaseTransport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = cast(asyncio.DatagramTransport, transport)
         sockname = transport.get_extra_info("sockname")
         logger.info(f"UDP socket opened on {sockname}")
@@ -424,13 +428,13 @@ class _TeleopProtocol(asyncio.DatagramProtocol):
             worker = asyncio.create_task(self._worker(f"worker-{i}"))
             self.workers.append(worker)
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception] = None) -> None:
         # Cleanup workers
         self.running = False
         for worker in self.workers:
             worker.cancel()
 
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
         # Fast path: immediate rate limiting check
         if not self.manager.allow_instruction():
             if self.transport:
@@ -447,7 +451,7 @@ class _TeleopProtocol(asyncio.DatagramProtocol):
                 self.transport.sendto(self.error_responses["queue_full"], addr)
             logger.warning(f"Packet queue full, dropping packet from {addr}")
 
-    async def _worker(self, worker_name: str):
+    async def _worker(self, worker_name: str) -> None:
         """Worker coroutine that processes packets from the queue"""
         logger.info(f"Starting worker: {worker_name}")
 
@@ -468,7 +472,7 @@ class _TeleopProtocol(asyncio.DatagramProtocol):
 
         logger.info(f"Worker {worker_name} stopped")
 
-    async def _process_packet(self, packet: PacketData):
+    async def _process_packet(self, packet: PacketData) -> None:
         """Process a single packet - optimized version of original _handle"""
         if self.transport is None:
             return
@@ -524,7 +528,7 @@ class _TeleopProtocol(asyncio.DatagramProtocol):
 
 
 class UDPServer:
-    def __init__(self, rcm: RobotConnectionManager):
+    def __init__(self, rcm: RobotConnectionManager) -> None:
         self.manager = get_teleop_manager()
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.protocol: Optional[_TeleopProtocol] = None

@@ -100,5 +100,8 @@ stop_hard:
 submodule:
 	git submodule update --init --recursive
 
+types: 
+	cd phosphobot && uv run mypy . --check-untyped-defs --ignore-missing-imports --follow-imports=silent
+
 
 .PHONY: all dev prod prod_gui stop stop_hard dataset_annotate dataset_convert dataset_push robot_watch test_server build clean_build build_pyinstaller run_bin run_bin_test info_bin

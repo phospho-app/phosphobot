@@ -542,7 +542,7 @@ def train(  # All these args should be verified in phosphobot
 
     from supabase import Client, create_client
 
-    from .helper import train_gr00t
+    from .helper import train_gr00t_on_modal
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -566,16 +566,13 @@ def train(  # All these args should be verified in phosphobot
         os.environ["WANDB_RUN_ID"] = wandb_run_id
 
     try:
-        train_gr00t(
+        train_gr00t_on_modal(
             dataset_repo_id=dataset_name,
             hf_token=hf_token,
             wandb_api_key=wandb_api_key,
             hf_model_name=model_name,
             timeout_seconds=timeout_seconds,
-            batch_size=training_params.batch_size,
-            epochs=training_params.epochs,
-            learning_rate=training_params.learning_rate,
-            validation_dataset_name=training_params.validation_dataset_name,
+            training_params=training_params,
             private_mode=private_mode,
         )
 

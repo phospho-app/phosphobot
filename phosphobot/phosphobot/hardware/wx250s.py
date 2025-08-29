@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from serial.tools.list_ports_common import ListPortInfo
@@ -73,11 +73,11 @@ class WX250SHardware(KochHardware):
     GRIPPING_THRESHOLD = 100
     NON_GRIPPING_THRESHOLD = 10
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         self.set_gripper_in_position_control()
 
-    def set_gripper_in_position_control(self):
+    def set_gripper_in_position_control(self) -> None:
         """
         This functions ensures the gripper motor is in position control mode since factory mode is PWM.
         """
@@ -99,7 +99,7 @@ class WX250SHardware(KochHardware):
         )
 
     @classmethod
-    def from_port(cls, port: ListPortInfo, **kwargs) -> Optional["WX250SHardware"]:
+    def from_port(cls, port: ListPortInfo, **kwargs: Any) -> Optional["WX250SHardware"]:
         """
         Detect if the device is a WX-250s
         """

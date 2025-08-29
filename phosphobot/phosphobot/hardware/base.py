@@ -3,7 +3,7 @@ import json
 import os
 import asyncio
 from abc import abstractmethod
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from fastapi import HTTPException
 import numpy as np
@@ -24,15 +24,15 @@ class AxisRobot:
     Used to place the robots in a grid.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Create a grid of (x, y, 0) positions with a step of 0.4
-        self.grid = []
+        self.grid: List[List[float]] = []
         for x in np.arange(0, 10, 1):
             for y in np.arange(0, 10, 1):
-                self.grid.append([x, y, 0])
+                self.grid.append([float(x), float(y), 0])
         self.grid_index = 0
 
-    def new_position(self):
+    def new_position(self) -> List[float]:
         if self.grid_index >= len(self.grid):
             self.grid_index = 0
         axis = self.grid[self.grid_index]
@@ -148,7 +148,7 @@ class BaseManipulator(BaseRobot):
         )
 
     @abstractmethod
-    def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
+    def write_motor_position(self, servo_id: int, units: int, **kwargs: Any) -> None:
         """
         Move the motor to the specified position.
 
@@ -160,14 +160,14 @@ class BaseManipulator(BaseRobot):
         raise NotImplementedError("The robot write motor position must be implemented.")
 
     @abstractmethod
-    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
+    def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
         Read the position of the motor. This should return the position in motor units.
         """
         raise NotImplementedError("The robot read motor position must be implemented.")
 
     @abstractmethod
-    def calibrate_motors(self, **kwargs) -> None:
+    def calibrate_motors(self, **kwargs: Any) -> None:
         """
         This is called during the calibration phase of the robot.
         It sets the offset of all motors to self.RESOLUTION/2.
@@ -318,7 +318,7 @@ class BaseManipulator(BaseRobot):
         else:
             self.config = None
 
-    def __del__(self):
+    def __del__(self) -> None:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -391,7 +391,7 @@ class BaseManipulator(BaseRobot):
 
         return current_gripper_torque
 
-    async def move_to_initial_position(self, open_gripper: bool = False):
+    async def move_to_initial_position(self, open_gripper: bool = False) -> None:
         """
         Move the robot to its initial position.
         """
@@ -408,7 +408,7 @@ class BaseManipulator(BaseRobot):
             self.initial_orientation_rad,
         ) = self.forward_kinematics()
 
-    async def move_to_sleep(self):
+    async def move_to_sleep(self) -> None:
         """
         Move the robot to its sleep position and disable torque.
         """
@@ -634,7 +634,7 @@ class BaseManipulator(BaseRobot):
 
     def get_end_effector_state(
         self, sync: bool = False
-    ) -> tuple[np.ndarray, np.ndarray, float]:
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
         Return the position and orientation in radians of the end effector and the gripper opening value.
         The gripper opening value between 0 and 1.
@@ -749,12 +749,12 @@ class BaseManipulator(BaseRobot):
                 # Normalize the angles to [min_value, max_value]
                 output_position = min_value + (max_value - min_value) * (
                     output_position_rad + np.pi
-                ) / (2 * np.pi)
+                ) / (2 * np.pi)  # type: ignore
 
             elif source_unit == "rad":
                 output_position = min_value + (max_value - min_value) * (
                     output_position + np.pi
-                ) / (2 * np.pi)
+                ) / (2 * np.pi)  # type: ignore
         else:
             raise ValueError(
                 f"Invalid unit: {unit}. Must be one of ['rad', 'motor_units', 'degrees']"
@@ -936,7 +936,7 @@ class BaseManipulator(BaseRobot):
         target_orientation_rad: Optional[np.ndarray],  # rad np.array
         interpolate_trajectory: bool = False,
         steps: int = 10,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Move the robot to the absolute position and orientation.
@@ -1071,7 +1071,7 @@ class BaseManipulator(BaseRobot):
     def control_gripper(
         self,
         open_command: float,  # Should be between 0 and 1
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Open or close the gripper until object is gripped.
@@ -1120,7 +1120,7 @@ class BaseManipulator(BaseRobot):
 
     def get_observation(
         self, do_forward: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 
@@ -1158,7 +1158,7 @@ class BaseManipulator(BaseRobot):
 
         return state, joints_position
 
-    def mimick_simu_to_robot(self):
+    def mimick_simu_to_robot(self) -> None:
         """
         Update simulation base on leader robot reading of joint position.
         """
@@ -1171,7 +1171,7 @@ class BaseManipulator(BaseRobot):
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
             joint_indices=self.actuated_joints,
-            target_positions=joints_position,
+            target_positions=joints_position.tolist(),
         )
         # Update the simulation
         self.sim.step()
@@ -1300,7 +1300,7 @@ class BaseManipulator(BaseRobot):
 
         return current_torque
 
-    def update_object_gripping_status(self):
+    def update_object_gripping_status(self) -> None:
         """
         Based on the torque value, update the object gripping status.
 
@@ -1347,7 +1347,7 @@ class BaseMobileRobot(BaseRobot):
     def __init__(
         self,
         only_simulation: bool = False,
-    ):
+    ) -> None:
         if not only_simulation:
             # Register the disconnect method to be called on exit
             atexit.register(self.move_to_sleep_sync)

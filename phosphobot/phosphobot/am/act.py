@@ -1,7 +1,7 @@
 import asyncio
 from collections import deque
 import time
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import cv2
 import httpx
@@ -25,7 +25,6 @@ class InputFeature(BaseModel):
     shape: List[int]
 
 
-# Define the InputFeatures model to parse input_features
 class InputFeatures(BaseModel):
     state_key: str
     env_key: Optional[str] = None
@@ -40,7 +39,7 @@ class InputFeatures(BaseModel):
         return self.features[self.state_key].shape[0] // 6
 
     @model_validator(mode="before")
-    def infer_keys(cls, values):
+    def infer_keys(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """
         Preprocess input to infer state_key and video_keys if input is a flat features dict.
         Runs before field validation.
@@ -66,7 +65,7 @@ class InputFeatures(BaseModel):
         return values
 
     @field_validator("features", mode="before")
-    def validate_features(cls, value):
+    def validate_features(cls, value: Dict[str, Any]) -> Dict[str, InputFeature]:
         """
         Validate and transform the features dictionary into InputFeature instances.
         """
@@ -89,7 +88,7 @@ class InputFeatures(BaseModel):
         return result
 
     @model_validator(mode="after")
-    def validate_keys(self):
+    def validate_keys(self) -> "InputFeatures":
         """
         Validate state_key and video_keys against features after all fields are processed.
         """
@@ -177,8 +176,8 @@ class ACT(ActionModel):
         self,
         server_url: str = "http://localhost",
         server_port: int = 8080,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         super().__init__(server_url, server_port)
         self.async_client = httpx.AsyncClient(
             base_url=server_url + f":{server_port}",
@@ -426,8 +425,8 @@ class ACT(ActionModel):
         angle_format: Literal["degrees", "radians", "other"] = "radians",
         min_angle: Optional[float] = None,
         max_angle: Optional[float] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         AI control loop that runs in the background and sends actions to the robot.
         It uses the model to get the actions based on the current state of the robot and the cameras.

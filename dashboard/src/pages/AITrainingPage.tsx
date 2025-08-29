@@ -252,11 +252,11 @@ export function AITrainingPage() {
         );
       } else {
         toast.success("Custom training job started! Check logs for details.");
-        // Automatically reset the Training State to idle after 500ms
-        setTimeout(() => {
-          setTrainingState("idle");
-        }, 500);
       }
+      // Automatically reset the Training State to idle after 500ms
+      setTimeout(() => {
+        setTrainingState("idle");
+      }, 500);
 
       return { success: true };
     } catch (error) {
@@ -273,33 +273,6 @@ export function AITrainingPage() {
       });
 
       return { success: false, error: errorMessage };
-    }
-  };
-
-  // Render button content based on training state
-  const renderButtonContent = () => {
-    switch (trainingState) {
-      case "loading":
-        return (
-          <>
-            <Loader2 className="size-4 mr-2 animate-spin" />
-            Starting...
-          </>
-        );
-      case "success":
-        return (
-          <>
-            <CheckCircle2 className="size-4 mr-2 text-green-500" />
-            Training job started
-          </>
-        );
-      default:
-        return (
-          <>
-            <Dumbbell className="size-4 mr-2" />
-            Train AI model
-          </>
-        );
     }
   };
 
@@ -497,7 +470,24 @@ export function AITrainingPage() {
                 datasetInfoResponse?.status === "error"
               }
             >
-              {renderButtonContent()}
+              {trainingState === "idle" && (
+                <>
+                  Train AI model
+                  <Dumbbell className="size-4 mr-2" />
+                </>
+              )}
+              {trainingState === "loading" && (
+                <>
+                  Starting training...
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                </>
+              )}
+              {trainingState === "success" && (
+                <>
+                  Training started
+                  <CheckCircle2 className="size-4 mr-2 text-green-500" />
+                </>
+              )}
             </Button>
 
             {/* Privacy Status Icon */}

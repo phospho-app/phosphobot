@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.109"
+version = "0.3.110"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
@@ -106,3 +106,4 @@ include = ["*"]
 src = ["app"]
 
 [tool.mypy]
+exclude = ["build", "dist", "hooks", "resources", "tests"]

@@ -8,6 +8,7 @@ import av
 import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
+from huggingface_hub.errors import HfHubHTTPError
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -82,30 +83,30 @@ class ActionModel(ABC):
 
 class TrainingParamsAct(BaseModel):
     """
-    Training paramters are left to None by default and are set depending on the dataset in the training pipeline.
+    Training parameters are left to None by default and are set depending on the dataset in the training pipeline.
     """
+
+    class Config:
+        extra = "allow"
 
     batch_size: Optional[int] = Field(
         default=None,
-        description="Batch size for training, we run this on an A10G, leave it to None to auto-detect based on your dataset",
+        description="Batch size for training, we run this on an A10G. Leave it to None to auto-detect based on your dataset",
         gt=0,
         le=150,
     )
     steps: Optional[int] = Field(
         default=None,
-        description="Number of training steps, leave it to None to auto-detect based on your dataset",
+        description="Number of training steps. Leave it to None to auto-detect based on your dataset",
         gt=0,
         le=1_000_000,
     )
-    save_steps: int = Field(
+    save_freq: int = Field(
         default=5_000,
-        description="Number of steps between saving the model, leave it to None to get the default value",
+        description="Number of steps between saving the model.",
         gt=0,
         le=1_000_000,
     )
-
-    class Config:
-        extra = "forbid"
 
 
 DEFAULT_INSTRUCTION = "e.g.: green lego brick, red ball, blue plushy..."
@@ -153,38 +154,38 @@ class TrainingParamsActWithBbox(TrainingParamsAct):
 
 
 class TrainingParamsGr00T(BaseModel):
-    train_test_split: float = Field(
-        default=1.0,
-        description="Train test split ratio, default is 1.0 (no split), should be between 0 and 1",
-        gt=0,
-        le=1,
-    )
+    class Config:
+        extra = "allow"
+
     validation_dataset_name: Optional[str] = Field(
         default=None,
         description="Optional dataset repository ID on Hugging Face to use for validation",
     )
 
     batch_size: Optional[int] = Field(
-        default=None,
-        description="Batch size for training, default is 64, decrease it if you get an out of memory error",
+        default=64,
+        description="Batch size for training. Decrease it if you get an Out Of Memory (OOM) error",
         gt=0,
         le=128,
+        serialization_alias="batch-size",
     )
-    epochs: int = Field(
+    num_epochs: int = Field(
         default=10,
-        description="Number of epochs to train for, default is 10",
+        description="Number of epochs to train for.",
         gt=0,
         le=100,
+        serialization_alias="num-epochs",
     )
     save_steps: int = Field(
         default=1_000,
-        description="Number of steps between saving the model, default is 1000",
+        description="Number of steps between saving the model.",
         gt=0,
         le=100_000,
+        serialization_alias="save-steps",
     )
     learning_rate: float = Field(
         default=0.0001,
-        description="Learning rate for training, default is 0.0001",
+        description="Learning rate for training.",
         gt=0,
         le=1,
     )
@@ -192,23 +193,13 @@ class TrainingParamsGr00T(BaseModel):
     data_dir: str = Field(
         default="data/", description="The directory to save the dataset to"
     )
-
     validation_data_dir: Optional[str] = Field(
         default=None,
-        description="Optional directory to save the validation dataset to. If None, no validation will be done.",
+        description="Optional directory to save the validation dataset to. If None, validation is not run.",
     )
-
     output_dir: str = Field(
         default="outputs/", description="The directory to save the model to"
     )
-
-    path_to_gr00t_repo: str = Field(
-        default=".",
-        description="The path to the Isaac-GR00T repo. If not provided, will assume we are in the repo.",
-    )
-
-    class Config:
-        extra = "forbid"
 
 
 class BaseTrainerConfig(BaseModel):
@@ -233,12 +224,16 @@ class BaseTrainerConfig(BaseModel):
         TrainingParamsAct | TrainingParamsActWithBbox | TrainingParamsGr00T
     ] = Field(
         default=None,
-        description="Training parameters for the model, if not provided, default parameters will be used",
+        description="Training parameters for the model.",
     )
 
 
 class TrainingRequest(BaseTrainerConfig):
-    """Pydantic model for training request validation"""
+    """
+    Pydantic model for training request validation.
+    This version consolidates all model name and parameter logic into a single
+    validator to prevent redundant operations and fix the duplicate suffix bug.
+    """
 
     private_mode: bool = Field(
         default=False,
@@ -251,183 +246,120 @@ class TrainingRequest(BaseTrainerConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_required_fields(cls, data: dict) -> dict:
-        if not data.get("model_name"):
-            raise ValueError("model_name is required for training requests")
-        return data
-
-    @model_validator(mode="after")
-    def validate_and_format_model_name(self) -> "TrainingRequest":
-        """Format model name based on private mode"""
-        if self.model_name is None:
-            raise ValueError("model_name is required for training requests")
-
-        # We add random characters to the model name to avoid collisions
-        random_chars = "".join(
-            random.choices(string.ascii_lowercase + string.digits, k=10)
-        )
-
-        size = self.model_name.split("/")
-
-        def clamp_length(name: str, max_length: int) -> str:
-            """Clamp the length of the model name to a maximum length."""
-            if len(name) > max_length:
-                return name[:max_length]
-            return name
-
-        if self.private_mode:
-            # Private mode: use user's namespace
-            if not self.user_hf_token:
-                self.user_hf_token = get_hf_token()
-
-            if not self.user_hf_token:
-                raise ValueError(
-                    "Private training requires a valid HF token in your settings."
-                )
-
-            try:
-                api = HfApi(token=self.user_hf_token)
-                user_info = api.whoami()
-                username = user_info.get("name")
-                if not username:
-                    raise ValueError("Could not get username from HF token")
-
-                if len(size) == 1:
-                    # Format: username/model_name-random
-                    model_name = clamp_length(
-                        size[0], 96 - len(random_chars) - len(username) - 2
-                    )
-                    self.model_name = f"{username}/{model_name}-{random_chars}"
-                elif len(size) == 2:
-                    # If already has namespace, use user's namespace instead
-                    model_name = clamp_length(
-                        size[1], 96 - len(random_chars) - len(username) - 2
-                    )
-                    self.model_name = f"{username}/{model_name}-{random_chars}"
-                else:
-                    raise ValueError(
-                        "Model name should be in the format <model_name> or <namespace>/<model_name>",
-                    )
-            except Exception as e:
-                raise ValueError(f"Failed to validate user namespace: {e}")
-        else:
-            # Public mode: use phospho-app namespace
-            if len(size) == 1:
-                # Make sure the total model_name is shorter than 96 characters
-                model_name = clamp_length(
-                    size[0], 96 - len(random_chars) - len("phospho-app/")
-                )
-                self.model_name = "phospho-app/" + model_name + "-" + random_chars
-            elif len(size) == 2:
-                if size[0] != "phospho-app":
-                    # Make sure the total model_name is shorter than 96 characters
-                    model_name = clamp_length(
-                        size[1], 96 - len(random_chars) - len("phospho-app/")
-                    )
-                    self.model_name = "phospho-app/" + model_name + "-" + random_chars
-            else:
-                raise ValueError(
-                    "Model name should be in the format phospho-app/<model_name> or <model_name>",
-                )
-
-        return self
-
-    @model_validator(mode="after")
-    def validate_dataset_access(self) -> "TrainingRequest":
-        """Validate dataset access based on private mode"""
-        if self.private_mode:
-            # Private mode: validate with user's HF token
-            if not self.user_hf_token:
-                raise ValueError("Private training requires a user HF token")
-
-            try:
-                api = HfApi(token=self.user_hf_token)
-                # Try to access the dataset with the user's token
-                api.repo_info(repo_id=self.dataset_name, repo_type="dataset")
-            except Exception as e:
-                raise ValueError(
-                    f"Cannot access dataset {self.dataset_name} with provided token. "
-                    f"Make sure the dataset exists and is accessible with your HF token: {e}"
-                )
-        else:
-            # Public mode: validate dataset is publicly accessible
-            try:
-                url = (
-                    f"https://huggingface.co/api/datasets/{self.dataset_name}/tree/main"
-                )
-                response = requests.get(url, timeout=5)
-                if response.status_code != 200:
-                    raise ValueError()
-            except Exception:
-                raise ValueError(
-                    f"Dataset {self.dataset_name} is not a valid, public Hugging Face dataset. Please check the URL and try again. Your dataset name should be in the format <username>/<dataset_name>",
-                )
-
-        return self
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_training_params(cls, data: dict) -> dict:
+    def prepare_model_and_params(cls, data: dict) -> dict:
+        """
+        Consolidated validator that handles all pre-validation logic:
+        1. Validates `model_type` and initializes `training_params`.
+        2. Determines the correct namespace (public or private).
+        3. Implements the new logic for handling or generating the model name.
+        """
+        # Step 1: Validate model_type and training_params
         model_type_to_class: dict[str, type[BaseModel]] = {
             "ACT": TrainingParamsAct,
             "ACT_BBOX": TrainingParamsActWithBbox,
             "gr00t": TrainingParamsGr00T,
         }
-
         model_type = data.get("model_type")
-        training_params = data.get("training_params")
-
-        if model_type is None:
-            raise ValueError(
-                "Model type is required. Please provide a valid model type: 'ACT', 'ACT_BBOX' or 'gr00t'."
-            )
+        if not model_type:
+            raise ValueError("Model type is required.")
         if model_type not in model_type_to_class:
-            raise ValueError(
-                f"Unsupported model type: {model_type}. Valid options are: {list(model_type_to_class.keys())}"
-            )
+            raise ValueError(f"Unsupported model type: {model_type}.")
 
         params_class = model_type_to_class[model_type]
-
-        if training_params:
-            logger.debug(
-                f"Training parameters provided: {training_params}, validating them with {params_class.__name__}"
+        if "training_params" in data and data["training_params"]:
+            data["training_params"] = params_class.model_validate(
+                data["training_params"]
             )
-            data["training_params"] = params_class.model_validate(training_params)
+        else:
+            data["training_params"] = params_class()  # Set defaults
 
-        if training_params is None:
-            # If no training params are provided, we set the default ones
-            data["training_params"] = params_class()
-
-        # Generate a model name. Reuse this logic but implement it in python
-        if "model_name" not in data:
-            # Generate a random suffix of 10 characters
-            random_suffix = "".join(
-                random.choices(string.ascii_lowercase + string.digits, k=10)
-            )
-            # model name should be username/model_type-dataset_name-random_suffix
-            if data["private_mode"]:
-                # Private mode: use user's namespace
-                if not data.get("user_hf_token"):
-                    data["user_hf_token"] = get_hf_token()
-
-                if not data["user_hf_token"]:
-                    raise ValueError(
-                        "Private training requires a valid HF token in your settings."
-                    )
-
-                api = HfApi(token=data["user_hf_token"])
+        # Step 2: Determine the namespace and validate user token
+        namespace = "phospho-app"
+        api = None
+        if data.get("private_mode"):
+            token = data.get("user_hf_token") or get_hf_token()
+            if not token:
+                raise ValueError("Private training requires a valid HF token.")
+            data["user_hf_token"] = token
+            try:
+                api = HfApi(token=token)
                 user_info = api.whoami()
                 username = user_info.get("name")
                 if not username:
-                    raise ValueError("Could not get username from HF token")
+                    raise ValueError("Could not get username from HF token.")
+                namespace = username
+            except Exception as e:
+                raise ValueError(f"Failed to validate user namespace: {e}")
 
-                model_name = f"{username}/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
-            else:
-                # Public mode: use phospho-app namespace
-                model_name = f"phospho-app/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
-            data["model_name"] = model_name
+        # Step 3 & 4: Handle model name based on the new business rules
+        user_provided_name = data.get("model_name")
+        max_len = 96  # Max length for a model name
+
+        if user_provided_name:
+            # Rule 1: If a model name is provided, use it.
+            # The base name is the user-provided name.
+            base_name = user_provided_name
+
+            # If the namespace is different from phospho-app and not in private mode, raise error
+            if namespace != "phospho-app" and not data.get("private_mode"):
+                raise ValueError(
+                    "You can only use a custom model name in private mode or with the phospho-app namespace."
+                )
+
+            # Ensure the name is less than the max length
+            if len(base_name) > max_len:
+                base_name = base_name[:max_len]
+
+            data["model_name"] = base_name
+
+        else:
+            # If no model name is provided, generate one.
+            dataset_name = data.get("dataset_name")
+            if not dataset_name or len(dataset_name.split("/")) != 2:
+                raise ValueError(
+                    "A valid dataset_name is required to generate a model name."
+                )
+            dataset_base_name = dataset_name.split("/")[1]
+            base_name = f"{model_type}-{dataset_base_name}"
+
+            random_chars = "".join(
+                random.choices(string.ascii_lowercase + string.digits, k=10)
+            )
+
+            # Clamp the base_name length to ensure the final name is valid
+            max_base_len = (
+                max_len - len(namespace) - len(random_chars) - 2
+            )  # for "/" and "-"
+            clamped_base_name = base_name[:max_base_len]
+
+            data["model_name"] = f"{namespace}/{clamped_base_name}-{random_chars}"
 
         return data
+
+    @model_validator(mode="after")
+    def validate_dataset_access(self) -> "TrainingRequest":
+        """Validate dataset access based on private mode (no changes needed here)."""
+        if self.private_mode:
+            if not self.user_hf_token:
+                raise ValueError("Private training requires a user HF token.")
+            try:
+                api = HfApi(token=self.user_hf_token)
+                api.repo_info(repo_id=self.dataset_name, repo_type="dataset")
+            except Exception as e:
+                raise ValueError(f"Cannot access dataset {self.dataset_name}: {e}")
+        else:
+            try:
+                url = (
+                    f"https://huggingface.co/api/datasets/{self.dataset_name}/tree/main"
+                )
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+            except Exception:
+                raise ValueError(
+                    f"Dataset {self.dataset_name} is not a valid, public dataset."
+                )
+
+        return self
 
 
 class HuggingFaceTokenValidator:
@@ -436,7 +368,9 @@ class HuggingFaceTokenValidator:
         """Check if the HF token has write access by attempting to create a repo."""
         api = HfApi(token=hf_token)
         try:
-            api.create_repo(hf_model_name, private=False, exist_ok=True, token=hf_token)
+            api.create_repo(
+                hf_model_name, private=private, exist_ok=True, token=hf_token
+            )
             return True  # The token has write access
         except Exception as e:
             print(f"Write access check failed: {e}")
