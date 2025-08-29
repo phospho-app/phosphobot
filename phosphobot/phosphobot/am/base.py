@@ -90,19 +90,19 @@ class TrainingParamsAct(BaseModel):
 
     batch_size: Optional[int] = Field(
         default=None,
-        description="Batch size for training, we run this on an A10G, leave it to None to auto-detect based on your dataset",
+        description="Batch size for training, we run this on an A10G. Leave it to None to auto-detect based on your dataset",
         gt=0,
         le=150,
     )
     steps: Optional[int] = Field(
         default=None,
-        description="Number of training steps, leave it to None to auto-detect based on your dataset",
+        description="Number of training steps. Leave it to None to auto-detect based on your dataset",
         gt=0,
         le=1_000_000,
     )
-    save_steps: int = Field(
+    save_freq: int = Field(
         default=5_000,
-        description="Number of steps between saving the model, leave it to None to get the default value",
+        description="Number of steps between saving the model.",
         gt=0,
         le=1_000_000,
     )
@@ -162,26 +162,28 @@ class TrainingParamsGr00T(BaseModel):
     )
 
     batch_size: Optional[int] = Field(
-        default=None,
-        description="Batch size for training, default is 64, decrease it if you get an out of memory error",
+        default=64,
+        description="Batch size for training. Decrease it if you get an Out Of Memory (OOM) error",
         gt=0,
         le=128,
+        serialization_alias="batch-size",
     )
     epochs: int = Field(
         default=10,
-        description="Number of epochs to train for, default is 10",
+        description="Number of epochs to train for.",
         gt=0,
         le=100,
     )
     save_steps: int = Field(
         default=1_000,
-        description="Number of steps between saving the model, default is 1000",
+        description="Number of steps between saving the model.",
         gt=0,
         le=100_000,
+        serialization_alias="save-steps",
     )
     learning_rate: float = Field(
         default=0.0001,
-        description="Learning rate for training, default is 0.0001",
+        description="Learning rate for training.",
         gt=0,
         le=1,
     )
@@ -189,19 +191,12 @@ class TrainingParamsGr00T(BaseModel):
     data_dir: str = Field(
         default="data/", description="The directory to save the dataset to"
     )
-
     validation_data_dir: Optional[str] = Field(
         default=None,
-        description="Optional directory to save the validation dataset to. If None, no validation will be done.",
+        description="Optional directory to save the validation dataset to. If None, validation is not run.",
     )
-
     output_dir: str = Field(
         default="outputs/", description="The directory to save the model to"
-    )
-
-    path_to_gr00t_repo: str = Field(
-        default=".",
-        description="The path to the Isaac-GR00T repo. If not provided, will assume we are in the repo.",
     )
 
 
@@ -227,7 +222,7 @@ class BaseTrainerConfig(BaseModel):
         TrainingParamsAct | TrainingParamsActWithBbox | TrainingParamsGr00T
     ] = Field(
         default=None,
-        description="Training parameters for the model, if not provided, default parameters will be used",
+        description="Training parameters for the model.",
     )
 
 

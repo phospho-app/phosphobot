@@ -6,7 +6,6 @@ config = tyro.cli(Gr00tTrainerConfig)
 
 # Get the path to the cloned gr00t repo
 path_to_gr00t_folder = Path(__file__).parent.parent.parent / "Isaac-GR00T"
-config.training_params.path_to_gr00t_repo = str(path_to_gr00t_folder)
 
 # Useful parameters to change
 config.training_params.epochs = 20

@@ -79,12 +79,8 @@ def train_gr00t(
     hf_token: str,
     hf_model_name: str,
     timeout_seconds: int,
+    training_params: TrainingParamsGr00T,
     wandb_api_key: str | None = None,
-    batch_size: int | None = None,
-    epochs: int = 20,
-    learning_rate: float = 0.0002,
-    save_steps: int = 20_000,
-    validation_dataset_name: str | None = None,
     private_mode: bool = False,
 ):
     hf_api = HfApi(token=hf_token)
@@ -105,12 +101,12 @@ def train_gr00t(
 
         logger.info("Weights & Biases enabled:", wandb_enabled)
 
-        output_dir = Path("/tmp/outputs/train")
-        data_dir = Path("/tmp/outputs/data/")
-        validation_data_dir = Path("/tmp/outputs/validation_data/")
+        training_params.output_dir = str(Path("/tmp/outputs/train"))
+        training_params.data_dir = str(Path("/tmp/outputs/data/"))
+        training_params.validation_data_dir = str(Path("/tmp/outputs/validation_data/"))
 
         # Download info.json file and determine appropriate batch size
-        if batch_size is None:
+        if training_params.batch_size is None:
             hf_api = HfApi(token=hf_token)
             info_file_path = hf_api.hf_hub_download(
                 repo_id=dataset_repo_id,
@@ -126,30 +122,13 @@ def train_gr00t(
                 validated_info_model.total_videos // validated_info_model.total_episodes
             )
             # This is a heuristic to determine the batch size, it is set for an A100 GPU
-            batch_size = max(110 // number_of_cameras - 3 * number_of_cameras, 1)
+            training_params.batch_size = max(
+                110 // number_of_cameras - 3 * number_of_cameras, 1
+            )
             logger.info(
-                f"Batch size not provided. Using default batch size of {batch_size}."
+                f"Batch size is None. Using automatic batch size of {training_params.batch_size}."
             )
 
-        # Handle the validation datase
-        training_params = TrainingParamsGr00T(
-            batch_size=batch_size,
-            epochs=epochs,
-            learning_rate=learning_rate,
-            # dataset_repo_id=dataset_repo_id,
-            data_dir=str(data_dir),
-            output_dir=str(output_dir),
-            # Validation data dir is None if no validation dataset is provided
-            validation_dataset_name=validation_dataset_name,
-            validation_data_dir=(
-                str(validation_data_dir)
-                if validation_dataset_name is not None
-                else None
-            ),
-            # model_name=hf_model_name,
-            path_to_gr00t_repo=".",
-            save_steps=save_steps,
-        )
         config = Gr00tTrainerConfig(
             dataset_name=dataset_repo_id,
             model_name=hf_model_name,
@@ -170,7 +149,9 @@ def train_gr00t(
             )
             logger.info("Uploading model to Modal volume gr00t-n1")
             with gr00t_volume.batch_upload() as batch:
-                batch.put_directory(output_dir, f"/models/{hf_model_name}")
+                batch.put_directory(
+                    training_params.output_dir, f"/models/{hf_model_name}"
+                )
             logger.info(
                 f"Model uploaded to Modal volume gr00t-n1 at /models/{hf_model_name}"
             )

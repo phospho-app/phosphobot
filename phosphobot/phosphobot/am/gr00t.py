@@ -1075,14 +1075,11 @@ def generate_modality_json(data_dir) -> tuple[int, int]:
 
 
 async def run_gr00t_training(
-    data_dir,
-    output_dir,
-    batch_size,
-    epochs,
-    number_of_robots,
-    number_of_cameras,
-    learning_rate,
-    save_steps: int,
+    data_dir: str,
+    output_dir: str,
+    number_of_robots: int,
+    number_of_cameras: int,
+    training_params: TrainingParamsGr00T,
     wandb_enabled: bool,
     validation_data_dir=None,
     timeout_seconds: Optional[int] = None,
@@ -1110,24 +1107,23 @@ async def run_gr00t_training(
             "1",
             "--output-dir",
             str(output_dir),
-            "--batch-size",
-            str(batch_size),
-            "--num-epochs",
-            str(epochs),
-            "--save-steps",
-            str(save_steps),
             "--num-arms",
             str(number_of_robots),
             "--num-cams",
             str(number_of_cameras),
-            "--learning_rate",
-            str(learning_rate),
             "--report_to",
             "wandb" if wandb_enabled else "tensorboard",
             "--video_backend",
             "torchvision_av",
         ]
     )
+
+    # Adds all extra parameters from the training_params
+    training_params_dict = training_params.model_dump(
+        by_alias=True, exclude_none=True, exclude=["data_dir", "output_dir"]
+    )
+    for key, value in training_params_dict.items():
+        cmd.extend([f"--{key}", str(value)])
 
     logger.info(f"Starting training with command: {' '.join(cmd)}")
 
@@ -1324,7 +1320,6 @@ class Gr00tTrainer(BaseTrainer):
             // self.config.training_params.batch_size
             + 1
         )
-
         logger.info(
             f"Will train for {self.config.training_params.epochs} epochs, which is {steps} steps"
         )
@@ -1333,16 +1328,12 @@ class Gr00tTrainer(BaseTrainer):
             run_gr00t_training(
                 data_dir=data_dir,
                 output_dir=output_dir,
-                batch_size=self.config.training_params.batch_size,
-                epochs=self.config.training_params.epochs,
                 number_of_robots=number_of_robots,
                 number_of_cameras=number_of_cameras,
-                learning_rate=self.config.training_params.learning_rate,
-                save_steps=self.config.training_params.save_steps,
                 wandb_enabled=self.config.wandb_api_key is not None,
                 validation_data_dir=val_data_dir,
                 timeout_seconds=timeout_seconds,
-                gr00t_repo_path=self.config.training_params.path_to_gr00t_repo,
+                training_params=self.config.training_params,
             )
         )
         logger.info("Training finished")

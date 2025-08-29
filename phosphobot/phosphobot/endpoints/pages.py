@@ -829,7 +829,6 @@ async def get_training_info(
                 "wandb_api_key": True,
                 "custom_command": True,
                 "training_params": {
-                    "path_to_gr00t_repo": True,
                     "data_dir": True,
                     "output_dir": True,
                 },
