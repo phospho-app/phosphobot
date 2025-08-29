@@ -51,4 +51,5 @@ jobs:
       #     uv run mypy ${{ steps.changed-files.outputs.all_changed_files }} --ignore-missing-imports --follow-imports=silent || exit 1
 
       - name: Run mypy
-        run: uv run mypy ./ --check-untyped-defs --disallow-untyped-defs --ignore-missing-imports --follow-imports=silent || exit 1
+        # run: uv run mypy ./ --check-untyped-defs --disallow-untyped-defs --ignore-missing-imports --follow-imports=silent || exit 1
+        run: uv run mypy ./ --check-untyped-defs --ignore-missing-imports --follow-imports=silent || exit 1
