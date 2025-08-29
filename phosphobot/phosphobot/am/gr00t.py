@@ -1130,7 +1130,7 @@ class Gr00tTrainer(BaseTrainer):
                     repo_type="dataset",
                     revision=selected_branch,
                     local_dir=str(data_dir),
-                    token=os.getenv("HF_TOKEN"),
+                    token=hf_token,
                 )
                 DATASET_PATH = Path(dataset_path_as_str)
                 logger.info(
@@ -1178,7 +1178,7 @@ class Gr00tTrainer(BaseTrainer):
                         repo_type="dataset",
                         revision=selected_branch,
                         local_dir=(val_data_dir),
-                        token=os.getenv("HF_TOKEN"),
+                        token=hf_token,
                     )
                     VAL_DATASET_PATH = Path(dataset_path_val_str)
                     logger.info(
@@ -1243,13 +1243,13 @@ class Gr00tTrainer(BaseTrainer):
             logger.info(f"Uploading model to Hugging Face as {self.config.model_name}")
 
             # Upload using huggingface_hub
-            api = HfApi(token=os.getenv("HF_TOKEN"))
+            api = HfApi(token=hf_token)
             files_directory = output_dir
 
             api.create_repo(
                 repo_id=self.config.model_name,
                 repo_type="model",
-                private=False,
+                private=private_mode,
                 exist_ok=True,
             )
 
