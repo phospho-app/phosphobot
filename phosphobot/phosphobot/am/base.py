@@ -8,6 +8,7 @@ import av
 import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
+from huggingface_hub.errors import HfHubHTTPError
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -240,86 +241,101 @@ class TrainingRequest(BaseTrainerConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_required_fields(cls, data: dict) -> dict:
-        if not data.get("model_name"):
-            raise ValueError("model_name is required for training requests")
-        return data
+    def prepare_model_name_and_params(cls, data: dict) -> dict:
+        """
+        Consolidated validator to:
+        1. Validate model_type and training_params.
+        2. Generate a model_name if not provided.
+        3. Format the model_name with the correct namespace and a random suffix.
+        This single validator prevents the double-suffix issue.
+        """
+        # 1. Validate model_type and training_params (from original validate_training_params)
+        model_type_to_class: dict[str, type[BaseModel]] = {
+            "ACT": TrainingParamsAct,
+            "ACT_BBOX": TrainingParamsActWithBbox,
+            "gr00t": TrainingParamsGr00T,
+        }
+        model_type = data.get("model_type")
+        if not model_type:
+            raise ValueError(
+                "Model type is required. Please provide a valid model type: 'ACT', 'ACT_BBOX' or 'gr00t'."
+            )
+        if model_type not in model_type_to_class:
+            raise ValueError(
+                f"Unsupported model type: {model_type}. Valid options are: {list(model_type_to_class.keys())}"
+            )
 
-    @model_validator(mode="after")
-    def validate_and_format_model_name(self) -> "TrainingRequest":
-        """Format model name based on private mode"""
-        if self.model_name is None:
-            raise ValueError("model_name is required for training requests")
+        params_class = model_type_to_class[model_type]
+        training_params = data.get("training_params")
+        if training_params:
+            logger.debug(
+                f"Training parameters provided: {training_params}, validating them with {params_class.__name__}"
+            )
+            data["training_params"] = params_class.model_validate(training_params)
+        else:
+            data["training_params"] = params_class()  # Set defaults if not provided
 
-        # We add random characters to the model name to avoid collisions
+        # 2. Prepare and format the model_name
         random_chars = "".join(
             random.choices(string.ascii_lowercase + string.digits, k=10)
         )
+        max_length = 96  # Max length for HF model names
 
-        size = self.model_name.split("/")
+        def clamp_length(name: str, max_len: int) -> str:
+            """Clamp the length of a string to a maximum value."""
+            return name[:max_len] if len(name) > max_len else name
 
-        def clamp_length(name: str, max_length: int) -> str:
-            """Clamp the length of the model name to a maximum length."""
-            if len(name) > max_length:
-                return name[:max_length]
-            return name
-
-        if self.private_mode:
-            # Private mode: use user's namespace
-            if not self.user_hf_token:
-                self.user_hf_token = get_hf_token()
-
-            if not self.user_hf_token:
+        # Determine the namespace based on private_mode
+        namespace = "phospho-app"
+        if data.get("private_mode"):
+            token = data.get("user_hf_token") or get_hf_token()
+            if not token:
                 raise ValueError(
                     "Private training requires a valid HF token in your settings."
                 )
-
+            data["user_hf_token"] = (
+                token  # Ensure token is in data for later validators
+            )
             try:
-                api = HfApi(token=self.user_hf_token)
+                api = HfApi(token=token)
                 user_info = api.whoami()
                 username = user_info.get("name")
                 if not username:
-                    raise ValueError("Could not get username from HF token")
-
-                if len(size) == 1:
-                    # Format: username/model_name-random
-                    model_name = clamp_length(
-                        size[0], 96 - len(random_chars) - len(username) - 2
-                    )
-                    self.model_name = f"{username}/{model_name}-{random_chars}"
-                elif len(size) == 2:
-                    # If already has namespace, use user's namespace instead
-                    model_name = clamp_length(
-                        size[1], 96 - len(random_chars) - len(username) - 2
-                    )
-                    self.model_name = f"{username}/{model_name}-{random_chars}"
-                else:
-                    raise ValueError(
-                        "Model name should be in the format <model_name> or <namespace>/<model_name>",
-                    )
+                    raise ValueError("Could not get username from HF token.")
+                namespace = username
             except Exception as e:
-                raise ValueError(f"Failed to validate user namespace: {e}")
-        else:
-            # Public mode: use phospho-app namespace
-            if len(size) == 1:
-                # Make sure the total model_name is shorter than 96 characters
-                model_name = clamp_length(
-                    size[0], 96 - len(random_chars) - len("phospho-app/")
-                )
-                self.model_name = "phospho-app/" + model_name + "-" + random_chars
-            elif len(size) == 2:
-                if size[0] != "phospho-app":
-                    # Make sure the total model_name is shorter than 96 characters
-                    model_name = clamp_length(
-                        size[1], 96 - len(random_chars) - len("phospho-app/")
-                    )
-                    self.model_name = "phospho-app/" + model_name + "-" + random_chars
-            else:
                 raise ValueError(
-                    "Model name should be in the format phospho-app/<model_name> or <model_name>",
+                    f"Failed to validate user namespace with HF token: {e}"
                 )
 
-        return self
+        # If model_name is NOT provided, generate it from scratch
+        if not data.get("model_name"):
+            dataset_name = data.get("dataset_name")
+            if not dataset_name or len(dataset_name.split("/")) != 2:
+                raise ValueError(
+                    "dataset_name in the format <namespace>/<name> is required to generate a model name."
+                )
+            dataset_base_name = dataset_name.split("/")[1]
+            base_name = f"{model_type}-{dataset_base_name}"
+            # Ensure generated name does not exceed length limits
+            max_base_len = (
+                max_length - len(namespace) - len(random_chars) - 2
+            )  # -2 for '/' and '-'
+            clamped_base_name = clamp_length(base_name, max_base_len)
+            data["model_name"] = f"{namespace}/{clamped_base_name}-{random_chars}"
+        else:
+            # If model_name IS provided, format it correctly
+            original_name = data["model_name"]
+            # Take the base name, ignoring any existing namespace
+            base_name = original_name.split("/")[-1]
+            # Ensure formatted name does not exceed length limits
+            max_base_len = (
+                max_length - len(namespace) - len(random_chars) - 2
+            )  # -2 for '/' and '-'
+            clamped_base_name = clamp_length(base_name, max_base_len)
+            data["model_name"] = f"{namespace}/{clamped_base_name}-{random_chars}"
+
+        return data
 
     @model_validator(mode="after")
     def validate_dataset_access(self) -> "TrainingRequest":
@@ -327,7 +343,7 @@ class TrainingRequest(BaseTrainerConfig):
         if self.private_mode:
             # Private mode: validate with user's HF token
             if not self.user_hf_token:
-                raise ValueError("Private training requires a user HF token")
+                raise ValueError("Private training requires a user HF token.")
 
             try:
                 api = HfApi(token=self.user_hf_token)
@@ -346,77 +362,15 @@ class TrainingRequest(BaseTrainerConfig):
                 )
                 response = requests.get(url, timeout=5)
                 if response.status_code != 200:
-                    raise ValueError()
+                    raise ValueError(
+                        f"Dataset lookup failed with status: {response.status_code}"
+                    )
             except Exception:
                 raise ValueError(
-                    f"Dataset {self.dataset_name} is not a valid, public Hugging Face dataset. Please check the URL and try again. Your dataset name should be in the format <username>/<dataset_name>",
+                    f"Dataset {self.dataset_name} is not a valid, public Hugging Face dataset. Please check the name and try again. The name should be in the format <namespace>/<dataset_name>."
                 )
 
         return self
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_training_params(cls, data: dict) -> dict:
-        model_type_to_class: dict[str, type[BaseModel]] = {
-            "ACT": TrainingParamsAct,
-            "ACT_BBOX": TrainingParamsActWithBbox,
-            "gr00t": TrainingParamsGr00T,
-        }
-
-        model_type = data.get("model_type")
-        training_params = data.get("training_params")
-
-        if model_type is None:
-            raise ValueError(
-                "Model type is required. Please provide a valid model type: 'ACT', 'ACT_BBOX' or 'gr00t'."
-            )
-        if model_type not in model_type_to_class:
-            raise ValueError(
-                f"Unsupported model type: {model_type}. Valid options are: {list(model_type_to_class.keys())}"
-            )
-
-        params_class = model_type_to_class[model_type]
-
-        if training_params:
-            logger.debug(
-                f"Training parameters provided: {training_params}, validating them with {params_class.__name__}"
-            )
-            data["training_params"] = params_class.model_validate(training_params)
-
-        if training_params is None:
-            # If no training params are provided, we set the default ones
-            data["training_params"] = params_class()
-
-        # Generate a model name. Reuse this logic but implement it in python
-        if "model_name" not in data:
-            # Generate a random suffix of 10 characters
-            random_suffix = "".join(
-                random.choices(string.ascii_lowercase + string.digits, k=10)
-            )
-            # model name should be username/model_type-dataset_name-random_suffix
-            if data["private_mode"]:
-                # Private mode: use user's namespace
-                if not data.get("user_hf_token"):
-                    data["user_hf_token"] = get_hf_token()
-
-                if not data["user_hf_token"]:
-                    raise ValueError(
-                        "Private training requires a valid HF token in your settings."
-                    )
-
-                api = HfApi(token=data["user_hf_token"])
-                user_info = api.whoami()
-                username = user_info.get("name")
-                if not username:
-                    raise ValueError("Could not get username from HF token")
-
-                model_name = f"{username}/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
-            else:
-                # Public mode: use phospho-app namespace
-                model_name = f"phospho-app/{data['model_type']}-{data['dataset_name'].split('/')[1]}-{random_suffix}"
-            data["model_name"] = model_name
-
-        return data
 
 
 class HuggingFaceTokenValidator:
