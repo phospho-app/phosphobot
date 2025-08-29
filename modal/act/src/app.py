@@ -147,7 +147,11 @@ async def run_act_training(
     training_params_dict = training_params.model_dump(
         by_alias=True,
         exclude_none=True,
-        exclude=["target_detection_instruction", "image_key", "image_key_to_keep"],
+        exclude={
+            "target_detection_instruction": True,
+            "image_key": True,
+            "image_keys_to_keep": True,
+        },
     )
     for key, value in training_params_dict.items():
         cmd.append(f"--{key}={value}")
