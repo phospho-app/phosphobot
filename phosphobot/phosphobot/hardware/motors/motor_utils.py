@@ -1,12 +1,14 @@
 import platform
 import time
 from datetime import datetime, timezone
+from typing import Callable
+
 
 def capture_timestamp_utc():
     return datetime.now(timezone.utc)
 
 
-def busy_wait(seconds):
+def busy_wait(seconds: float) -> None:
     if platform.system() == "Darwin":
         # On Mac, `time.sleep` is not accurate and we need to use this while loop trick,
         # but it consumes CPU cycles.
@@ -20,7 +22,7 @@ def busy_wait(seconds):
             time.sleep(seconds)
 
 
-def safe_disconnect(func):
+def safe_disconnect(func: Callable) -> Callable:
     # TODO(aliberts): Allow to pass custom exceptions
     # (e.g. ThreadServiceExit, KeyboardInterrupt, SystemExit, UnpluggedError, DynamixelCommError)
     def wrapper(robot, *args, **kwargs):
@@ -38,7 +40,8 @@ class RobotDeviceNotConnectedError(Exception):
     """Exception raised when the robot device is not connected."""
 
     def __init__(
-        self, message="This robot device is not connected. Try calling `robot_device.connect()` first."
+        self,
+        message="This robot device is not connected. Try calling `robot_device.connect()` first.",
     ):
         self.message = message
         super().__init__(self.message)
