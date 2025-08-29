@@ -355,7 +355,9 @@ class HuggingFaceTokenValidator:
         """Check if the HF token has write access by attempting to create a repo."""
         api = HfApi(token=hf_token)
         try:
-            api.create_repo(hf_model_name, private=False, exist_ok=True, token=hf_token)
+            api.create_repo(
+                hf_model_name, private=private, exist_ok=True, token=hf_token
+            )
             return True  # The token has write access
         except Exception as e:
             print(f"Write access check failed: {e}")

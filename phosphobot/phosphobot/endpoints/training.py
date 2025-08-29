@@ -211,9 +211,13 @@ async def start_training(
     # Orchestration: Send the prepared request to the training service.
     async with httpx.AsyncClient(timeout=30) as client:
         try:
+            training_request_body = request.model_dump()
+            logger.debug(
+                f"Calling modal training service with body: {training_request_body}"
+            )
             response = await client.post(
                 f"{tokens.MODAL_API_URL}/train",
-                json=request.model_dump(),
+                json=training_request_body,
                 headers={"Authorization": f"Bearer {session.access_token}"},
             )
             response.raise_for_status()  # Raises HTTPStatusError for 4xx/5xx responses
