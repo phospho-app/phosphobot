@@ -228,7 +228,7 @@ def generate_huggingface_model_name(dataset):
     return f"{dataset}-{random_chars}"
 
 
-def generate_wandb_run_id() -> str:
+def generate_wandb_run_id(model_name: Optional[str] = None) -> str:
     """
     Generates a random run id for WandB, wtarting with an adjective and an animal (human readable)
     """
@@ -250,7 +250,6 @@ def generate_wandb_run_id() -> str:
         "bullish",
         "bearish",
         "fast",
-        "accelerated",
         "massive",
         "tiny",
         "maxxed",
@@ -264,44 +263,50 @@ def generate_wandb_run_id() -> str:
         "raw",
         "testing",
         "dark",
+        "googoo",
+        "gaga",
+        "red",
+        "nitro",
     ]
     animals = [
-        "pandas",
-        "tigers",
-        "lions",
-        "elephants",
-        "giraffes",
-        "dogs",
-        "cats",
-        "snakes",
-        "birds",
-        "fishes",
-        "whales",
-        "dolphins",
-        "sharks",
-        "crocodiles",
+        "panda",
+        "tiger",
+        "lion",
+        "elephant",
+        "giraffe",
+        "dog",
+        "cat",
+        "snake",
+        "bird",
+        "fish",
+        "whale",
+        "dolphin",
+        "shark",
+        "crocodile",
         "junior",
         "pl",
-        "gazelles",
-        "cheetahs",
-        "bears",
-        "bulls",
-        "wolves",
-        "foxes",
-        "horses",
-        "ponies",
-        "chickens",
-        "penguins",
-        "tarentulas",
-        "scorpions",
-        "spiders",
-        "ants",
-        "bees",
-        "rats",
-        "doggies",
-        "rabbits",
-        "kitties",
-        "quarks",
+        "gazelle",
+        "cheetah",
+        "bear",
+        "bull",
+        "wolf",
+        "fox",
+        "horse",
+        "pony",
+        "chicken",
+        "penguin",
+        "tarentula",
+        "scorpion",
+        "spider",
+        "ant",
+        "bee",
+        "rat",
+        "doggy",
+        "rabbit",
+        "kitty",
+        "quark",
+        "muskox",
+        "monster",
     ]
 
     # Choose a random adjective and an animal
@@ -311,7 +316,13 @@ def generate_wandb_run_id() -> str:
     # Add a random number between 1 and 1000
     number = random.randint(1, 1000)
 
-    return f"{adjective}-{animal}-{number}"
+    if not model_name:
+        return f"{adjective}-{animal}-{number}"
+    else:
+        # If a model name is provided, append it to the run id
+        # pop the user/ part of the model_name
+        model_name = model_name.split("/")[-1]  # Remove user/ if present
+        return f"{adjective}-{animal}-{model_name}"
 
 
 class StartServerRequest(BaseModel):
@@ -870,7 +881,7 @@ def fastapi_app():
             supabase_data[key] = value
 
         # We generate a run id for WandB
-        wandb_run_id = generate_wandb_run_id()
+        wandb_run_id = generate_wandb_run_id(model_name=request.model_name)
         supabase_data["wandb_run_id"] = wandb_run_id
 
         try:
