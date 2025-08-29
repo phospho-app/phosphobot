@@ -572,10 +572,7 @@ def train(  # All these args should be verified in phosphobot
             wandb_api_key=wandb_api_key,
             hf_model_name=model_name,
             timeout_seconds=timeout_seconds,
-            batch_size=training_params.batch_size,
-            epochs=training_params.epochs,
-            learning_rate=training_params.learning_rate,
-            validation_dataset_name=training_params.validation_dataset_name,
+            training_params=training_params,
             private_mode=private_mode,
         )
 

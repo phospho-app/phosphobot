@@ -24,7 +24,7 @@ if os.getenv("MODAL_ENVIRONMENT") == "production":
     )
 
 
-def generate_modality_json(data_dir) -> tuple[int, int]:
+def generate_modality_json(data_dir: Path) -> tuple[int, int]:
     # Load the metadata file to get image keys
     with open(data_dir / "meta" / "info.json", "r") as f:
         metadata = json.load(f)
