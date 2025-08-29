@@ -106,7 +106,6 @@ export type TrainingParamsGR00T = {
   batch_size?: number;
   learning_rate?: number;
   epochs?: number;
-  train_test_split?: number;
   validation_dataset_name?: string;
 };
 

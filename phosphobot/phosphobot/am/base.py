@@ -82,8 +82,11 @@ class ActionModel(ABC):
 
 class TrainingParamsAct(BaseModel):
     """
-    Training paramters are left to None by default and are set depending on the dataset in the training pipeline.
+    Training parameters are left to None by default and are set depending on the dataset in the training pipeline.
     """
+
+    class Config:
+        extra = "allow"
 
     batch_size: Optional[int] = Field(
         default=None,
@@ -103,9 +106,6 @@ class TrainingParamsAct(BaseModel):
         gt=0,
         le=1_000_000,
     )
-
-    class Config:
-        extra = "forbid"
 
 
 DEFAULT_INSTRUCTION = "e.g.: green lego brick, red ball, blue plushy..."
@@ -153,12 +153,9 @@ class TrainingParamsActWithBbox(TrainingParamsAct):
 
 
 class TrainingParamsGr00T(BaseModel):
-    train_test_split: float = Field(
-        default=1.0,
-        description="Train test split ratio, default is 1.0 (no split), should be between 0 and 1",
-        gt=0,
-        le=1,
-    )
+    class Config:
+        extra = "allow"
+
     validation_dataset_name: Optional[str] = Field(
         default=None,
         description="Optional dataset repository ID on Hugging Face to use for validation",
@@ -206,9 +203,6 @@ class TrainingParamsGr00T(BaseModel):
         default=".",
         description="The path to the Isaac-GR00T repo. If not provided, will assume we are in the repo.",
     )
-
-    class Config:
-        extra = "forbid"
 
 
 class BaseTrainerConfig(BaseModel):

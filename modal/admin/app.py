@@ -44,6 +44,9 @@ WHITELISTED_TRAININGS_LIMIT = 8
 PRO_TRAININGS_LIMIT = 8
 BASE_MONTHLY_LIMIT = 5
 PRO_MONTHLY_LIMIT = 100
+BASE_TIMEOUT = 1 * 60 * MINUTES  # 1 hour in seconds
+PRO_TIMEOUT = 3 * 60 * MINUTES  # 3 hours in seconds
+ALLOWLISTED_TIMEOUT = 12 * 60 * MINUTES  # 12 hours in seconds
 # Max allowed time for a server to cold start before we assume it failed
 TIMEOUT_SERVER_NOT_STARTED = 3 * MINUTES
 
@@ -387,7 +390,6 @@ class ModelInfo(BaseModel):
     learning_rate: Optional[float] = None
     used_wandb: Optional[bool] = None
     logs: Optional[str] = None
-    train_test_split: Optional[float] = None
     model_type: Optional[str] = None
     training_params: Dict[str, Any] = Field(default_factory=dict)
     # Config will be used by /spawn in Gr00tSpawnConfig | ACTSpawnConfig
@@ -765,12 +767,14 @@ def fastapi_app():
             .execute()
         )
 
-        id_whitelist = [
-            "ab9b958d-ca0b-4d83-862f-60ba4ed35398",
-            "a9cff082-9c44-4bcb-b262-0edc31c067c0",
-            "e6719a3d-2675-400b-bd14-867c6abc1bae",
-        ]
-        user_id = user.user.id
+        def user_is_allowlisted(user_email: str) -> bool:
+            """
+            Check if the user is allowlisted based on their email.
+            This is a simple check against a hardcoded list of emails.
+            """
+            if user_email is None:
+                return False
+            return user_email.endswith("@phospho.ai")
 
         logger.info(f"Active trainings: {active_trainings.data}")
 
@@ -778,7 +782,9 @@ def fastapi_app():
         user_data = (
             supabase_client.table("users").select("*").eq("id", user.user.id).execute()
         )
+        user_id = user.user.id
         user_plan: Literal["pro"] | None = None
+        user_slug = f"{user.user.email} {user_id}"
         if user_data.data:
             user_plan = user_data.data[0].get("plan", None)
 
@@ -790,42 +796,27 @@ def fastapi_app():
             )
 
         # Handle timeout based on user plan. Default to 1 hours for normal users.
-        timeout_seconds = 1 * 60 * 60  # 1 hours in seconds
-        if user_plan == "pro" or user_id in id_whitelist:
-            # Pro users or whitelisted users get a longer timeout
-            logger.info(
-                f"User {user_id} is a PRO user or whitelisted, extending timeout to 3 hours"
+        timeout_seconds = BASE_TIMEOUT
+        if user_plan == "pro":
+            # Pro users get longer timeout
+            logger.info(f"{user_slug} is a PRO user, extending timeout to 3 hours")
+            timeout_seconds = PRO_TIMEOUT
+        if user_is_allowlisted(user.user.email):
+            logger.info(f"{user_slug} is allowlisted, extending timeout to 12 hours")
+            timeout_seconds = ALLOWLISTED_TIMEOUT
+
+        if user_plan is None and len(active_trainings.data) >= BASE_TRAININGS_LIMIT:
+            logger.warning(f"{user_slug} already has an active training")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"You have already {BASE_TRAININGS_LIMIT} active trainings, please wait for one to finish or upgrade to a PRO plan",
             )
-            timeout_seconds = 3 * 60 * 60  # 3 hours in seconds
-
-        if user_id in id_whitelist:
-            logger.info(f"User {user_id} is launching a training")
-            if len(active_trainings.data) >= WHITELISTED_TRAININGS_LIMIT:
-                logger.warning(
-                    f"User {user_id} is whitelisted but already has 8 active trainings"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="You have too many active trainings, please wait for one to finish",
-                )
-        else:
-            # Normal flow
-            if user_plan is None and len(active_trainings.data) >= BASE_TRAININGS_LIMIT:
-                logger.warning(f"User {user_id} already has an active training")
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"You have already {BASE_TRAININGS_LIMIT} active trainings, please wait for one to finish or upgrade to a PRO plan",
-                )
-            elif (
-                user_plan == "pro" and len(active_trainings.data) >= PRO_TRAININGS_LIMIT
-            ):
-                logger.warning(f"User {user_id} already has an active training")
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"You have already {PRO_TRAININGS_LIMIT} active trainings, please wait for one to finish.",
-                )
-
-        # We create a run id
+        elif user_plan == "pro" and len(active_trainings.data) >= PRO_TRAININGS_LIMIT:
+            logger.warning(f"{user_slug} already has an active training")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"You have already {PRO_TRAININGS_LIMIT} active trainings, please wait for one to finish.",
+            )
 
         # Check the user quota: max 3 trainings per month for free users, 100 per month for pro users.
         # It resets on the 1st of each month.
@@ -841,10 +832,14 @@ def fastapi_app():
             .in_("status", ["succeeded", "running", "canceled"])
             .execute()
         )
-        logger.info(f"User {user_id} has {len(user_quota.data)} trainings this month")
-        if user_plan is None and len(user_quota.data) >= BASE_MONTHLY_LIMIT:
+        logger.info(
+            f"{user_slug} ran {len(user_quota.data)} succeeded, running, or canceled trainings this month"
+        )
+        if user_is_allowlisted(user.user.email):
+            logger.info(f"{user_slug} is allowlisted, skipping monthly quota check")
+        elif user_plan is None and len(user_quota.data) >= BASE_MONTHLY_LIMIT:
             logger.warning(
-                f"User {user_id} has reached the monthly quota of {BASE_MONTHLY_LIMIT} trainings"
+                f"{user_slug} has reached the monthly quota of {BASE_MONTHLY_LIMIT} trainings"
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -852,7 +847,7 @@ def fastapi_app():
             )
         elif user_plan == "pro" and len(user_quota.data) >= PRO_MONTHLY_LIMIT:
             logger.warning(
-                f"User {user_id} has reached the monthly quota of {PRO_MONTHLY_LIMIT} trainings"
+                f"{user_slug} has reached the monthly quota of {PRO_MONTHLY_LIMIT} trainings"
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
