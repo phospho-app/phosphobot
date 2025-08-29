@@ -250,10 +250,7 @@ class TrainingRequest(BaseTrainerConfig):
         Consolidated validator that handles all pre-validation logic:
         1. Validates `model_type` and initializes `training_params`.
         2. Determines the correct namespace (public or private).
-        3. Establishes a 'base name' for the model, either from user input
-           or by generating one.
-        4. Constructs the final `model_name` from its components, ensuring
-           exactly one random suffix is appended for uniqueness.
+        3. Implements the new logic for handling or generating the model name.
         """
         # Step 1: Validate model_type and training_params
         model_type_to_class: dict[str, type[BaseModel]] = {
@@ -275,15 +272,17 @@ class TrainingRequest(BaseTrainerConfig):
         else:
             data["training_params"] = params_class()  # Set defaults
 
-        # Step 2: Determine the namespace
+        # Step 2: Determine the namespace and validate user token
         namespace = "phospho-app"
+        api = None
         if data.get("private_mode"):
             token = data.get("user_hf_token") or get_hf_token()
             if not token:
                 raise ValueError("Private training requires a valid HF token.")
             data["user_hf_token"] = token
             try:
-                user_info = HfApi(token=token).whoami()
+                api = HfApi(token=token)
+                user_info = api.whoami()
                 username = user_info.get("name")
                 if not username:
                     raise ValueError("Could not get username from HF token.")
@@ -291,14 +290,29 @@ class TrainingRequest(BaseTrainerConfig):
             except Exception as e:
                 raise ValueError(f"Failed to validate user namespace: {e}")
 
-        # Step 3: Determine the base name for the model
-        base_name: str
+        # Step 3 & 4: Handle model name based on the new business rules
         user_provided_name = data.get("model_name")
+        max_len = 96  # Max length for a model name
+
         if user_provided_name:
-            # If a name is provided, use its base part (discarding any namespace)
-            base_name = user_provided_name.split("/")[-1]
+            # Rule 1: If a model name is provided, use it.
+            # The base name is the user-provided name.
+            base_name = user_provided_name
+
+            # If the namespace is different from phospho-app and not in private mode, raise error
+            if namespace != "phospho-app" and not data.get("private_mode"):
+                raise ValueError(
+                    "You can only use a custom model name in private mode or with the phospho-app namespace."
+                )
+
+            # Ensure the name is less than the max length
+            if len(base_name) > max_len:
+                base_name = base_name[:max_len]
+
+            data["model_name"] = base_name
+
         else:
-            # If no name is provided, generate one from the model and dataset
+            # If no model name is provided, generate one.
             dataset_name = data.get("dataset_name")
             if not dataset_name or len(dataset_name.split("/")) != 2:
                 raise ValueError(
@@ -307,19 +321,17 @@ class TrainingRequest(BaseTrainerConfig):
             dataset_base_name = dataset_name.split("/")[1]
             base_name = f"{model_type}-{dataset_base_name}"
 
-        # Step 4: Construct the final, properly formatted model_name
-        random_chars = "".join(
-            random.choices(string.ascii_lowercase + string.digits, k=10)
-        )
+            random_chars = "".join(
+                random.choices(string.ascii_lowercase + string.digits, k=10)
+            )
 
-        # Clamp the base_name length to ensure the final name is valid
-        max_len = 96
-        max_base_len = (
-            max_len - len(namespace) - len(random_chars) - 2
-        )  # for "/" and "-"
-        clamped_base_name = base_name[:max_base_len]
+            # Clamp the base_name length to ensure the final name is valid
+            max_base_len = (
+                max_len - len(namespace) - len(random_chars) - 2
+            )  # for "/" and "-"
+            clamped_base_name = base_name[:max_base_len]
 
-        data["model_name"] = f"{namespace}/{clamped_base_name}-{random_chars}"
+            data["model_name"] = f"{namespace}/{clamped_base_name}-{random_chars}"
 
         return data
 
