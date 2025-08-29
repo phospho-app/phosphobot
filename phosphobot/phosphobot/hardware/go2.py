@@ -35,19 +35,19 @@ class UnitreeGo2(BaseMobileRobot):
             **kwargs: Additional keyword arguments
         """
         self.ip = ip
-        self.conn = None
+        self.conn: Optional[Go2WebRTCConnection] = None
         self.current_position = np.zeros(3)  # [x, y, z]
         self.current_orientation = np.zeros(3)  # [roll, pitch, yaw]
         self._is_connected = False
-        self._connection_loop = None
-        self._connection_thread = None
-        self._loop_thread = None
+        self._connection_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._connection_thread: Optional[threading.Thread] = None
+        self._loop_thread: Optional[threading.Thread] = None
         self._shutdown_event = threading.Event()
         self.is_moving = False
 
         # Status variables about the robot
-        self.lowstate = None
-        self.sportmodstate = None
+        self.lowstate: Optional[dict[str, Any]] = None
+        self.sportmodstate: Optional[dict[str, Any]] = None
         self.last_movement = 0.0
 
         # Track movement instructions
@@ -186,7 +186,7 @@ class UnitreeGo2(BaseMobileRobot):
             # await asyncio.wait_for(self.conn.connect(), timeout=10.0)
             # await self._ensure_moving_mode()
 
-            def lowstate_callback(message):
+            def lowstate_callback(message: dict[str, Any]) -> None:
                 self.lowstate = message["data"]
 
             # Connect to the lowstate topic to receive battery and sensor data
@@ -194,7 +194,7 @@ class UnitreeGo2(BaseMobileRobot):
                 RTC_TOPIC["LOW_STATE"], lowstate_callback
             )
 
-            def sportmodestatus_callback(message):
+            def sportmodestatus_callback(message: dict[str, Any]) -> None:
                 self.sportmodstate = message["data"]
 
             self.conn.datachannel.pub_sub.subscribe(

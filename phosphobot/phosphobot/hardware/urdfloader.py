@@ -254,12 +254,12 @@ class URDFLoader(BaseManipulator):
             temperature=None,
         )
 
-    async def calibrate(self) -> tuple[Literal["success", "in_progress", "error"], str]:
+    async def calibrate(self) -> Tuple[Literal["success", "in_progress", "error"], str]:
         return "success", "Calibration not implemented yet."
 
     def calibrate_motors(self, **kwargs: Any) -> None:
         pass
 
-    def update_object_gripping_status(self):
+    def update_object_gripping_status(self) -> None:
         # The object is never gripped
         self.is_object_gripped = False

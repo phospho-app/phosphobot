@@ -77,7 +77,7 @@ class PiperHardware(BaseManipulator):
         can_name: str = "can0",
         only_simulation: bool = False,
         axis: Optional[List[float]] = None,
-    ):
+    ) -> None:
         self.can_name = can_name
         super().__init__(
             only_simulation=only_simulation,
@@ -94,7 +94,7 @@ class PiperHardware(BaseManipulator):
             logger.warning(e)
             return None
 
-    async def connect(self):
+    async def connect(self) -> None:
         """
         Setup the robot.
         can_number : 0 if only one robot is connected, 1 to connect to second robot
@@ -114,6 +114,9 @@ class PiperHardware(BaseManipulator):
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            if proc.stdout is None or proc.stderr is None:
+                logger.error("Failed to start the CAN activation script.")
+                return
 
             # Example: read lines one by one, log them
             for line in proc.stdout:
@@ -179,7 +182,7 @@ class PiperHardware(BaseManipulator):
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
         )
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """
         Disconnect the robot.
         """
@@ -202,12 +205,12 @@ class PiperHardware(BaseManipulator):
             servos_calibration_position=[0] * len(self.SERVO_IDS),
         )
 
-    def enable_torque(self):
+    def enable_torque(self) -> None:
         if not self.is_connected:
             return
         self.motors_bus.EnablePiper()
 
-    def disable_torque(self):
+    def disable_torque(self) -> None:
         # Disable torque
         if not self.is_connected:
             return
@@ -237,7 +240,7 @@ class PiperHardware(BaseManipulator):
         # Not implemented
         return None
 
-    def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
+    def write_motor_position(self, servo_id: int, units: int, **kwargs: Any) -> None:
         """
         Move the motor to the specified position.
 
@@ -292,7 +295,7 @@ class PiperHardware(BaseManipulator):
         if enable_gripper and len(q_target) >= self.gripper_servo_id:
             self.write_motor_position(self.gripper_servo_id, q_target[-1])
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
+    def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
         Read the position of the motor. This should return the position in motor units.
         """

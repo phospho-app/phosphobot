@@ -188,6 +188,10 @@ class KochHardware(BaseManipulator):
         if not self.is_connected:
             logger.warning("KochHardware: Not connected. Run .connect() first.")
             return
+        if not self.config:
+            raise ValueError(
+                "Configuration is not set. Please set the configuration before calling this method."
+            )
 
         # Create a GroupSyncWrite instance for 1-byte values (Torque Enable)
         groupSyncWrite = GroupSyncWrite(

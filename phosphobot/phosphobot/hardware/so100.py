@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Literal, Optional, List, Tuple
+from typing import Any, Dict, Literal, Optional, List, Tuple
 
 import numpy as np
 from loguru import logger
@@ -65,11 +65,12 @@ class SO100Hardware(BaseManipulator):
     _gravity_task: Optional[asyncio.Task] = None
 
     @property
-    def servo_id_to_motor_name(self):
-        return {v[0]: k for k, v in self.motors.items()}
+    def servo_id_to_motor_name(self) -> Dict[int, str]:
+        output: Dict[int, str] = {v[0]: k for k, v in self.motors.items()}
+        return output
 
     @classmethod
-    def from_port(cls, port: ListPortInfo, **kwargs) -> Optional["SO100Hardware"]:
+    def from_port(cls, port: ListPortInfo, **kwargs: Any) -> Optional["SO100Hardware"]:
         """
         Detect if the device is a SO-100 robot.π
         """
@@ -206,7 +207,7 @@ class SO100Hardware(BaseManipulator):
             self.update_motor_errors()
             return None
 
-    def update_motor_errors(self):
+    def update_motor_errors(self) -> None:
         """
         Every time a motor communication error is detected, increment the error counter.
         If the counter reaches a certain threshold, disconnect the robot.
@@ -219,7 +220,7 @@ class SO100Hardware(BaseManipulator):
             logger.error("Too many communication errors. Disconnecting robot.")
             self.disconnect()
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
+    def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
         Read the position of a Feetech servo.
         """
@@ -237,7 +238,7 @@ class SO100Hardware(BaseManipulator):
             self.update_motor_errors()
             return None
 
-    def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
+    def write_motor_position(self, servo_id: int, units: int, **kwargs: Any) -> None:
         """
         Write a position to a Feetech servo.
         """
@@ -303,7 +304,7 @@ class SO100Hardware(BaseManipulator):
             return np.ones(6) * np.nan
         return motor_positions
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
+    def read_motor_torque(self, servo_id: int, **kwargs: Any) -> Optional[float]:
         """
         Read the torque of a Feetech servo.
         """
@@ -348,7 +349,7 @@ class SO100Hardware(BaseManipulator):
         )
 
     def read_motor_temperature(
-        self, servo_id: int, **kwargs
+        self, servo_id: int, **kwargs: Any
     ) -> Optional[Tuple[float, float]]:
         """
         Read the temperature of a Feetech servo.
@@ -551,7 +552,7 @@ class SO100Hardware(BaseManipulator):
             f"Invalid calibration step: {self.calibration_current_step}, must be between 0 and {self.calibration_max_steps - 1}"
         )
 
-    def calibrate_motors(self, **kwargs) -> None:
+    def calibrate_motors(self, **kwargs: Any) -> None:
         """
         This is called during the calibration phase of the robot.
         It sets the offset of all motors to self.RESOLUTION/2.
@@ -566,7 +567,7 @@ class SO100Hardware(BaseManipulator):
     async def gravity_compensation_loop(
         self,
         control_signal: ControlSignal,
-    ):
+    ) -> None:
         """
         Background task that implements gravity compensation control:
         - Applies gravity compensation to the robot

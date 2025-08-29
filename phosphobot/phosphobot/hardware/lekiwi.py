@@ -175,7 +175,7 @@ class LeKiwi(BaseMobileRobot):
         )
 
     @classmethod
-    def from_ip(cls, ip: str, port: int, **kwargs) -> Optional["LeKiwi"]:
+    def from_ip(cls, ip: str, port: int, **kwargs: Any) -> Optional["LeKiwi"]:
         """
         Create an instance from an IP and port
 
