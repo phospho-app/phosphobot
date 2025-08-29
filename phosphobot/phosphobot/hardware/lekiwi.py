@@ -2,7 +2,7 @@ import json
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Optional
+from typing import Any, Deque, Optional, Tuple
 
 import numpy as np
 import zmq
@@ -21,7 +21,7 @@ class MovementCommand:
 class LeKiwi(BaseMobileRobot):
     name = "lekiwi"
 
-    def __init__(self, ip: str, port: int, max_history_len: int = 100, **kwargs):
+    def __init__(self, ip: str, port: int, max_history_len: int = 100, **kwargs: Any):
         """
         Initialize the LeKiwi robot.
 
@@ -95,7 +95,7 @@ class LeKiwi(BaseMobileRobot):
             self.conn = None
             self.is_connected = False
 
-    def get_observation(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_observation(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 
@@ -119,7 +119,7 @@ class LeKiwi(BaseMobileRobot):
         """
         pass
 
-    def get_info_for_dataset(self):
+    def get_info_for_dataset(self) -> dict:
         """
         Not implemented
         """
@@ -129,7 +129,7 @@ class LeKiwi(BaseMobileRobot):
         self,
         target_position: np.ndarray,
         target_orientation_rad: Optional[np.ndarray],
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Move the robot to the target position and orientation asynchronously.

@@ -1,6 +1,6 @@
 import json
 import threading
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional, Tuple
 
 import numpy as np
 import zmq
@@ -25,7 +25,7 @@ class URDFLoader(BaseManipulator):
         zmq_server_url: Optional[str] = None,
         zmq_topic: Optional[str] = None,
         axis_orientation: Optional[List[int]] = None,
-    ):
+    ) -> None:
         self.URDF_FILE_PATH = urdf_path
         self.END_EFFECTOR_LINK_INDEX = int(end_effector_link_index)
         self.GRIPPER_JOINT_INDEX = int(gripper_joint_index)
@@ -141,7 +141,7 @@ class URDFLoader(BaseManipulator):
 
     def get_observation(
         self, do_forward: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Gets the robot's observation. If ZMQ is configured, it will initialize the
         connection on the first call and then read the latest data from the listener thread.
@@ -200,10 +200,10 @@ class URDFLoader(BaseManipulator):
             non_gripping_threshold=1,
         )
 
-    def enable_torque(self):
+    def enable_torque(self) -> None:
         pass
 
-    def disable_torque(self):
+    def disable_torque(self) -> None:
         pass
 
     def _set_pid_gains_motors(
@@ -227,10 +227,10 @@ class URDFLoader(BaseManipulator):
             max_value=max_value,
         )
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
+    def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         pass
 
-    def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
+    def write_motor_position(self, servo_id: int, units: int, **kwargs: Any) -> None:
         pass
 
     def write_group_motor_position(
@@ -241,10 +241,10 @@ class URDFLoader(BaseManipulator):
     def read_group_motor_position(self) -> np.ndarray:
         return np.zeros(len(self.SERVO_IDS), dtype=np.int32)
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
+    def read_motor_torque(self, servo_id: int, **kwargs: Any) -> Optional[float]:
         pass
 
-    def read_motor_voltage(self, servo_id: int, **kwargs) -> Optional[float]:
+    def read_motor_voltage(self, servo_id: int, **kwargs: Any) -> Optional[float]:
         pass
 
     def status(self) -> RobotConfigStatus:
@@ -257,7 +257,7 @@ class URDFLoader(BaseManipulator):
     async def calibrate(self) -> tuple[Literal["success", "in_progress", "error"], str]:
         return "success", "Calibration not implemented yet."
 
-    def calibrate_motors(self, **kwargs) -> None:
+    def calibrate_motors(self, **kwargs: Any) -> None:
         pass
 
     def update_object_gripping_status(self):

@@ -8,7 +8,7 @@ import numpy as np
 from fastapi import BackgroundTasks, Depends
 from loguru import logger
 
-from phosphobot.camera import AllCameras, get_all_cameras
+from phosphobot.camera import AllCameras, BaseCamera, get_all_cameras
 from phosphobot.configs import config
 from phosphobot.hardware import BaseRobot
 from phosphobot.models import BaseDataset, Observation, Step
@@ -386,7 +386,7 @@ class Recorder:
 
     async def _gather_frames_parallel(
         self, target_size: tuple[int, int]
-    ) -> tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Simple parallel frame capture - each camera runs independently.
         Returns (main_frames, secondary_frames).
@@ -443,7 +443,7 @@ class Recorder:
         return main_frames, secondary_frames
 
     def _capture_single_camera(
-        self, camera, target_size: tuple[int, int]
+        self, camera: BaseCamera, target_size: tuple[int, int]
     ) -> Optional[np.ndarray]:
         """
         Capture frame from a single camera.
@@ -512,8 +512,8 @@ class Recorder:
         return final_state, final_joints_position
 
     def _get_single_robot_observation(
-        self, robot, robot_idx: int
-    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        self, robot: BaseRobot, robot_idx: int
+    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get observation from a single robot.
         This runs in the thread pool.
@@ -524,7 +524,7 @@ class Recorder:
             logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
             return None, None
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Cleanup thread pools on deletion."""
         if hasattr(self, "_image_thread_pool") and self._image_thread_pool:
             self._image_thread_pool.shutdown(wait=True)

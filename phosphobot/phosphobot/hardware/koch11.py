@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from dynamixel_sdk import (
@@ -63,7 +63,7 @@ class KochHardware(BaseManipulator):
     NON_GRIPPING_THRESHOLD = 10
 
     @classmethod
-    def from_port(cls, port: ListPortInfo, **kwargs) -> Optional["KochHardware"]:
+    def from_port(cls, port: ListPortInfo, **kwargs: Any) -> Optional["KochHardware"]:
         """
         Detect if the device is a Koch v1.1 robot.
         """
@@ -71,7 +71,7 @@ class KochHardware(BaseManipulator):
             return cls(device_name=port.device, serial_id=port.serial_number)
         return None
 
-    async def connect(self):
+    async def connect(self) -> None:
         # Initialize PortHandler and PacketHandler
         self.portHandler = PortHandler(self.device_name)
         self.packetHandler = PacketHandler(protocol_version=2.0)
@@ -88,7 +88,7 @@ class KochHardware(BaseManipulator):
 
         self.is_connected = True
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         if self.portHandler.is_open:
             self.portHandler.closePort()
         self.is_connected = False
@@ -181,7 +181,7 @@ class KochHardware(BaseManipulator):
                 logger.warning(f"Sync Write failed for {name}-Gain")
             group.clearParam()
 
-    def enable_torque(self):
+    def enable_torque(self) -> None:
         """
         Enable torque for the motors.
         """
@@ -217,7 +217,7 @@ class KochHardware(BaseManipulator):
         if self.config.pid_gains != []:
             self._set_pid_gains_group()
 
-    def disable_torque(self):
+    def disable_torque(self) -> None:
         """
         Disable torque for the motors.
         """
@@ -252,7 +252,7 @@ class KochHardware(BaseManipulator):
         # Clear the buffer
         groupSyncWrite.clearParam()
 
-    def write_motor_position(self, servo_id: int, units: int, **kwargs) -> None:
+    def write_motor_position(self, servo_id: int, units: int, **kwargs: Any) -> None:
         # Write goal position
         if not self.is_connected:
             logger.warning("KochHardware: Not connected. Run .connect() first.")
@@ -363,7 +363,7 @@ class KochHardware(BaseManipulator):
 
         return positions
 
-    def read_motor_position(self, servo_id: int, **kwargs) -> Optional[int]:
+    def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
         Read the position of a Dynamixel servo.
         """
@@ -394,7 +394,7 @@ class KochHardware(BaseManipulator):
 
         return None
 
-    def read_motor_torque(self, servo_id: int, **kwargs) -> Optional[float]:
+    def read_motor_torque(self, servo_id: int, **kwargs: Any) -> Optional[float]:
         """
         Read the torque of a Dynamixel servo.
         """
@@ -426,7 +426,7 @@ class KochHardware(BaseManipulator):
             logger.error(f"Error reading present position for motor {servo_id}: {e}")
             return None
 
-    def read_motor_voltage(self, servo_id: int, **kwargs) -> None:
+    def read_motor_voltage(self, servo_id: int, **kwargs: Any) -> None:
         if not self.is_connected:
             logger.warning("KochHardware: Not connected. Run .connect() first.")
             return
@@ -453,7 +453,7 @@ class KochHardware(BaseManipulator):
 
         return voltage
 
-    def calibrate_motors(self, **kwargs) -> None:
+    def calibrate_motors(self, **kwargs: Any) -> None:
         """
         This is called during the calibration phase of the robot.
         It sets the offset of all motors to self.RESOLUTION/2.

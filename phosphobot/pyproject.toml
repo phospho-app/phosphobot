@@ -106,3 +106,4 @@ include = ["*"]
 src = ["app"]
 
 [tool.mypy]
+exclude = ["build", "dist", "hooks", "resources", "tests"]

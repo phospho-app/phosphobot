@@ -35,7 +35,7 @@ export function WandBKeyInput() {
       token,
     }).then((response) => {
       setIsLoading(false);
-      if (response.status == "success") {
+      if (response.status == "ok") {
         toast.success("Wandb token saved successfully");
         setIsSuccess(true);
         // auto hide success message after 5 seconds

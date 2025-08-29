@@ -3,7 +3,7 @@ import json
 import os
 import asyncio
 from abc import abstractmethod
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from fastapi import HTTPException
 import numpy as np
@@ -391,7 +391,7 @@ class BaseManipulator(BaseRobot):
 
         return current_gripper_torque
 
-    async def move_to_initial_position(self, open_gripper: bool = False):
+    async def move_to_initial_position(self, open_gripper: bool = False) -> None:
         """
         Move the robot to its initial position.
         """
@@ -408,7 +408,7 @@ class BaseManipulator(BaseRobot):
             self.initial_orientation_rad,
         ) = self.forward_kinematics()
 
-    async def move_to_sleep(self):
+    async def move_to_sleep(self) -> None:
         """
         Move the robot to its sleep position and disable torque.
         """
@@ -1071,7 +1071,7 @@ class BaseManipulator(BaseRobot):
     def control_gripper(
         self,
         open_command: float,  # Should be between 0 and 1
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Open or close the gripper until object is gripped.
@@ -1120,7 +1120,7 @@ class BaseManipulator(BaseRobot):
 
     def get_observation(
         self, do_forward: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 
@@ -1158,7 +1158,7 @@ class BaseManipulator(BaseRobot):
 
         return state, joints_position
 
-    def mimick_simu_to_robot(self):
+    def mimick_simu_to_robot(self) -> None:
         """
         Update simulation base on leader robot reading of joint position.
         """
@@ -1171,7 +1171,7 @@ class BaseManipulator(BaseRobot):
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
             joint_indices=self.actuated_joints,
-            target_positions=joints_position,
+            target_positions=joints_position.tolist(),
         )
         # Update the simulation
         self.sim.step()
@@ -1300,7 +1300,7 @@ class BaseManipulator(BaseRobot):
 
         return current_torque
 
-    def update_object_gripping_status(self):
+    def update_object_gripping_status(self) -> None:
         """
         Based on the torque value, update the object gripping status.
 

@@ -2,13 +2,14 @@ import socket
 import platform
 from random import random
 from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Callable
 
 import sentry_sdk
 import typer
 from fastapi import Depends, FastAPI, HTTPException, Request, applications
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from rich import print
@@ -63,7 +64,7 @@ def get_local_ip() -> str:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize telemetry
     init_telemetry()
     udp_server = get_udp_server()
@@ -144,7 +145,7 @@ app.mount(
 )
 
 
-def swagger_monkey_patch(*args, **kwargs):
+def swagger_monkey_patch(*args: Any, **kwargs: Any) -> HTMLResponse:
     posthog_pageview("/docs")
     return get_swagger_ui_html(
         *args,
@@ -159,7 +160,7 @@ applications.get_swagger_ui_html = swagger_monkey_patch
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     logger.warning(f"HTTPException: {exc.status_code} - {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
@@ -221,7 +222,7 @@ app.add_middleware(
 
 # Add the posthog middleware
 @app.middleware("http")
-def posthog_middleware(request: Request, call_next):
+def posthog_middleware(request: Request, call_next: Callable) -> JSONResponse:
     # ignore the /move/relative, /move/absolute and /status endpoints
     if request.url.path not in [
         "/move/relative",
@@ -234,7 +235,7 @@ def posthog_middleware(request: Request, call_next):
     return call_next(request)
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     if value:
         print(f"phosphobot {__version__}")
         raise typer.Exit()
@@ -259,7 +260,7 @@ if config.PROFILE:
     from pyinstrument.renderers.speedscope import SpeedscopeRenderer
 
     @app.middleware("http")
-    async def profile_request(request: Request, call_next):
+    async def profile_request(request: Request, call_next: Callable) -> JSONResponse:
         # we map a profile type to a file extension, as well as a pyinstrument profile renderer
         profile_type_to_ext = {"html": "html", "speedscope": "speedscope.json"}
         profile_type_to_renderer = {

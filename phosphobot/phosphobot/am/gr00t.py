@@ -69,7 +69,7 @@ class BaseInferenceServer:
     Can add custom endpoints by calling `register_endpoint`.
     """
 
-    def __init__(self, host: str = "*", port: int = 5555):
+    def __init__(self, host: str = "*", port: int = 5555) -> None:
         self.running = True
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
@@ -80,7 +80,7 @@ class BaseInferenceServer:
         self.register_endpoint("ping", self._handle_ping, requires_input=False)
         self.register_endpoint("kill", self._kill_server, requires_input=False)
 
-    def _kill_server(self):
+    def _kill_server(self) -> None:
         """
         Kill the server.
         """
@@ -94,7 +94,7 @@ class BaseInferenceServer:
 
     def register_endpoint(
         self, name: str, handler: Callable, requires_input: bool = True
-    ):
+    ) -> None:
         """
         Register a new endpoint to the server.
 
@@ -186,7 +186,7 @@ class RobotInferenceServer(BaseInferenceServer):
     Server with three endpoints for real robot policies
     """
 
-    def __init__(self, model: BasePolicy, host: str = "*", port: int = 5555):
+    def __init__(self, model: BasePolicy, host: str = "*", port: int = 5555) -> None:
         super().__init__(host, port)
         self.register_endpoint("get_action", model.get_action)
         self.register_endpoint(
@@ -194,7 +194,7 @@ class RobotInferenceServer(BaseInferenceServer):
         )
 
     @staticmethod
-    def start_server(policy: BasePolicy, port: int):
+    def start_server(policy: BasePolicy, port: int) -> None:
         server = RobotInferenceServer(policy, port=port)
         server.run()
 
@@ -202,7 +202,7 @@ class RobotInferenceServer(BaseInferenceServer):
 class BaseInferenceClient:
     def __init__(
         self, host: str = "localhost", port: int = 5555, timeout_ms: int = 15000
-    ):
+    ) -> None:
         self.context = zmq.Context()
 
         self.host = host
@@ -211,7 +211,7 @@ class BaseInferenceClient:
         self.version = 2
         self._init_socket()
 
-    def _init_socket(self):
+    def _init_socket(self) -> None:
         """Initialize or reinitialize the socket with current settings"""
         self.socket = self.context.socket(zmq.REQ)
         self.socket.connect(f"tcp://{self.host}:{self.port}")
@@ -224,7 +224,7 @@ class BaseInferenceClient:
             self._init_socket()  # Recreate socket for next attempt
             return False
 
-    def kill_server(self):
+    def kill_server(self) -> None:
         """
         Kill the server.
         """
@@ -264,7 +264,7 @@ class BaseInferenceClient:
             # legacy: the handler's own dict
             return resp
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Cleanup resources on destruction"""
         self.socket.close()
         self.context.term()
@@ -303,7 +303,7 @@ class ComponentStatistics(BaseModel):
         extra = "allow"
 
     @model_validator(mode="before")
-    def collect_active_components(self):
+    def collect_active_components(self) -> "ComponentStatistics":
         """
         Collect names and values of all fields containing valid Stats before validation.
         Ensures extra fields are included in active_components.
@@ -488,8 +488,8 @@ class Gr00tN1(ActionModel):
         ],  # These values are read from the values in experiment_cfg/metadata.json
         server_url: str = "localhost",
         server_port: int = 5555,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         super().__init__(server_url, server_port)
         self.client = ExternalRobotInferenceClient(host=server_url, port=server_port)
         self.action_keys = action_keys
@@ -715,7 +715,7 @@ class Gr00tN1(ActionModel):
         min_angle: Optional[float] = None,
         max_angle: Optional[float] = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         """
         AI control loop that runs in the background and sends actions to the robot.
         It uses the model to get the actions based on the current state of the robot and the cameras.
@@ -933,29 +933,28 @@ class Gr00tTrainerConfig(BaseTrainerConfig):
     training_params: TrainingParamsGr00T
 
 
-def check_for_nans_null_in_value(value: Union[list, tuple, Any]) -> bool:
+def check_for_nans_null_in_value(value: Union[list, tuple, pd.DataFrame]) -> bool:
     """
     Check if a value contains NaN/null, including nested lists
     """
-    if pd.isna(value).any():
-        return True
-
-    if pd.isnull(value).any():
-        return True
-
     if isinstance(value, (list, tuple)):
         for item in value:
             if check_for_nans_null_in_value(item):
                 return True
+    else:
+        if pd.isna(value).any():
+            return True
+        if pd.isnull(value).any():
+            return True
 
     return False
 
 
-def check_parquet_files(folder_path: Path):
+def check_parquet_files(folder_path: Path) -> None:
     """
     Check all parquet files in a folder for NaN/null values in the action/observation column
 
-    Will raise an error if it finds any NaN/null values in the action/observation column.
+    Raise an error if any NaN/null values in the action/observation column.
     """
     folder_path = Path(folder_path)
 
@@ -1348,7 +1347,7 @@ class Gr00tTrainer(BaseTrainer):
         number_of_cameras: int,
         timeout_seconds: Optional[int] = None,
         gr00t_repo_path: str = ".",
-    ):
+    ) -> List[str]:
         training_params = self.config.training_params
         wandb_enabled = self.config.wandb_api_key is not None
 
@@ -1389,7 +1388,11 @@ class Gr00tTrainer(BaseTrainer):
         training_params_dict = training_params.model_dump(
             by_alias=True,
             exclude_none=True,
-            exclude=["data_dir", "output_dir", "validation_data_dir"],
+            exclude={
+                "data_dir": True,
+                "output_dir": True,
+                "validation_data_dir": True,
+            },
         )
         for key, value in training_params_dict.items():
             cmd.extend([f"--{key}", str(value)])
@@ -1406,7 +1409,7 @@ class Gr00tTrainer(BaseTrainer):
 
         output_lines = []
 
-        async def read_output():
+        async def read_output() -> None:
             assert process.stdout is not None
             async for line in process.stdout:
                 stripped_line = line.decode().strip()

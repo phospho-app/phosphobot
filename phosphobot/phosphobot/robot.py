@@ -55,7 +55,7 @@ class RobotConnectionManager:
     available_can_ports: List[str]
     last_scan_time: float
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.available_ports = []
         self.available_can_ports = []
         self.last_scan_time = 0
@@ -63,7 +63,7 @@ class RobotConnectionManager:
         self._all_robots = []
         self._manually_added_robots = []
 
-    def __del__(self):
+    def __del__(self) -> None:
         # Disconnect all robots
         for robot in self._all_robots:
             robot.disconnect()
@@ -323,7 +323,7 @@ class RobotConnectionManager:
         robot_id = len(self._all_robots) - 1
         return robot_id, robot
 
-    async def remove_connection(self, robot_id: int):
+    async def remove_connection(self, robot_id: int) -> None:
         """
         Remove a connection to a robot by its ID.
         """

@@ -425,6 +425,10 @@ class StatusResponse(BaseModel):
     message: Optional[str] = None
 
 
+class HFWhoamIResponse(StatusResponse):
+    username: Optional[str] = None
+
+
 class TrainingInfoRequest(BaseModel):
     model_id: Optional[str] = Field(
         None, description="Hugging Face model id to get training info"

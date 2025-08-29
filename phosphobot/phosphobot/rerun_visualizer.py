@@ -15,7 +15,7 @@ rr = rerun
 
 
 class RerunVisualizer:
-    def __init__(self):
+    def __init__(self) -> None:
         self.initialized = False
         self.enabled = True
 

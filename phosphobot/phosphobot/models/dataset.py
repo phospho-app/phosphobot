@@ -600,7 +600,7 @@ It's compatible with LeRobot.
 To get started in robotics, [get your own phospho starter pack.](https://robots.phospho.ai).
 """
 
-    def push_dataset_to_hub(self, branch_path: Optional[str] = None):
+    def push_dataset_to_hub(self, branch_path: Optional[str] = None) -> None:
         """
         Push the dataset to the Hugging Face Hub.
 

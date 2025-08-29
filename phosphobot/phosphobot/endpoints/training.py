@@ -2,7 +2,7 @@ import asyncio
 import os
 import platform
 import time
-from typing import cast
+from typing import AsyncGenerator, cast
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -22,13 +22,15 @@ from phosphobot.models import (
 )
 from phosphobot.supabase import get_client, user_is_logged_in
 from phosphobot.utils import get_hf_token, get_home_app_path, get_tokens
+from supabase_auth.types import Session as SupabaseSession
+
 
 router = APIRouter(tags=["training"])
 
 
 @router.post("/training/models/read", response_model=TrainingsList)
 async def get_models(
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> TrainingsList:
     """Get the list of models with aggregated AI control session metrics"""
     client = await get_client()
@@ -126,7 +128,7 @@ async def get_models(
 )
 async def start_training(
     request: TrainingRequest,
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> StartTrainingResponse | HTTPException:
     """
     Trigger training for a gr00t or ACT model on the specified dataset.
@@ -300,7 +302,7 @@ async def start_custom_training(
         reader = process.stdout
 
     # 4) Monitor task: read from the PTY master and write to your log file
-    async def monitor_pty(reader: asyncio.StreamReader, log_path: str):
+    async def monitor_pty(reader: asyncio.StreamReader, log_path: str) -> None:
         with open(log_path, "wb") as f:
             # header
             f.write(f"Custom training started at {time.ctime()}\n".encode())
@@ -329,8 +331,10 @@ async def start_custom_training(
     return StatusResponse(message=log_file_name)
 
 
-@router.get("/training/logs/{log_file}")
-async def stream_logs(log_file: str):
+@router.get("/training/logs/{log_file}", response_model=None)
+async def stream_logs(
+    log_file: str,
+) -> StreamingResponse | HTTPException | PlainTextResponse:
     """Stream the logs from a log file"""
     log_path = os.path.join(get_home_app_path(), "logs", log_file)
 
@@ -342,7 +346,7 @@ async def stream_logs(log_file: str):
             "Streaming logs is not supported on Windows. Check the console logs directly."
         )
 
-    async def log_generator():
+    async def log_generator() -> AsyncGenerator[bytes, None]:
         """Generator to stream logs line by line as they are written"""
         with open(log_path, "rb") as f:
             # First, send all existing content
@@ -369,7 +373,7 @@ async def stream_logs(log_file: str):
 @router.post("/training/cancel", response_model=StatusResponse)
 async def cancel_training(
     request: CancelTrainingRequest,
-    session=Depends(user_is_logged_in),
+    session: SupabaseSession = Depends(user_is_logged_in),
 ) -> StatusResponse | HTTPException:
     """Cancel a training job"""
     logger.debug(f"Cancelling training request: {request}")
