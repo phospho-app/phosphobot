@@ -730,7 +730,7 @@ def train(  # All these args should be verified in phosphobot
             # Use user's namespace for private training, phospho-app for public
             if private_mode and user_hf_token:
                 # Get username from HF token for private training
-                hf_api_temp = HfApi(token=user_hf_token)
+                hf_api_temp = HfApi(token=hf_token)
                 try:
                     user_info = hf_api_temp.whoami()
                     username = user_info.get("name")
@@ -768,7 +768,7 @@ def train(  # All these args should be verified in phosphobot
                 repo_id=dataset_name,
                 repo_type="dataset",
                 branch="v2.0",
-                token=True,
+                token=hf_token,
                 exist_ok=True,
             )
             hf_api.upload_folder(
