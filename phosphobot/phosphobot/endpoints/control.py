@@ -1310,6 +1310,8 @@ async def disconnect_robot(
             status="ok",
             message=f"Robot connection to {robot_id} removed successfully",
         )
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(
             f"Failed to remove robot connection {robot_id}: {e}\n{traceback.format_exc()}"
