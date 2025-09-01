@@ -1205,7 +1205,7 @@ class AddZMQCameraRequest(BaseModel):
     topic: Optional[str] = Field(
         None,
         description="Topic to subscribe to. If None, will subscribes to all messages on the given TCP address.",
-        examples=["camera", "wrist_camera"],
+        examples=["cabin_view", "wrist_camera"],
     )
 
 

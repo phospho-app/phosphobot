@@ -33,7 +33,7 @@ export function AddZMQCameraModal({
     "add_zmq_tcp_address",
     "tcp://localhost:5555",
   );
-  const [topic, setTopic] = useLocalStorageState("add_zmq_topic", "camera");
+  const [topic, setTopic] = useLocalStorageState("add_zmq_topic", "cabin_view");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -115,7 +115,7 @@ export function AddZMQCameraModal({
               <Input
                 id="topic"
                 type="text"
-                placeholder="camera"
+                placeholder="cabin_view"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 disabled={isSubmitting}
