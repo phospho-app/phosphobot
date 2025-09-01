@@ -7,8 +7,8 @@ Run the pybullet simulation server with [uv](<(https://github.com/astral-sh/uv)>
 This simulation server is run by the teleop server. Pass `--simulation=gui` when running the server to show the GUI.
 
 ```bash
-cd ./teleop
-uv run teleop run --simulation=gui --port=8080 --host=127.0.0.1
+cd ./phosphobot
+uv run phosphobot run --simulation=gui --port=8080 --host=127.0.0.1
 ```
 
 ## Run standalone
