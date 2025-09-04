@@ -1130,15 +1130,10 @@ class BaseManipulator(BaseRobot):
 
         from phosphobot.endpoints.control import (
             signal_ai_control,
-            signal_leader_follower,
             signal_vr_control,
         )
 
-        if (
-            signal_ai_control.is_in_loop()
-            or signal_leader_follower.is_in_loop()
-            or signal_vr_control.is_in_loop()
-        ):
+        if signal_ai_control.is_in_loop() or signal_vr_control.is_in_loop():
             joints_position = self.read_joints_position(unit="rad", source="sim")
         else:
             joints_position = self.read_joints_position(unit="rad", source="robot")

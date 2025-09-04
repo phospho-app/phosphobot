@@ -188,6 +188,7 @@ export function Recorder({
       );
       await fetchWithBaseUrl(`/recording/start`, "POST", {
         robot_serials_to_ignore: robot_serials_to_ignore,
+        leader_arm_id: leaderArmSerialIds ? leaderArmSerialIds[0] : null,
       });
       refreshStatus(); // Refresh status after operation
     }

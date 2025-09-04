@@ -97,13 +97,17 @@ async def start_recording_episode(
     # Compute the number of connected robots and remove leader arms
     number_of_connected_robots = 0
     robots_to_record = copy(await rcm.robots)
+    robot_for_action = None
     for robot in await rcm.robots:
-        if (
-            hasattr(robot, "SERIAL_ID")
-            and query.robot_serials_to_ignore is not None
-            and robot.SERIAL_ID in query.robot_serials_to_ignore
-        ):
-            robots_to_record.remove(robot)
+        if hasattr(robot, "SERIAL_ID"):
+            if robot.SERIAL_ID == query.leader_arm_id:
+                robot_for_action = robot
+                robots_to_record.remove(robot)
+            elif (
+                query.robot_serials_to_ignore is not None
+                and robot.SERIAL_ID in query.robot_serials_to_ignore
+            ):
+                robots_to_record.remove(robot)
         else:
             number_of_connected_robots += 1
 
@@ -134,9 +138,9 @@ async def start_recording_episode(
             # Calculate expected action dimensions from connected robots
             expected_action_dim = 0
             for robot in robots_to_record:
-                assert isinstance(
-                    robot, BaseManipulator
-                ), "Robot must be an instance of BaseManipulator."
+                assert isinstance(robot, BaseManipulator), (
+                    "Robot must be an instance of BaseManipulator."
+                )
                 base_robot_info = robot.get_info_for_dataset()
                 expected_action_dim += base_robot_info.action.shape[0]
 
@@ -171,6 +175,7 @@ async def start_recording_episode(
         freq=query.freq or config.DEFAULT_FREQ,
         branch_path=query.branch_path,
         robots=robots_to_record,  # type: ignore
+        robot_for_action=robot_for_action,  # type: ignore
         target_size=query.target_video_size
         or (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1]),
         cameras_ids_to_record=cameras_ids_to_record,

@@ -570,6 +570,10 @@ class RecordingStartRequest(BaseModel):
         False,
         description="Enable rerun",
     )
+    leader_arm_id: Optional[str] = Field(
+        None,
+        description="Serial number of the leader arm used during the recording",
+    )
 
 
 class RecordingStopRequest(BaseModel):
