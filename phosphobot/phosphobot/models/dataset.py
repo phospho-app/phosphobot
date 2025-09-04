@@ -11,7 +11,6 @@ from typing import Any, List, Literal, Optional, cast
 import numpy as np
 from huggingface_hub import (
     HfApi,
-    create_branch,
     create_repo,
     delete_folder,
     delete_repo,
@@ -621,7 +620,7 @@ To get started in robotics, [get your own phospho starter pack.](https://robots.
                     logger.error("Could not get username or org ID from token")
                     return
 
-            except Exception as e:
+            except Exception:
                 logger.warning(
                     "No user or org with write access found. Won't be able to push to Hugging Face."
                 )
@@ -637,7 +636,6 @@ To get started in robotics, [get your own phospho starter pack.](https://robots.
 
             # Construct full repo name
             dataset_repo_name = f"{username_or_org_id}/{self.dataset_name}"
-            create_2_1_branch = False
 
             # Check if repo exists, create if it doesn't
             try:
@@ -657,84 +655,69 @@ To get started in robotics, [get your own phospho starter pack.](https://robots.
                     private=config.DEFAULT_HF_PRIVATE_MODE,
                 )
                 logger.info(f"Repository {dataset_repo_name} created.")
-                create_2_1_branch = True
 
             # Push to main branch
             logger.info(
                 f"Pushing the dataset to the main branch in repository {dataset_repo_name}"
             )
-            self.HF_API.upload_folder(
+            future = self.HF_API.upload_folder(
                 folder_path=self.folder_full_path,
                 repo_id=dataset_repo_name,
+                revision="main",
                 repo_type="dataset",
                 run_as_future=True,
             )
 
-            repo_refs = self.HF_API.list_repo_refs(
-                repo_id=dataset_repo_name, repo_type="dataset"
-            )
-            existing_branch_names = [ref.name for ref in repo_refs.branches]
-
-            # Create and push to v2.1 branch if needed
-            if create_2_1_branch:
+            def sync_branch(fut):
                 try:
-                    if "v2.1" not in existing_branch_names:
-                        logger.info(
-                            f"Creating branch v2.1 for dataset {dataset_repo_name}"
-                        )
-                        create_branch(
-                            dataset_repo_name,
+                    fut.result()  # raises if upload failed
+
+                    # Force-sync v2.1 with main
+                    try:
+                        self.HF_API.delete_branch(
+                            repo_id=dataset_repo_name,
                             repo_type="dataset",
                             branch="v2.1",
-                            token=True,
                         )
-                        logger.info(
-                            f"Branch v2.1 created for dataset {dataset_repo_name}"
-                        )
+                        logger.info("Deleted existing branch v2.1 before re-creating.")
+                    except Exception:
+                        logger.info("Branch v2.1 did not exist, creating fresh.")
 
-                    # Push to v2.1 branch
-                    logger.info(
-                        f"Pushing the dataset to the branch v2.1 in repository {dataset_repo_name}"
-                    )
-                    self.HF_API.upload_folder(
-                        folder_path=self.folder_full_path,
+                    self.HF_API.create_branch(
                         repo_id=dataset_repo_name,
                         repo_type="dataset",
-                        revision="v2.1",
-                        run_as_future=True,
+                        revision="main",  # copy from updated main
+                        branch="v2.1",
                     )
-                except Exception as e:
-                    logger.error(f"Error handling v2.1 branch: {e}")
+                    logger.info("Branch v2.1 synced with main.")
 
-            # Push to additional branch if specified
-            if branch_path:
-                try:
-                    if branch_path not in existing_branch_names:
-                        logger.info(
-                            f"Creating branch {branch_path} for dataset {dataset_repo_name}"
-                        )
-                        create_branch(
-                            dataset_repo_name,
+                    if branch_path:
+                        try:
+                            self.HF_API.delete_branch(
+                                repo_id=dataset_repo_name,
+                                repo_type="dataset",
+                                branch=branch_path,
+                            )
+                            logger.info(
+                                f"Deleted existing branch {branch_path} before re-creating."
+                            )
+                        except Exception:
+                            logger.info(
+                                f"Branch {branch_path} did not exist, creating fresh."
+                            )
+
+                        self.HF_API.create_branch(
+                            repo_id=dataset_repo_name,
                             repo_type="dataset",
+                            revision="main",
                             branch=branch_path,
-                            token=True,
                         )
-                        logger.info(
-                            f"Branch {branch_path} created for dataset {dataset_repo_name}"
-                        )
+                        logger.info(f"Branch {branch_path} synced with main.")
 
-                    # Push to specified branch
-                    logger.info(f"Pushing the dataset to branch {branch_path}")
-                    self.HF_API.upload_folder(
-                        folder_path=self.folder_full_path,
-                        repo_id=dataset_repo_name,
-                        repo_type="dataset",
-                        revision=branch_path,
-                        run_as_future=True,
-                    )
-                    logger.info(f"Dataset pushed to branch {branch_path}")
                 except Exception as e:
-                    logger.error(f"Error handling custom branch: {e}")
+                    logger.error(f"Failed to sync branch: {e}")
+
+            future.add_done_callback(sync_branch)
 
         except Exception as e:
             logger.warning(f"An error occurred: {e}")

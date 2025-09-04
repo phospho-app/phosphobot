@@ -251,7 +251,7 @@ class Recorder:
 
     def push_to_hub(self, dataset_path: str, branch_path: Optional[str] = None) -> None:
         logger.info(
-            f"Attempting to push dataset from {dataset_path} to Hugging Face Hub. Branch: {branch_path or 'main'}"
+            f"Attempting to push dataset from {dataset_path} to Hugging Face Hub. Will push to 'main', and create branches 'v2.1' and '{branch_path}'if specified."
         )
         try:
             # Dataset class needs to be robust enough to be initialized with the full path
