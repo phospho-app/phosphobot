@@ -85,6 +85,7 @@ class Recorder:
         self,
         background_tasks: BackgroundTasks,
         robots: list[BaseRobot],  # Can use self.robots or update if new list passed
+        robot_for_action: BaseRobot,  # This robot will be used to fill the action column
         codec: VideoCodecs,
         freq: int,
         target_size: Optional[Tuple[int, int]],
@@ -169,6 +170,7 @@ class Recorder:
             target_size=target_size,
             language_instruction=instruction
             or config.DEFAULT_TASK_INSTRUCTION,  # Passed to Step
+            robot_for_action=robot_for_action,  # Used to fill action column when using leader arm
         )
         logger.success(
             f"Recording started for {self.episode_format} dataset '{dataset_name}'. Episode index: {self.episode.episode_index if self.episode else 'N/A'}"
@@ -275,6 +277,7 @@ class Recorder:
         self,
         target_size: tuple[int, int],
         language_instruction: str,  # This is the initial instruction
+        robot_for_action: Optional[BaseRobot] = None,
     ) -> None:
         if not self.episode:
             logger.error(
@@ -311,7 +314,10 @@ class Recorder:
             (
                 final_state,
                 final_joints_position,
-            ) = await self._gather_robot_observations_parallel()
+                action_joints_position,
+            ) = await self._gather_robot_observations_parallel(
+                robot_for_action=robot_for_action
+            )
 
             current_time_in_episode = loop_iteration_start_time - self.start_ts
 
@@ -339,7 +345,7 @@ class Recorder:
             # update_previous_step handles this.
             step = Step(
                 observation=observation,
-                action=None,  # Will be filled by update_previous_step for the *previous* step
+                action=action_joints_position,  # Will be filled by update_previous_step for the *previous* step
                 metadata={"created_at": loop_iteration_start_time},
             )
 
@@ -357,7 +363,9 @@ class Recorder:
                 )
 
             # Order: update previous, then add current.
-            if self.episode.steps:  # If there's a previous step
+            if (
+                self.episode.steps and action_joints_position is None
+            ):  # If there's a previous step
                 # The 'action' of the previous step is the 'joints_position' of the current observation
                 self.episode.update_previous_step(step)
 
@@ -371,7 +379,7 @@ class Recorder:
             # Log performance metrics every 100 steps
             if step_count % 100 == 0:
                 logger.debug(
-                    f"Step {step_count}: Processing time: {elapsed_this_iteration:.3f}s, Target: {1/self.freq:.3f}s"
+                    f"Step {step_count}: Processing time: {elapsed_this_iteration:.3f}s, Target: {1 / self.freq:.3f}s"
                 )
 
             await asyncio.sleep(time_to_wait)
@@ -458,19 +466,20 @@ class Recorder:
             return None
 
     async def _gather_robot_observations_parallel(
-        self,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        self, robot_for_action: Optional[BaseRobot] = None
+    ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """
         Simple parallel robot observation gathering - each robot runs independently.
         Returns (final_state, final_joints_position).
         """
         if not self.robots:
-            return np.array([]), np.array([])
+            return np.array([]), np.array([]), np.array([])
 
         loop = asyncio.get_event_loop()
 
         # Submit individual robot observation tasks
         robot_futures = []
+        robot_action_future = None
         for i, robot_instance in enumerate(self.robots):
             future = loop.run_in_executor(
                 self._robot_thread_pool,
@@ -479,6 +488,13 @@ class Recorder:
                 i,
             )
             robot_futures.append(future)
+        if robot_for_action:
+            robot_action_future = loop.run_in_executor(
+                self._robot_thread_pool,
+                self._get_single_robot_observation,
+                robot_for_action,
+                -1,  # -1 indicates this is for action, not indexed robot
+            )
 
         # Wait for all robot observations
         all_robot_states = []
@@ -508,8 +524,11 @@ class Recorder:
                 else np.array([])
             )
         )
+        _, robot_action_joints = (
+            await robot_action_future if robot_action_future else (None, None)
+        )
 
-        return final_state, final_joints_position
+        return (final_state, final_joints_position, robot_action_joints)
 
     def _get_single_robot_observation(
         self, robot: BaseRobot, robot_idx: int
