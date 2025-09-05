@@ -95,7 +95,7 @@ class LeKiwi(BaseMobileRobot):
             self.conn = None
             self.is_connected = False
 
-    def get_observation(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_observation(self, is_simulation: bool) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 

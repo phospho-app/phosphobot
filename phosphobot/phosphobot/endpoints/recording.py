@@ -95,23 +95,52 @@ async def start_recording_episode(
     number_of_connected_cameras = len(cameras_ids_to_record)
 
     # Compute the number of connected robots and remove leader arms
-    number_of_connected_robots = 0
-    robots_to_record = copy(await rcm.robots)
-    robot_for_action = None
+    robots_to_record = 0
+    robots_for_actions_real = []
+    robots_for_actions_sim = []
+    robots_for_observations_real = []
+
+    from phosphobot.endpoints.control import (
+        signal_leader_follower,
+    )
+
     for robot in await rcm.robots:
-        if hasattr(robot, "SERIAL_ID"):
-            if robot.SERIAL_ID == query.leader_arm_id:
-                robot_for_action = robot
-                robots_to_record.remove(robot)
+        if signal_leader_follower.is_in_loop():
+            if (
+                hasattr(robot, "SERIAL_ID")
+                and query.leader_arm_ids is not None
+                and robot.SERIAL_ID in query.leader_arm_ids
+            ):
+                robots_for_actions_real.append(robot)
+                robots_to_record += 1
             elif (
+                hasattr(robot, "SERIAL_ID")
+                and query.robot_serials_to_ignore is not None
+                and robot.SERIAL_ID in query.robot_serials_to_ignore
+            ):
+                continue
+            else:
+                robots_for_observations_real.append(robot)
+                robots_to_record += 1
+        else:
+            if (hasattr(robot, "SERIAL_ID")) and (
                 query.robot_serials_to_ignore is not None
                 and robot.SERIAL_ID in query.robot_serials_to_ignore
             ):
-                robots_to_record.remove(robot)
-        else:
-            number_of_connected_robots += 1
+                continue
+            else:
+                robots_for_observations_real.append(robot)
+                robots_for_actions_sim.append(robot)
+                robots_to_record += 1
 
-    if len(robots_to_record) == 0:
+    logger.warning(f"""
+
+Recording episode with {robots_to_record} robots.
+robots_for_actions_real: {len(robots_for_actions_real)}
+robots_for_actions_sim: {len(robots_for_actions_sim)}
+robots_for_observations_real: {len(robots_for_observations_real)}""")
+
+    if robots_to_record == 0:
         raise HTTPException(
             status_code=400,
             detail="No robots to record. You should have at least one robot connected to start recording.",
@@ -137,7 +166,12 @@ async def start_recording_episode(
             dataset_action_dim = info_model.features.action.shape[0]
             # Calculate expected action dimensions from connected robots
             expected_action_dim = 0
-            for robot in robots_to_record:
+            for robot in robots_for_actions_sim + robots_for_actions_real:
+                assert isinstance(robot, BaseManipulator), (
+                    "Robot must be an instance of BaseManipulator."
+                )
+            # We don't do both for loops together as some robots may be in both lists
+            for robot in robots_for_observations_real:
                 assert isinstance(robot, BaseManipulator), (
                     "Robot must be an instance of BaseManipulator."
                 )
@@ -174,8 +208,9 @@ async def start_recording_episode(
         codec=query.video_codec or config.DEFAULT_VIDEO_CODEC,
         freq=query.freq or config.DEFAULT_FREQ,
         branch_path=query.branch_path,
-        robots=robots_to_record,  # type: ignore
-        robot_for_action=robot_for_action,  # type: ignore
+        robots_for_actions_real=robots_for_actions_real,  # type: ignore
+        robots_for_actions_sim=robots_for_actions_sim,  # type: ignore
+        robots_for_observations_real=robots_for_observations_real,  # type: ignore
         target_size=query.target_video_size
         or (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1]),
         cameras_ids_to_record=cameras_ids_to_record,
