@@ -1115,7 +1115,9 @@ class BaseManipulator(BaseRobot):
             )
 
     def get_observation(
-        self, do_forward: bool = False
+        self,
+        is_simulation: bool,
+        do_forward: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
@@ -1128,12 +1130,7 @@ class BaseManipulator(BaseRobot):
             - joints_position: np.array joints position of the robot
         """
 
-        from phosphobot.endpoints.control import (
-            signal_ai_control,
-            signal_vr_control,
-        )
-
-        if signal_ai_control.is_in_loop() or signal_vr_control.is_in_loop():
+        if is_simulation:
             joints_position = self.read_joints_position(unit="rad", source="sim")
         else:
             joints_position = self.read_joints_position(unit="rad", source="robot")

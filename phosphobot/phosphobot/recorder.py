@@ -84,8 +84,9 @@ class Recorder:
     async def start(
         self,
         background_tasks: BackgroundTasks,
-        robots: list[BaseRobot],  # Can use self.robots or update if new list passed
-        robot_for_action: BaseRobot,  # This robot will be used to fill the action column
+        robots_for_actions_real: list[BaseRobot],
+        robots_for_actions_sim: list[BaseRobot],
+        robots_for_observations_real: list[BaseRobot],
         codec: VideoCodecs,
         freq: int,
         target_size: Optional[Tuple[int, int]],
@@ -107,7 +108,15 @@ class Recorder:
             )
             await self.stop()  # Stop does not save, just halts the loop
 
-        self.robots = robots  # Update robots if a new list is provided
+        self.robots_for_actions_real = (
+            robots_for_actions_real  # Update robots if a new list is provided
+        )
+        self.robots_for_actions_sim = (
+            robots_for_actions_sim  # Update robots if a new list is provided
+        )
+        self.robots_for_observations_real = (
+            robots_for_observations_real  # Update robots if a new list is provided
+        )
         self.cameras.cameras_ids_to_record = cameras_ids_to_record  # type: ignore
         self.freq = freq  # Store for record_loop
         self.episode_format = episode_format
@@ -127,7 +136,7 @@ class Recorder:
             self.episode = await JsonEpisode.start_new(
                 base_recording_folder=self.episode_recording_folder,
                 dataset_name=dataset_name,
-                robots=self.robots,
+                robots=self.robots_for_observations_real,
                 # Any other necessary params for JsonEpisode metadata
             )
             # if self._use_push_to_hub_after_save:
@@ -146,7 +155,7 @@ class Recorder:
 
             self.episode = await LeRobotEpisode.start_new(
                 dataset_manager=lerobot_dataset_manager,  # Pass the dataset manager
-                robots=self.robots,
+                robots=self.robots_for_observations_real,
                 codec=codec,
                 freq=freq,
                 target_size=target_size,
@@ -170,7 +179,9 @@ class Recorder:
             target_size=target_size,
             language_instruction=instruction
             or config.DEFAULT_TASK_INSTRUCTION,  # Passed to Step
-            robot_for_action=robot_for_action,  # Used to fill action column when using leader arm
+            robots_for_actions_sim=self.robots_for_actions_sim,
+            robots_for_actions_real=self.robots_for_actions_real,
+            robots_for_observations_real=self.robots_for_observations_real,
         )
         logger.success(
             f"Recording started for {self.episode_format} dataset '{dataset_name}'. Episode index: {self.episode.episode_index if self.episode else 'N/A'}"
@@ -277,7 +288,9 @@ class Recorder:
         self,
         target_size: tuple[int, int],
         language_instruction: str,  # This is the initial instruction
-        robot_for_action: Optional[BaseRobot] = None,
+        robots_for_actions_sim: list[BaseRobot],
+        robots_for_actions_real: list[BaseRobot],
+        robots_for_observations_real: list[BaseRobot],
     ) -> None:
         if not self.episode:
             logger.error(
@@ -316,7 +329,9 @@ class Recorder:
                 final_joints_position,
                 action_joints_position,
             ) = await self._gather_robot_observations_parallel(
-                robot_for_action=robot_for_action
+                robots_for_actions_sim=robots_for_actions_sim,
+                robots_for_actions_real=robots_for_actions_real,
+                robots_for_observations_real=robots_for_observations_real,
             )
 
             current_time_in_episode = loop_iteration_start_time - self.start_ts
@@ -466,41 +481,57 @@ class Recorder:
             return None
 
     async def _gather_robot_observations_parallel(
-        self, robot_for_action: Optional[BaseRobot] = None
+        self,
+        robots_for_actions_sim: list[BaseRobot],
+        robots_for_actions_real: list[BaseRobot],
+        robots_for_observations_real: list[BaseRobot],
     ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """
         Simple parallel robot observation gathering - each robot runs independently.
         Returns (final_state, final_joints_position).
         """
-        if not self.robots:
+        if not self.robots_for_observations_real:
             return np.array([]), np.array([]), np.array([])
 
         loop = asyncio.get_event_loop()
 
         # Submit individual robot observation tasks
-        robot_futures = []
-        robot_action_future = None
-        for i, robot_instance in enumerate(self.robots):
-            future = loop.run_in_executor(
+        robot_observations_futures = []
+        robot_actions_future = []
+        for i, robot_instance in enumerate(robots_for_observations_real):
+            future_observations_real = loop.run_in_executor(
                 self._robot_thread_pool,
                 self._get_single_robot_observation,
                 robot_instance,
                 i,
+                False,
             )
-            robot_futures.append(future)
-        if robot_for_action:
-            robot_action_future = loop.run_in_executor(
+            robot_observations_futures.append(future_observations_real)
+        for i, robot_instance in enumerate(robots_for_actions_real):
+            future_actions_real = loop.run_in_executor(
                 self._robot_thread_pool,
                 self._get_single_robot_observation,
-                robot_for_action,
-                -1,  # -1 indicates this is for action, not indexed robot
+                robot_instance,
+                i,
+                False,
             )
+            robot_actions_future.append(future_actions_real)
+        for i, robot_instance in enumerate(robots_for_actions_sim):
+            future_actions_sim = loop.run_in_executor(
+                self._robot_thread_pool,
+                self._get_single_robot_observation,
+                robot_instance,
+                -1,
+                True,
+            )
+            robot_actions_future.append(future_actions_sim)
 
         # Wait for all robot observations
         all_robot_states = []
         all_robot_joints_positions = []
+        all_robot_joints_positions_actions = []
 
-        for future in robot_futures:
+        for future in robot_observations_futures:
             try:
                 robot_state, robot_joints = await future
                 if robot_state is not None and robot_joints is not None:
@@ -508,6 +539,13 @@ class Recorder:
                     all_robot_joints_positions.append(robot_joints)
             except Exception as e:
                 logger.warning(f"Failed to get robot observation: {e}")
+        for future in robot_actions_future:
+            try:
+                robot_state, robot_joints = await future
+                if robot_joints is not None:
+                    all_robot_joints_positions_actions.append(robot_joints)
+            except Exception as e:
+                logger.warning(f"Failed to get action robot observation: {e}")
 
         # Concatenate if multiple robots, otherwise use the first robot's data
         final_state = (
@@ -524,21 +562,27 @@ class Recorder:
                 else np.array([])
             )
         )
-        _, robot_action_joints = (
-            await robot_action_future if robot_action_future else (None, None)
+        final_action_joints = (
+            np.concatenate(all_robot_joints_positions_actions)
+            if len(all_robot_joints_positions_actions) > 1
+            else (
+                all_robot_joints_positions_actions[0]
+                if all_robot_joints_positions_actions
+                else None
+            )
         )
 
-        return (final_state, final_joints_position, robot_action_joints)
+        return (final_state, final_joints_position, final_action_joints)
 
     def _get_single_robot_observation(
-        self, robot: BaseRobot, robot_idx: int
+        self, robot: BaseRobot, robot_idx: int, is_simulation: bool
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get observation from a single robot.
         This runs in the thread pool.
         """
         try:
-            return robot.get_observation()
+            return robot.get_observation(is_simulation=is_simulation)
         except Exception as e:
             logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
             return None, None

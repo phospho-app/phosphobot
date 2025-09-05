@@ -570,9 +570,10 @@ class RecordingStartRequest(BaseModel):
         False,
         description="Enable rerun",
     )
-    leader_arm_id: Optional[str] = Field(
+    leader_arm_ids: Optional[List[str]] = Field(
         None,
-        description="Serial number of the leader arm used during the recording",
+        description="Serial numbers of the leader arms used during the recording",
+        examples=[["/dev/ttyUSB0"]],
     )
 
 
