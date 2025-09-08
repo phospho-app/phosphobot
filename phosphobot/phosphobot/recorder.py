@@ -84,9 +84,9 @@ class Recorder:
     async def start(
         self,
         background_tasks: BackgroundTasks,
-        robots_for_actions_real: list[BaseRobot],
-        robots_for_actions_sim: list[BaseRobot],
-        robots_for_observations_real: list[BaseRobot],
+        robots: list[BaseRobot],
+        actions_robots_mapping: dict[int, Literal["sim", "robot"]],
+        observations_robots_mapping: dict[int, Literal["sim", "robot"]],
         codec: VideoCodecs,
         freq: int,
         target_size: Optional[Tuple[int, int]],
@@ -108,15 +108,9 @@ class Recorder:
             )
             await self.stop()  # Stop does not save, just halts the loop
 
-        self.robots_for_actions_real = (
-            robots_for_actions_real  # Update robots if a new list is provided
-        )
-        self.robots_for_actions_sim = (
-            robots_for_actions_sim  # Update robots if a new list is provided
-        )
-        self.robots_for_observations_real = (
-            robots_for_observations_real  # Update robots if a new list is provided
-        )
+        self.robots = robots
+        self.actions_robots_mapping = actions_robots_mapping
+        self.observations_robots_mapping = observations_robots_mapping
         self.cameras.cameras_ids_to_record = cameras_ids_to_record  # type: ignore
         self.freq = freq  # Store for record_loop
         self.episode_format = episode_format
@@ -136,7 +130,7 @@ class Recorder:
             self.episode = await JsonEpisode.start_new(
                 base_recording_folder=self.episode_recording_folder,
                 dataset_name=dataset_name,
-                robots=self.robots_for_observations_real,
+                robots=robots,
                 # Any other necessary params for JsonEpisode metadata
             )
             # if self._use_push_to_hub_after_save:
@@ -150,12 +144,12 @@ class Recorder:
             # LeRobotDataset constructor will ensure directories like meta, data, videos exist.
             lerobot_dataset_manager = LeRobotDataset(path=dataset_full_path)
 
-            # if self._use_push_to_hub_after_save:
-            #     self._current_dataset_full_path_for_push = lerobot_dataset_manager.folder_full_path
-
+            robots_to_initialize = [
+                robots[i] for i in observations_robots_mapping.keys()
+            ]
             self.episode = await LeRobotEpisode.start_new(
                 dataset_manager=lerobot_dataset_manager,  # Pass the dataset manager
-                robots=self.robots_for_observations_real,
+                robots=robots_to_initialize,
                 codec=codec,
                 freq=freq,
                 target_size=target_size,
@@ -179,9 +173,6 @@ class Recorder:
             target_size=target_size,
             language_instruction=instruction
             or config.DEFAULT_TASK_INSTRUCTION,  # Passed to Step
-            robots_for_actions_sim=self.robots_for_actions_sim,
-            robots_for_actions_real=self.robots_for_actions_real,
-            robots_for_observations_real=self.robots_for_observations_real,
         )
         logger.success(
             f"Recording started for {self.episode_format} dataset '{dataset_name}'. Episode index: {self.episode.episode_index if self.episode else 'N/A'}"
@@ -288,9 +279,6 @@ class Recorder:
         self,
         target_size: tuple[int, int],
         language_instruction: str,  # This is the initial instruction
-        robots_for_actions_sim: list[BaseRobot],
-        robots_for_actions_real: list[BaseRobot],
-        robots_for_observations_real: list[BaseRobot],
     ) -> None:
         if not self.episode:
             logger.error(
@@ -328,11 +316,7 @@ class Recorder:
                 final_state,
                 final_joints_position,
                 action_joints_position,
-            ) = await self._gather_robot_observations_parallel(
-                robots_for_actions_sim=robots_for_actions_sim,
-                robots_for_actions_real=robots_for_actions_real,
-                robots_for_observations_real=robots_for_observations_real,
-            )
+            ) = await self._gather_robot_observations_parallel()
 
             current_time_in_episode = loop_iteration_start_time - self.start_ts
 
@@ -482,15 +466,16 @@ class Recorder:
 
     async def _gather_robot_observations_parallel(
         self,
-        robots_for_actions_sim: list[BaseRobot],
-        robots_for_actions_real: list[BaseRobot],
-        robots_for_observations_real: list[BaseRobot],
     ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """
         Simple parallel robot observation gathering - each robot runs independently.
         Returns (final_state, final_joints_position).
         """
-        if not self.robots_for_observations_real:
+        if (
+            not self.robots
+            or not self.observations_robots_mapping
+            or len(self.observations_robots_mapping) == 0
+        ):
             return np.array([]), np.array([]), np.array([])
 
         loop = asyncio.get_event_loop()
@@ -498,33 +483,30 @@ class Recorder:
         # Submit individual robot observation tasks
         robot_observations_futures = []
         robot_actions_future = []
-        for i, robot_instance in enumerate(robots_for_observations_real):
-            future_observations_real = loop.run_in_executor(
-                self._robot_thread_pool,
-                self._get_single_robot_observation,
-                robot_instance,
-                i,
-                "robot",
+        for idx, robot in enumerate(self.robots):
+            assert isinstance(robot, BaseRobot), (
+                "Robot must be an instance of BaseRobot."
             )
-            robot_observations_futures.append(future_observations_real)
-        for i, robot_instance in enumerate(robots_for_actions_real):
-            future_actions_real = loop.run_in_executor(
-                self._robot_thread_pool,
-                self._get_single_robot_observation,
-                robot_instance,
-                i,
-                "robot",
-            )
-            robot_actions_future.append(future_actions_real)
-        for i, robot_instance in enumerate(robots_for_actions_sim):
-            future_actions_sim = loop.run_in_executor(
-                self._robot_thread_pool,
-                self._get_single_robot_observation,
-                robot_instance,
-                -1,
-                "sim",
-            )
-            robot_actions_future.append(future_actions_sim)
+            if idx in self.observations_robots_mapping:
+                source = self.observations_robots_mapping[idx]
+                future_observations_real = loop.run_in_executor(
+                    self._robot_thread_pool,
+                    self._get_single_robot_observation,
+                    robot,
+                    idx,
+                    source,
+                )
+                robot_observations_futures.append(future_observations_real)
+            elif idx in self.actions_robots_mapping:
+                source = self.actions_robots_mapping[idx]
+                future_actions_real = loop.run_in_executor(
+                    self._robot_thread_pool,
+                    self._get_single_robot_observation,
+                    robot,
+                    idx,
+                    source,
+                )
+                robot_actions_future.append(future_actions_real)
 
         # Wait for all robot observations
         all_robot_states = []
