@@ -105,7 +105,9 @@ class RemotePhosphobot(BaseRobot):
             "/end-effector/read", params={"robot_id": self.robot_id}
         ).json()
         joints = self.client.post(
-            "/joints/read", json={"unit": "rad"}, params={"robot_id": self.robot_id}
+            "/joints/read",
+            json={"unit": "rad", "source": source},
+            params={"robot_id": self.robot_id},
         ).json()
         state = np.array(
             [

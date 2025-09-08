@@ -497,7 +497,8 @@ class Recorder:
                     source,
                 )
                 robot_observations_futures.append(future_observations_real)
-            elif idx in self.actions_robots_mapping:
+            # A robot can be both in action and observation mappings
+            if idx in self.actions_robots_mapping:
                 source = self.actions_robots_mapping[idx]
                 future_actions_real = loop.run_in_executor(
                     self._robot_thread_pool,

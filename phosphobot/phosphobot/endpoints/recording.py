@@ -106,34 +106,30 @@ async def start_recording_episode(
         signal_leader_follower,
     )
 
+    if query.robot_serials_to_ignore is None:
+        query.robot_serials_to_ignore = []
+    if query.leader_arm_ids is None:
+        query.leader_arm_ids = []
+
     for i, robot in enumerate(robots):
         if signal_leader_follower.is_in_loop():
-            if (
-                hasattr(robot, "SERIAL_ID")
-                and query.leader_arm_ids is not None
-                and robot.SERIAL_ID in query.leader_arm_ids
-            ):
-                actions_robots_mapping[i] = "robot"
+            # Leader-follower mode
+            if getattr(robot, "SERIAL_ID", None) in query.leader_arm_ids:
+                # The leader arm is recorded for the action
+                actions_robots_mapping[i] = "sim"
                 robots_to_record += 1
-            elif (
-                hasattr(robot, "SERIAL_ID")
-                and query.robot_serials_to_ignore is not None
-                and robot.SERIAL_ID in query.robot_serials_to_ignore
-            ):
+            elif getattr(robot, "SERIAL_ID", None) in query.robot_serials_to_ignore:
+                # Ignore robots that are in the ignore list
                 continue
             else:
+                # The follower arms are recorded for the observation
                 observations_robots_mapping[i] = "robot"
                 robots_to_record += 1
-        else:
-            if (hasattr(robot, "SERIAL_ID")) and (
-                query.robot_serials_to_ignore is not None
-                and robot.SERIAL_ID in query.robot_serials_to_ignore
-            ):
-                continue
-            else:
-                actions_robots_mapping[i] = "robot"
-                observations_robots_mapping[i] = "sim"
-                robots_to_record += 1
+        elif getattr(robot, "SERIAL_ID", None) not in query.robot_serials_to_ignore:
+            # Not in leader-follower mode: record all robots that are not ignored
+            actions_robots_mapping[i] = "sim"
+            observations_robots_mapping[i] = "robot"
+            robots_to_record += 1
 
     if robots_to_record == 0:
         raise HTTPException(
