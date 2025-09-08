@@ -504,7 +504,7 @@ class Recorder:
                 self._get_single_robot_observation,
                 robot_instance,
                 i,
-                False,
+                "robot",
             )
             robot_observations_futures.append(future_observations_real)
         for i, robot_instance in enumerate(robots_for_actions_real):
@@ -513,7 +513,7 @@ class Recorder:
                 self._get_single_robot_observation,
                 robot_instance,
                 i,
-                False,
+                "robot",
             )
             robot_actions_future.append(future_actions_real)
         for i, robot_instance in enumerate(robots_for_actions_sim):
@@ -522,7 +522,7 @@ class Recorder:
                 self._get_single_robot_observation,
                 robot_instance,
                 -1,
-                True,
+                "sim",
             )
             robot_actions_future.append(future_actions_sim)
 
@@ -575,14 +575,14 @@ class Recorder:
         return (final_state, final_joints_position, final_action_joints)
 
     def _get_single_robot_observation(
-        self, robot: BaseRobot, robot_idx: int, is_simulation: bool
+        self, robot: BaseRobot, robot_idx: int, source: Literal["sim", "robot"]
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get observation from a single robot.
         This runs in the thread pool.
         """
         try:
-            return robot.get_observation(is_simulation=is_simulation)
+            return robot.get_observation(source=source)
         except Exception as e:
             logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
             return None, None

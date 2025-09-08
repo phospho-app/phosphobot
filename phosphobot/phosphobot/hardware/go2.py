@@ -4,7 +4,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Coroutine, Deque, Optional, Tuple
+from typing import Any, Coroutine, Deque, Literal, Optional, Tuple
 
 import numpy as np
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
@@ -253,7 +253,9 @@ class UnitreeGo2(BaseMobileRobot):
             self.is_connected = False
             self._connection_loop = None
 
-    def get_observation(self, is_simulation: bool) -> Tuple[np.ndarray, np.ndarray]:
+    def get_observation(
+        self, source: Literal["sim", "robot"]
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 

@@ -1116,7 +1116,7 @@ class BaseManipulator(BaseRobot):
 
     def get_observation(
         self,
-        is_simulation: bool,
+        source: Literal["sim", "robot"],
         do_forward: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -1130,10 +1130,7 @@ class BaseManipulator(BaseRobot):
             - joints_position: np.array joints position of the robot
         """
 
-        if is_simulation:
-            joints_position = self.read_joints_position(unit="rad", source="sim")
-        else:
-            joints_position = self.read_joints_position(unit="rad", source="robot")
+        joints_position = self.read_joints_position(unit="rad", source=source)
 
         if do_forward:
             effector_position, effector_orientation_euler_rad = (
