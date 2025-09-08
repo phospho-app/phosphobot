@@ -131,8 +131,8 @@ async def start_recording_episode(
             ):
                 continue
             else:
-                actions_robots_mapping[i] = "sim"
-                observations_robots_mapping[i] = "robot"
+                actions_robots_mapping[i] = "robot"
+                observations_robots_mapping[i] = "sim"
                 robots_to_record += 1
 
     if robots_to_record == 0:
