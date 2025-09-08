@@ -202,7 +202,19 @@ You can extend **phosphobot** by plugging in support for any custom robot. Just 
 
 1. **Install phosphobot from source** (see instructions just above)
 
-2. **Create your robot driver**
+2. **Run phosphobot with simulation GUI** When running phosphobot, use the `--simulation=gui` flag to display the pybullet GUI in a new window. This way, you can check if keyboard control and VR control actually work in simulation before trying it on hardware.
+
+3. **Use the URDF Loader to try you robot**. phosphobot uses [pybullet](https://pybullet.org/wordpress/) ([docs](https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit?tab=t.0)) as a robotics simulation backend.
+
+   In PyBullet, the 3D representation, geometry and constraints of a robot is called a URDF. You can create a first version of the URDF of your robot by **finding one online** (usually: exported from a CAD software) or **writing your own** (it's just a XML file with some conventions). We recommend you work on that with ChatGPT or Gemini 2.5 Pro. There are different variations of the URDF file, so make sure yours is compatible with pybullet.
+
+   To load the URDF, click on the robot status icon, then **Add a robot**, and finally **use the URDF loader**. [Check out this video on how to do that.](https://www.youtube.com/watch?v=MjSmL11Lnlw). You should see the robot appear in the simulation window.
+
+   Pay attention to the ways the joints bends and the limits set in the urdf. Make sure to iterate until it's sensible.
+
+   When you're satisfied with your `urdf`, add it to `phosphobot/resources/urdf`.
+
+4. **Create your robot driver**
 
    In the directory `phosphobot/phosphobot/hardware` add a new file, e.g. `my_robot.py`. Inside, define a class inheriting from `BaseRobot`:
 
@@ -217,17 +229,12 @@ You can extend **phosphobot** by plugging in support for any custom robot. Just 
        ... # Implement the BaseRobot's abstract methods here
    ```
 
-   We use [pybullet](https://pybullet.org/wordpress/) ([docs](https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit?tab=t.0)) as a robotics simulation backend. Make sure to add your robot's `urdf` in `phosphobot/resources/urdf`.
-
-3. **Make your robot detectable**
+5. **Make your robot detectable**
    Open `phosphobot/phosphobot/robot.py` and locate the `RobotConnectionManager` class. Make sure your robot can be detected.
 
-4. **Try in simulation first**
+   As an alternative, when running phosphobot, use the `--only-simulation` flag and `config.ONLY_SIMULATION` to force the `RobotConnectionManager` to detect your robot, even if it's not connected to hardware. You'll need to change the `RobotConnectionManager` so that it's actually your robot that gets loaded.
 
-   1. When running phosphobot, use the `--only-simulation` flag and `config.ONLY_SIMULATION` to force the `RobotConnectionManager` to detect your robot, even if it's not connected to hardware. You'll need to change the `RobotConnectionManager` so that it's actually your robot that gets loaded.
-
-   2. When running phosphobot, use the `--simulation=gui` flag to display the pybullet GUI. This way, you can check if keyboard control and VR control actually work in simulation before trying it on hardware. Pay attention to the ways the joints bends and the limits set in the urdf.
-
+6. **Try on a real robot.** How you connect to the robot and make it move depends directly on your hardware. Look for python library from the manufacturer.
    Some general advice: go step by step, don't make any drastic movements, check what values you send to the motors before writing to them, keep your robot near mattresses if ever it falls, keep it away from pets, children, or expensive furniture.
 
 Build and run the app again and ensure your robot gets detected and can be moved. Happy with your changes? Open a pull request! We also recommend you look for testers on [our Discord](https://discord.gg/cbkggY6NSK).
