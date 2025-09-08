@@ -1,5 +1,6 @@
 import os
 from copy import copy
+from typing import Dict, Literal
 
 from fastapi import (
     APIRouter,
@@ -96,49 +97,39 @@ async def start_recording_episode(
 
     # Compute the number of connected robots and remove leader arms
     robots_to_record = 0
-    robots_for_actions_real = []
-    robots_for_actions_sim = []
-    robots_for_observations_real = []
+    actions_robots_mapping: Dict[int, Literal["sim", "robot"]] = {}
+    observations_robots_mapping: Dict[int, Literal["sim", "robot"]] = {}
+
+    robots = await rcm.robots
 
     from phosphobot.endpoints.control import (
         signal_leader_follower,
     )
 
-    for robot in await rcm.robots:
+    if query.robot_serials_to_ignore is None:
+        query.robot_serials_to_ignore = []
+    if query.leader_arm_ids is None:
+        query.leader_arm_ids = []
+
+    for i, robot in enumerate(robots):
         if signal_leader_follower.is_in_loop():
-            if (
-                hasattr(robot, "SERIAL_ID")
-                and query.leader_arm_ids is not None
-                and robot.SERIAL_ID in query.leader_arm_ids
-            ):
-                robots_for_actions_real.append(robot)
+            # Leader-follower mode
+            if getattr(robot, "SERIAL_ID", None) in query.leader_arm_ids:
+                # The leader arm is recorded for the action
+                actions_robots_mapping[i] = "sim"
                 robots_to_record += 1
-            elif (
-                hasattr(robot, "SERIAL_ID")
-                and query.robot_serials_to_ignore is not None
-                and robot.SERIAL_ID in query.robot_serials_to_ignore
-            ):
+            elif getattr(robot, "SERIAL_ID", None) in query.robot_serials_to_ignore:
+                # Ignore robots that are in the ignore list
                 continue
             else:
-                robots_for_observations_real.append(robot)
+                # The follower arms are recorded for the observation
+                observations_robots_mapping[i] = "robot"
                 robots_to_record += 1
-        else:
-            if (hasattr(robot, "SERIAL_ID")) and (
-                query.robot_serials_to_ignore is not None
-                and robot.SERIAL_ID in query.robot_serials_to_ignore
-            ):
-                continue
-            else:
-                robots_for_observations_real.append(robot)
-                robots_for_actions_sim.append(robot)
-                robots_to_record += 1
-
-    logger.warning(f"""
-
-Recording episode with {robots_to_record} robots.
-robots_for_actions_real: {len(robots_for_actions_real)}
-robots_for_actions_sim: {len(robots_for_actions_sim)}
-robots_for_observations_real: {len(robots_for_observations_real)}""")
+        elif getattr(robot, "SERIAL_ID", None) not in query.robot_serials_to_ignore:
+            # Not in leader-follower mode: record all robots that are not ignored
+            actions_robots_mapping[i] = "sim"
+            observations_robots_mapping[i] = "robot"
+            robots_to_record += 1
 
     if robots_to_record == 0:
         raise HTTPException(
@@ -166,16 +157,16 @@ robots_for_observations_real: {len(robots_for_observations_real)}""")
             dataset_action_dim = info_model.features.action.shape[0]
             # Calculate expected action dimensions from connected robots
             expected_action_dim = 0
-            for robot in robots_for_actions_sim + robots_for_actions_real:
-                assert isinstance(robot, BaseManipulator), (
+            for robot_idx in actions_robots_mapping.keys():
+                assert isinstance(robots[robot_idx], BaseManipulator), (
                     "Robot must be an instance of BaseManipulator."
                 )
             # We don't do both for loops together as some robots may be in both lists
-            for robot in robots_for_observations_real:
-                assert isinstance(robot, BaseManipulator), (
+            for robot_idx in observations_robots_mapping.keys():
+                assert isinstance(robots[robot_idx], BaseManipulator), (
                     "Robot must be an instance of BaseManipulator."
                 )
-                base_robot_info = robot.get_info_for_dataset()
+                base_robot_info = robots[robot_idx].get_info_for_dataset()
                 expected_action_dim += base_robot_info.action.shape[0]
 
             if expected_action_dim != dataset_action_dim:
@@ -208,9 +199,9 @@ robots_for_observations_real: {len(robots_for_observations_real)}""")
         codec=query.video_codec or config.DEFAULT_VIDEO_CODEC,
         freq=query.freq or config.DEFAULT_FREQ,
         branch_path=query.branch_path,
-        robots_for_actions_real=robots_for_actions_real,  # type: ignore
-        robots_for_actions_sim=robots_for_actions_sim,  # type: ignore
-        robots_for_observations_real=robots_for_observations_real,  # type: ignore
+        robots=robots,
+        actions_robots_mapping=actions_robots_mapping,
+        observations_robots_mapping=observations_robots_mapping,
         target_size=query.target_video_size
         or (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1]),
         cameras_ids_to_record=cameras_ids_to_record,

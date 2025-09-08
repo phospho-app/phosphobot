@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Literal, Optional, Tuple
 import httpx
 import numpy as np
 
@@ -90,7 +90,9 @@ class RemotePhosphobot(BaseRobot):
             logger.warning(f"Failed to disconnect from remote phosphobot: {e}")
             raise Exception(f"Disconnection failed: {e}")
 
-    def get_observation(self, is_simulation: bool) -> Tuple[np.ndarray, np.ndarray]:
+    def get_observation(
+        self, source: Literal["sim", "robot"]
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
 
@@ -103,7 +105,9 @@ class RemotePhosphobot(BaseRobot):
             "/end-effector/read", params={"robot_id": self.robot_id}
         ).json()
         joints = self.client.post(
-            "/joints/read", json={"unit": "rad"}, params={"robot_id": self.robot_id}
+            "/joints/read",
+            json={"unit": "rad", "source": source},
+            params={"robot_id": self.robot_id},
         ).json()
         state = np.array(
             [

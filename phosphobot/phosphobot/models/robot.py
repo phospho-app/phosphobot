@@ -53,7 +53,9 @@ class BaseRobot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_observation(self, is_simulation: bool) -> tuple[np.ndarray, np.ndarray]:
+    def get_observation(
+        self, source: Literal["sim", "robot"]
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
         This method should return the observation of the robot.

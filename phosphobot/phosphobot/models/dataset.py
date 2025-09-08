@@ -263,11 +263,11 @@ class BaseEpisode(BaseModel, ABC):
                 next_step is not None
                 and curr_step.observation.timestamp is not None
                 and next_step.observation.timestamp is not None
-                and curr_step.observation.joints_position is not None
-                and next_step.observation.joints_position is not None
+                and curr_step.action is not None
+                and next_step.action is not None
             ):
                 # if the current step is all NAN, skip
-                if np.isnan(curr_step.observation.joints_position).all():
+                if np.isnan(curr_step.action).all():
                     logger.warning(
                         f"Skipping step {index} because all joints positions are NaN"
                     )
@@ -283,10 +283,10 @@ class BaseEpisode(BaseModel, ABC):
                 )
 
                 # Fill empty values from the next step joints with the current step
-                next_step.observation.joints_position = np.where(
-                    np.isnan(next_step.observation.joints_position),
-                    curr_step.observation.joints_position,
-                    next_step.observation.joints_position,
+                next_step.action = np.where(
+                    np.isnan(next_step.action),
+                    curr_step.action,
+                    next_step.action,
                 )
 
                 # Perform interpolation steps
@@ -297,9 +297,7 @@ class BaseEpisode(BaseModel, ABC):
                     t = i / interpolation_factor
 
                     # Interpolate between the current and next step
-                    interp_value = t * (next_step.observation.joints_position) + (
-                        1 - t
-                    ) * (curr_step.observation.joints_position)
+                    interp_value = t * (next_step.action) + (1 - t) * (curr_step.action)
 
                     if index % 20 == 0 and i == 0:
                         logger.info(f"Playing step {index}")
@@ -313,7 +311,11 @@ class BaseEpisode(BaseModel, ABC):
             else:
                 # Handle last step or cases where timestamp is None
                 start_time = time.perf_counter()
-                move_robots(curr_step.observation.joints_position)
+                if (
+                    curr_step.action is not None
+                    and not np.isnan(curr_step.action).all()
+                ):
+                    move_robots(curr_step.action)
 
 
 class JsonEpisode(BaseEpisode):

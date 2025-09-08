@@ -140,7 +140,7 @@ class URDFLoader(BaseManipulator):
         self.is_connected = False
 
     def get_observation(
-        self, is_simulation: bool, do_forward: bool = False
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Gets the robot's observation. If ZMQ is configured, it will initialize the
