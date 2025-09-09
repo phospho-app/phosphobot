@@ -34,13 +34,13 @@ class PhosphobotClient:
 
     async def move_relative(
         self,
-        x: float,
-        y: float,
-        z: float,
-        rx: float,
-        ry: float,
-        rz: float,
-        gripper: float,
+        x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        rx: float = 0.0,
+        ry: float = 0.0,
+        rz: float = 0.0,
+        gripper: Optional[float] = None,
     ) -> None:
         response = await self.client.post(
             "/move/relative",
@@ -159,7 +159,7 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
 
     async def run(
         self, images: List[genai.types.Part]
-    ) -> Optional[GeminiAgentResponse]:
+    ) -> Tuple[Optional[GeminiAgentResponse], Optional[str]]:
         """
         Run the agent for 1 step.
         """
@@ -175,15 +175,7 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
         for attempt in range(max_retries):
             try:
                 response = self.genai_client.models.generate_content(
-                    model=self.model_id,
-                    contents=contents,
-                    config=genai.types.GenerateContentConfig(
-                        thinking_config=genai.types.ThinkingConfig(
-                            thinking_budget=self.thinking_budget
-                        )
-                        if self.thinking_budget > 0
-                        else None
-                    ),
+                    model=self.model_id, contents=contents, config=self.config
                 )
                 break  # Success, exit retry loop
             except ServerError as e:
@@ -205,7 +197,7 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
                 error_dict = e.args[1] if len(e.args) > 1 else {}
 
                 # Handle 429 RESOURCE_EXHAUSTED errors
-                if e.status_code == 429:
+                if e.code == 429:
                     # Extract retry delay from error details if available
                     custom_retry_delay = retry_delay
                     if "error" in error_dict and "details" in error_dict["error"]:
@@ -242,10 +234,10 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
         #     }
         # )
         # self.chat_history.append({"role": "model", "parts": [response.text]})
-
+        raw = response.text
         command: Optional[GeminiAgentResponse] = response.parsed
 
-        return command
+        return command, raw
 
 
 class RoboticAgent:
@@ -365,15 +357,16 @@ class RoboticAgent:
                 )
                 continue
             # Run the Gemini agent
-            next_command = await self.gemini_agent.run(images=images)
-            yield "step_output", {"output": f"Next command: {next_command}"}
+            next_command, raw = await self.gemini_agent.run(images=images)
+            yield (
+                "step_output",
+                {"output": f"Next command: {next_command} (raw: {raw})"},
+            )
             # Execute the command
             execution_result = await self.execute_command(next_command)
             yield (
                 "step_output",
-                {
-                    "output": f"Executed command: {next_command}, Result: {execution_result}"
-                },
+                {"output": f"Execution result: {execution_result}"},
             )
 
         yield "step_done", {"success": True}
