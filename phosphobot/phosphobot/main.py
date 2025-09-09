@@ -1,4 +1,4 @@
-from asyncio import CancelledError
+import asyncio
 from loguru import logger
 
 logger.info("Starting phosphobot...")
@@ -85,8 +85,6 @@ import time
 from typing import Annotated
 
 import typer
-import uvicorn
-from phosphobot.configs import config
 from phosphobot.types import SimulationMode
 
 
@@ -226,6 +224,7 @@ def update():
 
 @cli.command()
 def run(
+    fly: Annotated[bool, typer.Option(help="Run phosphobot in fly mode.")] = False,
     host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
     simulation: Annotated[
@@ -291,168 +290,49 @@ def run(
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
     """
+    from phosphobot.app import start_server
 
-    config.SIM_MODE = simulation
-    config.ONLY_SIMULATION = only_simulation
-    config.SIMULATE_CAMERAS = simulate_cameras
-    config.ENABLE_REALSENSE = realsense
-    config.ENABLE_CAMERAS = cameras
-    config.PORT = port
-    config.PROFILE = profile
-    config.CRASH_TELEMETRY = crash_telemetry  # Enable crash telemetry by default
-    config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
-    config.ENABLE_CAN = can
-    config.MAX_OPENCV_INDEX = max_opencv_index
-
-    if not telemetry:
-        config.CRASH_TELEMETRY = False
-        config.USAGE_TELEMETRY = False
-
-    # Start the FastAPI app using uvicorn with port retry logic
-    ports = [port]
-    if port == 80:
-        ports += list(range(8020, 8040))  # 8020-8039 inclusive
-
-    success = False
-    for current_port in ports:
-        if is_port_in_use(current_port, host):
-            logger.warning(f"Port {current_port} is unavailable. Trying next...")
-            continue
-
-        try:
-            # Update config with current port
-            config.PORT = current_port
-
-            uvicorn.run(
-                "phosphobot.app:app",
+    if not fly:
+        asyncio.run(
+            start_server(
                 host=host,
-                port=current_port,
+                port=port,
+                simulation=simulation,
+                only_simulation=only_simulation,
+                simulate_cameras=simulate_cameras,
+                realsense=realsense,
+                can=can,
+                cameras=cameras,
+                max_opencv_index=max_opencv_index,
                 reload=reload,
-                timeout_graceful_shutdown=1,
+                profile=profile,
+                crash_telemetry=crash_telemetry,
+                usage_telemetry=usage_telemetry,
+                telemetry=telemetry,
             )
-            success = True
-            break
-        except OSError as e:
-            if "address already in use" in str(e).lower():
-                logger.warning(f"Port conflict on {current_port}: {e}")
-                continue
-            logger.error(f"Critical server error: {e}")
-            raise typer.Exit(code=1)
-        except KeyboardInterrupt:
-            logger.debug("Server stopped by user.")
-            raise typer.Exit(code=0)
-        except CancelledError:
-            logger.debug("Server shutdown gracefully.")
-            raise typer.Exit(code=0)
-        # Log the full traceback for unexpected errors
-        # except Exception as e:
-        #     logger.error(f"Unexpected error: {e}")
-        #     raise typer.Exit(code=1)
-
-    if not success:
-        logger.warning(
-            "All ports failed. Try a custom port with:\n"
-            "phosphobot run --port 8000\n\n"
-            "Check used ports with:\n"
-            "sudo lsof -i :80 # Replace 80 with your port"
         )
-        raise typer.Exit(code=1)
+    else:
+        # Launch in fly mode
+        from phosphobot.fly.app import AgentApp
 
-
-@cli.command()
-def fly(
-    host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
-    port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
-    simulation: Annotated[
-        SimulationMode,
-        typer.Option(
-            help="Run the simulation in headless or gui mode.",
-        ),
-    ] = SimulationMode.headless,
-    only_simulation: Annotated[
-        bool, typer.Option(help="Only run the simulation.")
-    ] = False,
-    simulate_cameras: Annotated[
-        bool,
-        typer.Option(help="Simulate a classic camera and a secondary classic camera."),
-    ] = False,
-    realsense: Annotated[
-        bool,
-        typer.Option(help="Enable the RealSense camera."),
-    ] = True,
-    can: Annotated[
-        bool,
-        typer.Option(
-            help="Enable the CAN scanning. If False, CAN devices will not detected. Useful in case of conflicts.",
-        ),
-    ] = True,
-    cameras: Annotated[
-        bool,
-        typer.Option(
-            help="Enable the cameras. If False, no camera will be detected. Useful in case of conflicts.",
-        ),
-    ] = True,
-    max_opencv_index: Annotated[
-        int,
-        typer.Option(
-            help="Maximum OpenCV index to search for cameras. Default is 10.",
-        ),
-    ] = 10,
-    reload: Annotated[
-        bool,
-        typer.Option(
-            help="(dev) Reload the server on file changes. Do not use when cameras are running."
-        ),
-    ] = False,
-    profile: Annotated[
-        bool,
-        typer.Option(
-            help="(dev) Enable performance profiling. This generates profile.html."
-        ),
-    ] = False,
-    crash_telemetry: Annotated[
-        bool,
-        typer.Option(help="Disable crash reporting."),
-    ] = True,
-    usage_telemetry: Annotated[
-        bool,
-        typer.Option(help="Disable usage analytics."),
-    ] = True,
-    telemetry: Annotated[
-        bool,
-        typer.Option(help="Disable all telemetry (Crash and Usage)."),
-    ] = True,
-):
-    """
-    🦋 [green]Run the phosphobot fly agent.[/green] Control your robot by chatting.
-    """
-    # Start by launching the phosphobot server in a separate thread
-    thread = threading.Thread(
-        target=run,
-        kwargs={
-            "host": host,
-            "port": port,
-            "simulation": simulation,
-            "only_simulation": only_simulation,
-            "simulate_cameras": simulate_cameras,
-            "realsense": realsense,
-            "can": can,
-            "cameras": cameras,
-            "max_opencv_index": max_opencv_index,
-            "reload": reload,
-            "profile": profile,
-            "crash_telemetry": crash_telemetry,
-            "usage_telemetry": usage_telemetry,
-            "telemetry": telemetry,
-        },
-    )
-    thread.daemon = True  # Ensure the thread exits when the main program does
-    thread.start()
-
-    # Then launch the fly agent
-    from phosphobot.fly.app import AgentApp
-
-    AgentApp().run()
+        app = AgentApp(
+            server_config={
+                "host": host,
+                "port": port,
+                "simulation": simulation,
+                "only_simulation": only_simulation,
+                "simulate_cameras": simulate_cameras,
+                "realsense": realsense,
+                "can": can,
+                "cameras": cameras,
+                "max_opencv_index": max_opencv_index,
+                "profile": profile,
+                "crash_telemetry": crash_telemetry,
+                "usage_telemetry": usage_telemetry,
+                "telemetry": telemetry,
+            }
+        )
+        app.run()
 
 
 if __name__ == "__main__":

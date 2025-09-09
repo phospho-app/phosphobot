@@ -1,6 +1,7 @@
 import asyncio
 import datetime
-from typing import Iterable, List, Optional
+import logging
+from typing import Any, Dict, Iterable, Optional
 
 from phosphobot.fly.agent import RoboticAgent
 from rich.text import Text
@@ -8,7 +9,7 @@ from textual.app import App, ComposeResult, SystemCommand
 from textual.message import Message
 from textual.reactive import var
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, RichLog
+from textual.widgets import Footer, Input, RichLog
 
 
 class AgentScreen(Screen):
@@ -16,7 +17,6 @@ class AgentScreen(Screen):
 
     def compose(self) -> ComposeResult:
         """Create the UI layout and widgets."""
-        yield Header()
         yield RichLog(id="chat-log", wrap=True, highlight=True)
         yield Input(placeholder="Type a prompt and press Enter...", id="chat-input")
         yield Footer()
@@ -27,6 +27,15 @@ class AgentScreen(Screen):
             "Welcome! Enter a prompt or press Ctrl+P for commands.", "system"
         )
         self.query_one(Input).focus()
+
+        # --- ADD THE LOGGING LOGIC HERE ---
+        log_widget = self.query_one(RichLog)
+        handler = RichLogHandler(log_widget)
+
+        # Configure uvicorn's loggers to use this handler
+        logging.getLogger("uvicorn.error").addHandler(handler)
+        logging.getLogger("uvicorn.access").addHandler(handler)
+        # --- END OF ADDITION --
 
     def set_running_state(self, running: bool) -> None:
         """Update UI based on agent running state."""
@@ -53,6 +62,16 @@ class AgentScreen(Screen):
         elif who == "system":
             style, prefix = "italic dim", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
+
+
+class RichLogHandler(logging.Handler):
+    def __init__(self, rich_log: RichLog):
+        super().__init__()
+        self.rich_log = rich_log
+
+    def emit(self, record):
+        message = self.format(record)
+        self.rich_log.write(f"[DIM]{record.name}[/DIM] - {message}")
 
 
 class AgentApp(App):
@@ -94,6 +113,10 @@ class AgentApp(App):
             self.payload = payload
             super().__init__()
 
+    def __init__(self, server_config: Dict[str, Any]) -> None:
+        super().__init__()
+        self.server_config = server_config
+
     def _get_main_screen(self) -> Optional[AgentScreen]:
         """Safely gets the main screen instance, returning None if not ready."""
         try:
@@ -104,9 +127,15 @@ class AgentApp(App):
             return None
         return None
 
+    # In AgentApp's on_mount
     def on_mount(self) -> None:
         """Called when the app is mounted."""
         self.push_screen("main")
+
+    async def start_server(self) -> None:
+        from phosphobot.app import start_server
+
+        start_server(**self.server_config)
 
     def watch_is_running(self, running: bool) -> None:
         """Update the main screen's UI based on the running state."""
@@ -202,3 +231,8 @@ class AgentApp(App):
 
         screen.query_one(RichLog).clear()
         screen._write_to_log("Log cleared.", "system")
+
+
+if __name__ == "__main__":
+    app = AgentApp(server_config={})
+    app.run()

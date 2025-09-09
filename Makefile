@@ -14,7 +14,7 @@ prod:
 
 # Fly agent run
 fly:
-	cd phosphobot && uv run --python 3.10 phosphobot fly --simulation=headless --no-crash-telemetry
+	cd phosphobot && uv run --python 3.10 phosphobot run --fly --simulation=headless --no-crash-telemetry
 
 # Same as prod, but with the simulation GUI (useful when adding new robots to test)
 prod_gui:
