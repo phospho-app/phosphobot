@@ -296,6 +296,7 @@ def run(
         start_server(
             host=host,
             port=port,
+            reload=reload,
             simulation=simulation,
             only_simulation=only_simulation,
             simulate_cameras=simulate_cameras,
@@ -303,7 +304,6 @@ def run(
             can=can,
             cameras=cameras,
             max_opencv_index=max_opencv_index,
-            reload=reload,
             profile=profile,
             crash_telemetry=crash_telemetry,
             usage_telemetry=usage_telemetry,
@@ -319,6 +319,7 @@ def run(
             args=(
                 host,
                 port,
+                reload,
                 simulation,
                 only_simulation,
                 simulate_cameras,
@@ -326,7 +327,6 @@ def run(
                 can,
                 cameras,
                 max_opencv_index,
-                reload,
                 profile,
                 crash_telemetry,
                 usage_telemetry,

@@ -104,6 +104,7 @@ class GeminiAgentResponse(BaseModel):
         "move_gripper_down",
         "close_gripper",
         "open_gripper",
+        "nothing",
     ]
 
 
@@ -277,6 +278,8 @@ class RoboticAgent:
                 image = cv2.imdecode(
                     np.frombuffer(image_data, np.uint8), cv2.IMREAD_COLOR
                 )
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
                 if image is not None:
                     image = cv2.resize(
                         image, self.images_sizes, interpolation=cv2.INTER_AREA
@@ -305,6 +308,9 @@ class RoboticAgent:
         """
         if command is None:
             logger.warning("No command received. Skipping execution.")
+            return None
+        if command == "nothing":
+            logger.info("Received 'nothing' command. Skipping execution.")
             return None
 
         # Use a mapping to convert command strings to function calls
