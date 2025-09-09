@@ -174,7 +174,7 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
 
         for attempt in range(max_retries):
             try:
-                response = self.genai_client.models.generate_content(
+                response = await self.genai_client.aio.models.generate_content(
                     model=self.model_id, contents=contents, config=self.config
                 )
                 break  # Success, exit retry loop
