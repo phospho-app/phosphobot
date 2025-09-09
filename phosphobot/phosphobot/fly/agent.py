@@ -317,7 +317,7 @@ class RoboticAgent:
         command_map = {
             "rotate_left": {"rz": 10},
             "rotate_right": {"rz": -10},
-            "move_forward": {"x": 0.1},
+            "move_forward": {"x": 5},
             "move_backward": {"x": -5},
             "move_up": {"z": 5},
             "move_down": {"z": -5},
