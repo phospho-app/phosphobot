@@ -156,7 +156,9 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
             response_schema=GeminiAgentResponse,
         )
 
-    async def run(self, images: List[genai.types.Part]) -> GeminiAgentResponse:
+    async def run(
+        self, images: List[genai.types.Part]
+    ) -> Optional[GeminiAgentResponse]:
         """
         Run the agent for 1 step.
         """
@@ -240,9 +242,7 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
         # )
         # self.chat_history.append({"role": "model", "parts": [response.text]})
 
-        command: GeminiAgentResponse = response.parsed
-
-        # Interpret the command and execute it
+        command: Optional[GeminiAgentResponse] = response.parsed
 
         return command
 
@@ -298,11 +298,15 @@ class RoboticAgent:
         return resized_frames
 
     async def execute_command(
-        self, command: GeminiAgentResponse
+        self, command: Optional[GeminiAgentResponse]
     ) -> Optional[Dict[str, float]]:
         """
         Execute the command by moving the robot.
         """
+        if command is None:
+            logger.warning("No command received. Skipping execution.")
+            return None
+
         # Use a mapping to convert command strings to function calls
         command_map = {
             "rotate_left": {"rx": -10},
@@ -318,7 +322,7 @@ class RoboticAgent:
         }
         next_robot_move = command_map.get(command.next_robot_move)
         if next_robot_move is None:
-            logger.error(
+            logger.warning(
                 f"Invalid command received: {command.next_robot_move}. Skipping execution."
             )
             return
@@ -362,7 +366,7 @@ class RoboticAgent:
             yield (
                 "step_output",
                 {
-                    "output": f"Executed command: {next_command.next_robot_move}, Result: {execution_result}"
+                    "output": f"Executed command: {next_command}, Result: {execution_result}"
                 },
             )
 
