@@ -306,16 +306,28 @@ class PiperHardware(BaseManipulator):
 
     def read_joints_position(
         self,
-        unit: Literal["rad", "motor_units", "degrees", "other"] = "motor_units",
+        unit: Literal["rad", "motor_units", "degrees", "other"] = "rad",
         source: Literal["sim", "robot"] = "robot",
+        joints_ids: Optional[List[int]] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ) -> np.ndarray:
         """
         Read the position of the joints. This should return the position in motor units.
         """
         # The parent method reads the joints, but not the gripper.
-        joints = super().read_joints_position(unit=unit, source=source)
+        joints = super().read_joints_position(
+            unit=unit,
+            source=source,
+            joints_ids=joints_ids,
+            min_value=min_value,
+            max_value=max_value,
+        )
+
         # Add the gripper position if it is not already present
-        if len(joints) < self.gripper_servo_id:
+        if len(joints) < self.gripper_servo_id and (
+            joints_ids is None or self.gripper_servo_id in joints_ids
+        ):
             gripper_position = self.read_gripper_command()
             # Don't rescale the gripper position (need more R&D)
             joints = np.array(joints.tolist() + [gripper_position]).astype(np.float32)
