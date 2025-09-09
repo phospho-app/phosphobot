@@ -318,7 +318,8 @@ class PiperHardware(BaseManipulator):
         if len(joints) < self.gripper_servo_id:
             gripper_position = self.read_gripper_command()
             # Don't rescale the gripper position (need more R&D)
-            joints = np.append(joints, gripper_position)
+            joints = np.array(joints.tolist() + [gripper_position]).astype(np.float32)
+        return joints
 
     def read_group_motor_position(self) -> np.ndarray:
         """
