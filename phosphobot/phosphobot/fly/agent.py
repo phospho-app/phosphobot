@@ -307,14 +307,14 @@ class RoboticAgent:
 
         # Use a mapping to convert command strings to function calls
         command_map = {
-            "rotate_left": {"rx": -10},
-            "rotate_right": {"rx": 10},
+            "rotate_left": {"rz": 10},
+            "rotate_right": {"rz": -10},
             "move_forward": {"x": 0.1},
             "move_backward": {"x": -5},
             "move_up": {"z": 5},
             "move_down": {"z": -5},
-            "move_gripper_up": {"ry": 10},
-            "move_gripper_down": {"ry": -10},
+            "move_gripper_up": {"rx": 10},
+            "move_gripper_down": {"rx": -10},
             "close_gripper": {"open": 1},
             "open_gripper": {"open": 0},
         }
