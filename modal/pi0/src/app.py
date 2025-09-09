@@ -1,19 +1,20 @@
 import os
 from pathlib import Path
+import asyncio
 
 import sentry_sdk
 from loguru import logger
 from typing import Optional
 
 import modal
-import socket
 import sys
+# TODO: remove this
 sys.path.insert(0, "/Users/ashish/git-repos/phosphobot/phosphobot")
 
-from phosphobot.am.pi0 import Pi0SpawnConfig
-# from phosphobot.am.base import TrainingParamsPi0
-# from phosphobot.models import InfoModel
-# from modal.utils import update_server_status
+from phosphobot.models import InfoModel
+from phosphobot.am.pi0 import Pi0SpawnConfig, Pi0, RetryError
+from phosphobot.am.base import TrainingParamsPi0
+from ..utils import _update_server_status, get_model_path, _upload_partial_checkpoint, InferenceRequest
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -80,7 +81,7 @@ pi0_volume = modal.Volume.from_name("pi0-volume", create_if_missing=True)
     timeout=FUNCTION_TIMEOUT_INFERENCE,
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        modal.Secret.from_name("supabase"),
+        # modal.Secret.from_name("supabase"),
     ],
     volumes={"/data": pi0_volume},
 )
@@ -88,6 +89,7 @@ async def serve(
     model_id: str,
     server_id: int,
     model_specifics: Pi0SpawnConfig,
+    checkpoint: int | None = None,
     timeout: int = FUNCTION_TIMEOUT_INFERENCE,
     q: Optional[modal.Queue] = None,
 ):
@@ -98,18 +100,19 @@ async def serve(
         model_id: The model identifier from HuggingFace or local path
         server_id: Database server ID for status tracking
         model_specifics: Pi0-specific configuration
+        checkpoint: model checkpoint to load
         timeout: Timeout in seconds
         q: Modal queue to pass tunnel info back to caller (since the function is running in a different process)
     """
-    # from datetime import datetime, timezone
+    import time
+    import json_numpy
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Response
+    from pydantic import BaseModel
+    import numpy as np
 
-    # import json_numpy
-    # import uvicorn
-    # from fastapi import FastAPI, HTTPException
-    # from pydantic import BaseModel
-
-    # import shutil
-    # import time
+    from phosphobot.am.pi0 import create_policy, format_observations_for_policy
+    from openpi.policies import policy as _policy
 
     # from huggingface_hub import snapshot_download  # type: ignore
     # from supabase import Client, create_client
@@ -118,151 +121,173 @@ async def serve(
     # SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     # supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    logger.info(f"🚀 Starting Pi0 server for model {model_id}")
+    # Start timer
+    start_time = time.time()
 
-    # Initialize Pi0 model
-    try:
-        from phosphobot.am.pi0 import create_policy, Pi0WebSocketServer
-        from openpi.policies import policy as _policy
+    # logger.info the region
+    logger.success(f"🌎 running in {os.environ['MODAL_REGION']} region")
 
-        # For Pi0, the server runs on a separate process/container
-        # We create a websocket client that connects to the Pi0 server
-        # pi0_policy = Pi0(
-        #     server_url=model_specifics.server_url,
-        #     server_port=model_specifics.server_port,
-        #     image_keys=model_specifics.image_keys,
-        # )
+    server_port = 80
 
-        policy = create_policy(model_specifics)
-        policy_metadata = policy.metadata
+    with modal.forward(server_port, unencrypted=True) as tunnel:
+        model_path = get_model_path(model_id=model_id, checkpoint=checkpoint)
 
-        # Record the policy's behavior.
-        if model_specifics.record:
-            policy = _policy.PolicyRecorder(policy, "policy_records")
+        try:
+            # TODO: Add model weights caching (in modal)
+            policy = create_policy(model_path)
+            policy_metadata = policy.metadata
 
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-        logger.info("Creating server (host: %s, ip: %s)", hostname, local_ip)
+            logger.info(f"Pi0 policy loaded successfully for {model_id}")
+            logger.info(f"Pi0 policy metadata: {policy_metadata}")
 
-        server = Pi0WebSocketServer(
-            policy=policy,
-            host="0.0.0.0",
-            port=model_specifics.port,
-            metadata=policy_metadata,
-        )
-        server.start()
+            # Initialize FastAPI app
+            app = FastAPI()
 
-        logger.info(f"Pi0 model initialized for {model_id}")
+            # input_features reflects the model input specifications
+            input_features = {}
+            input_features[model_specifics.state_key] = {
+                "shape": model_specifics.state_size
+            }
+            for video_key in model_specifics.video_keys:
+                input_features[video_key] = {"shape": model_specifics.video_size}
 
-    except Exception as e:
-        logger.error(f"Failed to start Pi0 server with model: {model_id}.\nError:{e}")
-        # Update server status in database
-        # try:
-        #     supabase_client.table("servers").update({
-        #         "status": "error",
-        #         "terminated_at": datetime.now(timezone.utc).isoformat(),
-        #     }).eq("id", server_id).execute()
-        # except Exception as db_e:
-        #     logger.error(f"Failed to update server status: {db_e}")
-        # raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
+            logger.info(f"Input features: {input_features}")
 
-    # Create FastAPI app for inference
-    # web_app = FastAPI()
+            @app.post("/get_action")
+            async def inference(request: InferenceRequest):
+                """Endpoint for Pi0 policy inference."""
+                nonlocal policy
 
-    # @web_app.get("/")
-    # async def root():
-    #     return {"message": f"Pi0 server running for model {model_id}"}
+                if policy is None:
+                    raise HTTPException(status_code=500, detail="Policy not loaded")
 
-    # @web_app.get("/info")
-    # async def get_info():
-    #     """Get model information."""
-    #     return InfoModel(
-    #         model_id=model_id,
-    #         model_type="pi0",
-    #         config=model_specifics.model_dump(),
-    #         status="running",
-    #     )
+                try:
+                    # Decode the double-encoded payload
+                    payload: dict = json_numpy.loads(request.encoded)
+                    # Default size for Paligemma
+                    target_size: tuple[int, int] = (224, 224)
 
-    # class InferenceRequest(BaseModel):
-    #     encoded: str  # JSON-encoded payload with images and state
+                    # Get feature names
+                    image_names = [
+                        feature
+                        for feature in input_features.keys()
+                        if "image" in feature
+                    ]
 
-    # @web_app.post("/pi0")
-    # async def inference(request: InferenceRequest):
-    #     """Pi0 inference endpoint."""
-    #     nonlocal pi0_policy
+                    if model_specifics.state_key not in payload:
+                        logger.error(
+                            f"{model_specifics.state_key} not found in payload"
+                        )
+                        raise ValueError(
+                            f"Missing required state key: {model_specifics.state_key} in payload"
+                        )
 
-    #     if pi0_policy is None:
-    #         raise HTTPException(status_code=500, detail="Pi0 policy not loaded")
+                    if len(image_names) > 0:
+                        # Look for any missing features in the payload
+                        missing_features = [
+                            feature
+                            for feature in input_features.keys()
+                            if feature not in payload
+                        ]
+                        if missing_features:
+                            logger.error(
+                                f"Missing features in payload: {missing_features}"
+                            )
+                            raise ValueError(
+                                f"Missing required features: {missing_features} in payload"
+                            )
 
-    #     try:
-    #         # Decode the payload
-    #         payload: dict = json_numpy.loads(request.encoded)
+                        shape = input_features[image_names[0]]["shape"]
+                        target_size = (shape[2], shape[1])
 
-    #         # Validate required keys
-    #         required_keys = ["images", "state", "prompt"]
-    #         missing_keys = [key for key in required_keys if key not in payload]
-    #         if missing_keys:
-    #             raise ValueError(f"Missing required keys: {missing_keys}")
+                    # Infer actions
+                    try:
+                        actions = Pi0.process_image(
+                            policy=policy,
+                            model_specifics=model_specifics,
+                            current_qpos=payload[model_specifics.state_key],
+                            images=[
+                                payload[video_key]
+                                for video_key in model_specifics.video_keys
+                                if video_key in payload
+                            ],
+                            image_names=image_names,
+                            target_size=target_size,
+                        )
+                    except RetryError as e:
+                        return Response(
+                            status_code=202,
+                            content=str(e),
+                        )
 
-    #         # Call Pi0 inference
-    #         actions = pi0_policy.sample_actions(payload)
+                    # Encode response using json_numpy
+                    response = json_numpy.dumps(actions)
+                    return response
 
-    #         # Encode response
-    #         response_data = {"actions": actions}
-    #         encoded_response = json_numpy.dumps(response_data)
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=str(e),
+                    )
 
-    #         return {"encoded": encoded_response}
+            # Send tunnel info back to caller if queue is provided
+            if q is not None:
+                tunnel_info = {
+                    "url": tunnel.url,
+                    "port": server_port,
+                    "tcp_socket": tunnel.tcp_socket,
+                    "model_id": model_id,
+                    "timeout": timeout,
+                    "server_id": server_id,
+                }
+                q.put(tunnel_info)
+                logger.info(f"Tunnel info sent to queue: {tunnel_info}")
 
-    #     except Exception as e:
-    #         logger.error(f"Pi0 inference error: {e}")
-    #         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+            logger.info(
+                f"Tunnel opened and server ready after {time.time() - start_time} seconds"
+            )
 
-    # # Start the server using Modal's built-in tunnel
-    # server_port = 8000
+            # Start the FastAPI server
+            config = uvicorn.Config(
+                app, host="0.0.0.0", port=server_port, log_level="info"
+            )
+            inference_fastapi_server = uvicorn.Server(config)
 
-    # with modal.forward(server_port, unencrypted=True) as tunnel:
-    #     logger.info(f"tunnel.tcp_socket = {tunnel.tcp_socket}")
+            # Run the server until timeout or interruption
+            try:
+                logger.info(f"Starting Inference FastAPI server on port {server_port}")
+                # Shutdown the server 10 seconds before the timeout to allow for cleanup
+                await asyncio.wait_for(
+                    inference_fastapi_server.serve(), timeout=timeout - 10
+                )
+            except asyncio.TimeoutError:
+                logger.info(
+                    "Timeout reached for Inference FastAPI server. Shutting down."
+                )
+                # _update_server_status(supabase_client, server_id, "stopped")
+            except Exception as e:
+                logger.error(f"Server error: {e}")
+                # _update_server_status(supabase_client, server_id, "failed")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Server error: {e}",
+                )
+            finally:
+                logger.info("Shutting down FastAPI server")
+                await inference_fastapi_server.shutdown()
 
-    #     # Update server info in database
-    #     try:
-    #         server_info = {
-    #             "url": tunnel.url,
-    #             "port": server_port,
-    #             "host": tunnel.tcp_socket[0],
-    #             "tcp_port": tunnel.tcp_socket[1],
-    #             "region": "modal",
-    #         }
+        except HTTPException as e:
+            logger.error(f"HTTPException during server setup: {e.detail}")
+            # _update_server_status(supabase_client, server_id, "failed")
+            raise e
 
-    #         # supabase_client.table("servers").update(server_info).eq("id", server_id).execute()
-    #         logger.info(f"server_info: {server_info}")
-
-    #         # Send server info through queue if provided
-    #         if q is not None:
-    #             from phosphobot.models import ServerInfo
-    #             q.put(ServerInfo(
-    #                 server_id=server_id,
-    #                 url=tunnel.url,
-    #                 port=server_port,
-    #                 tcp_socket=tunnel.tcp_socket,
-    #                 model_id=model_id,
-    #                 timeout=timeout,
-    #             ).model_dump())
-
-    #         logger.info(f"Pi0 server started at {tunnel.url}")
-
-    #     except Exception as e:
-    #         logger.error(f"Failed to update server info: {e}")
-    #         raise
-
-    #     # Start the web server
-    #     config = uvicorn.Config(
-    #         app=web_app,
-    #         host="0.0.0.0",
-    #         port=server_port,
-    #         log_level="info",
-    #     )
-    #     server = uvicorn.Server(config)
-    #     await server.serve()
+        except Exception as e:
+            logger.error(f"Error during server setup: {e}")
+            # _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error during server setup: {e}",
+            )
 
 
 # @app.function(
