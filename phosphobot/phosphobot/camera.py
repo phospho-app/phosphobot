@@ -1491,6 +1491,9 @@ class AllCameras:
         """
         frames: Dict[str, Optional[cv2.typing.MatLike]] = {}
         for camera in self.video_cameras:
+            if camera.is_active is False:
+                continue
+
             if camera.camera_type == "stereo":
                 camera = cast(StereoCamera, camera)
                 left_side = camera.get_left_eye_rgb_frame(resize=resize)

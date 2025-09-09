@@ -4,11 +4,11 @@ import os
 from typing import Dict, List, Literal, Optional, Tuple
 
 import cv2
+import httpx
+import numpy as np
 from google import genai
 from google.genai.errors import ClientError, ServerError
 from loguru import logger
-import httpx
-import numpy as np
 from pydantic import BaseModel
 
 
@@ -101,8 +101,8 @@ class GeminiAgentResponse(BaseModel):
     # and maybe more directions at once.
 
     next_robot_move: Literal[
-        "rotate_left",
-        "rotate_right",
+        "move_left",
+        "move_right",
         "move_forward",
         "move_backward",
         "move_up",
@@ -111,7 +111,7 @@ class GeminiAgentResponse(BaseModel):
         "move_gripper_down",
         "close_gripper",
         "open_gripper",
-        "nothing",
+        # "nothing",
     ]
 
 
@@ -140,10 +140,12 @@ class GeminiAgent:
 
     @property
     def prompt(self) -> str:
-        prompt = f"""You control a robot from an ego-centric 3D referential. You must guide the robot to complete a task using \
-step by step instructions to complete the task. The task is: "{self.task_description}"
-The robot can move in 3D space and has a gripper that you can fully open or close. The image provided is a snapshot of the robot arm \
-and its surroundings. Use the image to localize the robot, understand the task, and plan the next move.
+        prompt = f"""You control a green robot arm from an ego-centric 3D point of view. You must guide the robot arm using \
+step by step instructions to complete the task: "{self.task_description}"
+You control the robot arm in 3D space by moving the end effector. The end effector of the robot arm has a gripper that you can open and close. \
+The end effector is your main tool to interact with the environment.
+In the chat, the image provided is from a camera recording of the current position of the robot arm and its surroundings. \
+Use the image to localize the end effector, understand the task, and give the instruction for the next step.
 """
 
         # if len(self.previous_commands) > 0:
@@ -315,16 +317,16 @@ class RoboticAgent:
 
         # Use a mapping to convert command strings to function calls
         command_map = {
-            "rotate_left": {"rz": 10},
-            "rotate_right": {"rz": -10},
+            "move_left": {"rz": 10},
+            "move_right": {"rz": -10},
             "move_forward": {"x": 5},
             "move_backward": {"x": -5},
             "move_up": {"z": 5},
             "move_down": {"z": -5},
             "move_gripper_up": {"rx": 10},
             "move_gripper_down": {"rx": -10},
-            "close_gripper": {"open": 1},
-            "open_gripper": {"open": 0},
+            "close_gripper": {"gripper": 1},
+            "open_gripper": {"gripper": 0},
         }
         next_robot_move = command_map.get(command.next_robot_move)
         if next_robot_move is None:
