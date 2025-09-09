@@ -359,5 +359,101 @@ def run(
         raise typer.Exit(code=1)
 
 
+@cli.command()
+def fly(
+    host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
+    port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
+    simulation: Annotated[
+        SimulationMode,
+        typer.Option(
+            help="Run the simulation in headless or gui mode.",
+        ),
+    ] = SimulationMode.headless,
+    only_simulation: Annotated[
+        bool, typer.Option(help="Only run the simulation.")
+    ] = False,
+    simulate_cameras: Annotated[
+        bool,
+        typer.Option(help="Simulate a classic camera and a secondary classic camera."),
+    ] = False,
+    realsense: Annotated[
+        bool,
+        typer.Option(help="Enable the RealSense camera."),
+    ] = True,
+    can: Annotated[
+        bool,
+        typer.Option(
+            help="Enable the CAN scanning. If False, CAN devices will not detected. Useful in case of conflicts.",
+        ),
+    ] = True,
+    cameras: Annotated[
+        bool,
+        typer.Option(
+            help="Enable the cameras. If False, no camera will be detected. Useful in case of conflicts.",
+        ),
+    ] = True,
+    max_opencv_index: Annotated[
+        int,
+        typer.Option(
+            help="Maximum OpenCV index to search for cameras. Default is 10.",
+        ),
+    ] = 10,
+    reload: Annotated[
+        bool,
+        typer.Option(
+            help="(dev) Reload the server on file changes. Do not use when cameras are running."
+        ),
+    ] = False,
+    profile: Annotated[
+        bool,
+        typer.Option(
+            help="(dev) Enable performance profiling. This generates profile.html."
+        ),
+    ] = False,
+    crash_telemetry: Annotated[
+        bool,
+        typer.Option(help="Disable crash reporting."),
+    ] = True,
+    usage_telemetry: Annotated[
+        bool,
+        typer.Option(help="Disable usage analytics."),
+    ] = True,
+    telemetry: Annotated[
+        bool,
+        typer.Option(help="Disable all telemetry (Crash and Usage)."),
+    ] = True,
+):
+    """
+    🦋 [green]Run the phosphobot fly agent.[/green] Control your robot by chatting.
+    """
+    # Start by launching the phosphobot server in a separate thread
+    thread = threading.Thread(
+        target=run,
+        kwargs={
+            "host": host,
+            "port": port,
+            "simulation": simulation,
+            "only_simulation": only_simulation,
+            "simulate_cameras": simulate_cameras,
+            "realsense": realsense,
+            "can": can,
+            "cameras": cameras,
+            "max_opencv_index": max_opencv_index,
+            "reload": reload,
+            "profile": profile,
+            "crash_telemetry": crash_telemetry,
+            "usage_telemetry": usage_telemetry,
+            "telemetry": telemetry,
+        },
+    )
+    thread.daemon = True  # Ensure the thread exits when the main program does
+    thread.start()
+
+    # Then launch the fly agent
+    from phosphobot.fly.app import AgentApp
+
+    AgentApp().run()
+
+
 if __name__ == "__main__":
     cli()
