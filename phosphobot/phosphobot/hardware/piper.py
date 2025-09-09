@@ -178,7 +178,7 @@ class PiperHardware(BaseManipulator):
             name=self.name,
             servos_voltage=12.0,
             servos_offsets=[0] * len(self.SERVO_IDS),
-            servos_calibration_position=[0] * len(self.SERVO_IDS),
+            servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
         )
 
@@ -202,7 +202,7 @@ class PiperHardware(BaseManipulator):
             servos_voltage=12.0,
             servos_offsets=[0] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
-            servos_calibration_position=[0] * len(self.SERVO_IDS),
+            servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
         )
 
     def enable_torque(self) -> None:
