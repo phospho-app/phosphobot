@@ -293,45 +293,54 @@ def run(
     from phosphobot.app import start_server
 
     if not fly:
-        asyncio.run(
-            start_server(
-                host=host,
-                port=port,
-                simulation=simulation,
-                only_simulation=only_simulation,
-                simulate_cameras=simulate_cameras,
-                realsense=realsense,
-                can=can,
-                cameras=cameras,
-                max_opencv_index=max_opencv_index,
-                reload=reload,
-                profile=profile,
-                crash_telemetry=crash_telemetry,
-                usage_telemetry=usage_telemetry,
-                telemetry=telemetry,
-            )
+        start_server(
+            host=host,
+            port=port,
+            simulation=simulation,
+            only_simulation=only_simulation,
+            simulate_cameras=simulate_cameras,
+            realsense=realsense,
+            can=can,
+            cameras=cameras,
+            max_opencv_index=max_opencv_index,
+            reload=reload,
+            profile=profile,
+            crash_telemetry=crash_telemetry,
+            usage_telemetry=usage_telemetry,
+            telemetry=telemetry,
         )
     else:
+        # Create a new thread with the server
+        import threading
+
+        # Start the server in a separate thread
+        thread = threading.Thread(
+            target=start_server,
+            args=(
+                host,
+                port,
+                simulation,
+                only_simulation,
+                simulate_cameras,
+                realsense,
+                can,
+                cameras,
+                max_opencv_index,
+                reload,
+                profile,
+                crash_telemetry,
+                usage_telemetry,
+                telemetry,
+                True,  # silent mode to avoid logging text
+            ),
+            daemon=True,  # Ensure the thread exits when the main program exits
+        )
+        thread.start()
+
         # Launch in fly mode
         from phosphobot.fly.app import AgentApp
 
-        app = AgentApp(
-            server_config={
-                "host": host,
-                "port": port,
-                "simulation": simulation,
-                "only_simulation": only_simulation,
-                "simulate_cameras": simulate_cameras,
-                "realsense": realsense,
-                "can": can,
-                "cameras": cameras,
-                "max_opencv_index": max_opencv_index,
-                "profile": profile,
-                "crash_telemetry": crash_telemetry,
-                "usage_telemetry": usage_telemetry,
-                "telemetry": telemetry,
-            }
-        )
+        app = AgentApp()
         app.run()
 
 

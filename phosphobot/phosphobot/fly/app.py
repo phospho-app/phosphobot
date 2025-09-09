@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import Any, Dict, Iterable, Optional
+from typing import Iterable, Optional
 
 from phosphobot.fly.agent import RoboticAgent
 from rich.text import Text
@@ -27,15 +27,6 @@ class AgentScreen(Screen):
             "Welcome! Enter a prompt or press Ctrl+P for commands.", "system"
         )
         self.query_one(Input).focus()
-
-        # --- ADD THE LOGGING LOGIC HERE ---
-        log_widget = self.query_one(RichLog)
-        handler = RichLogHandler(log_widget)
-
-        # Configure uvicorn's loggers to use this handler
-        logging.getLogger("uvicorn.error").addHandler(handler)
-        logging.getLogger("uvicorn.access").addHandler(handler)
-        # --- END OF ADDITION --
 
     def set_running_state(self, running: bool) -> None:
         """Update UI based on agent running state."""
@@ -113,9 +104,8 @@ class AgentApp(App):
             self.payload = payload
             super().__init__()
 
-    def __init__(self, server_config: Dict[str, Any]) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.server_config = server_config
 
     def _get_main_screen(self) -> Optional[AgentScreen]:
         """Safely gets the main screen instance, returning None if not ready."""
@@ -131,11 +121,6 @@ class AgentApp(App):
     def on_mount(self) -> None:
         """Called when the app is mounted."""
         self.push_screen("main")
-
-    async def start_server(self) -> None:
-        from phosphobot.app import start_server
-
-        start_server(**self.server_config)
 
     def watch_is_running(self, running: bool) -> None:
         """Update the main screen's UI based on the running state."""
@@ -234,5 +219,5 @@ class AgentApp(App):
 
 
 if __name__ == "__main__":
-    app = AgentApp(server_config={})
+    app = AgentApp()
     app.run()
