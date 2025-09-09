@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 from typing import Dict, List, Literal, Optional, Tuple
 
@@ -7,6 +8,7 @@ from google import genai
 from google.genai.errors import ClientError, ServerError
 from loguru import logger
 import httpx
+import numpy as np
 from pydantic import BaseModel
 
 
@@ -111,11 +113,14 @@ class GeminiAgent:
         model_id: str = "gemini-2.5-flash",
         task_description: str = "Pick up white foam",
         thinking_budget: int = 0,
-        images_sizes: Optional[Tuple[int, int]] = (256, 256),
     ):
         """
         Robot-controlling agent using Gemini VLM.
         """
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
         if not os.environ.get("GEMINI_API_KEY"):
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
 
@@ -123,7 +128,7 @@ class GeminiAgent:
         self.thinking_budget = thinking_budget
         self.model_id = model_id
         self.phosphobot_client = PhosphobotClient()
-        self.images_sizes = images_sizes
+        self.task_description = task_description
 
     @property
     def prompt(self) -> str:
@@ -151,16 +156,14 @@ The robot can move in 3D space and has a gripper that you can fully open or clos
             response_schema=GeminiAgentResponse,
         )
 
-    async def run(self, images_b64: List[str]) -> GeminiAgentResponse:
+    async def run(self, images: List[genai.types.Part]) -> GeminiAgentResponse:
         """
         Run the agent for 1 step.
         """
 
         # Build the content list with prompt and images
         contents = [self.prompt]
-        contents.extend(
-            [genai.types.Part.from_text(text=frame) for frame in images_b64]
-        )
+        contents.extend(images)
 
         # Generate response with retry logic for ServerError and ClientError
         max_retries = 3
@@ -268,16 +271,27 @@ class RoboticAgent:
         for camera_id, frame in frames.items():
             # If the images_sizes is not None, decode the base64 image and resize it
             if self.images_sizes:
-                image_data = genai.types.Part.from_base64(frame)
-                image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+                # Use cv2 to decode the base64 image
+                image_data = base64.b64decode(frame)
+                # image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+                image = cv2.imdecode(
+                    np.frombuffer(image_data, np.uint8), cv2.IMREAD_COLOR
+                )
                 if image is not None:
                     image = cv2.resize(
                         image, self.images_sizes, interpolation=cv2.INTER_AREA
                     )
-                    frame = genai.types.Part.from_image(image)
+                    # Convert back to bytes
+                    _, resized_data = cv2.imencode(".jpg", image)
+                    frame = genai.types.Part.from_bytes(
+                        data=resized_data.tobytes(), mime_type="image/jpeg"
+                    )
                 else:
                     logger.error(f"Failed to decode image for camera {camera_id}.")
                     continue
+            else:
+                # If images_sizes is None, just convert the base64 string to a Part
+                frame = genai.types.Part.from_text(text=frame)
 
             resized_frames.append(frame)
 
@@ -333,15 +347,15 @@ class RoboticAgent:
         for i in range(10):
             yield "log", {"text": f"Step {i + 1} of 10."}
             # Get images
-            images_b64 = await self.get_images()
-            if not images_b64:
+            images = await self.get_images()
+            if not images:
                 yield (
                     "step_error",
                     {"error": "No images received from cameras. Skipping step."},
                 )
                 continue
             # Run the Gemini agent
-            next_command = await self.gemini_agent.run(images_b64=images_b64)
+            next_command = await self.gemini_agent.run(images=images)
             yield "step_output", {"output": f"Next command: {next_command}"}
             # Execute the command
             execution_result = await self.execute_command(next_command)

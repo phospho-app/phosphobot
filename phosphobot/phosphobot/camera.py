@@ -1495,13 +1495,11 @@ class AllCameras:
                 camera = cast(StereoCamera, camera)
                 left_side = camera.get_left_eye_rgb_frame(resize=resize)
                 right_side = camera.get_right_eye_rgb_frame(resize=resize)
-                frames[f"camera_{len(frames)}"] = left_side
-                frames[f"camera_{len(frames)}"] = right_side
-            elif camera.camera_type == "classic":
-                frame = camera.get_rgb_frame(resize=resize)
-                frames[f"camera_{len(frames)}"] = frame
+                frames[f"{camera.camera_id}_left"] = left_side
+                frames[f"{camera.camera_id}_right"] = right_side
             else:
-                logger.warning(f"Unknown camera type: {camera.camera_type}")
+                frame = camera.get_rgb_frame(resize=resize)
+                frames[f"{camera.camera_id}"] = frame
         return frames
 
     @property
