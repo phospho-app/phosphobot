@@ -87,6 +87,13 @@ class PhosphobotClient:
 
         return output
 
+    async def move_init(self) -> None:
+        """
+        Initialize the robot's position.
+        """
+        response = await self.client.post("/move/init")
+        response.raise_for_status()
+
 
 class GeminiAgentResponse(BaseModel):
     # Alternative solution: https://ai.google.dev/gemini-api/docs/function-calling?example=meetings
@@ -113,7 +120,7 @@ class GeminiAgent:
         self,
         model_id: str = "gemini-2.5-flash",
         task_description: str = "Pick up white foam",
-        thinking_budget: int = 0,
+        thinking_budget: int = 100,
     ):
         """
         Robot-controlling agent using Gemini VLM.
@@ -133,9 +140,10 @@ class GeminiAgent:
 
     @property
     def prompt(self) -> str:
-        prompt = f"""You control a robot with an ego-centric camera view. You must guide the robot to complete a task using \
-step by step instructions to complete the task. The task is: {self.task_description}
-The robot can move in 3D space and has a gripper that you can fully open or close. 
+        prompt = f"""You control a robot from an ego-centric 3D referential. You must guide the robot to complete a task using \
+step by step instructions to complete the task. The task is: "{self.task_description}"
+The robot can move in 3D space and has a gripper that you can fully open or close. The image provided is a snapshot of the robot arm \
+and its surroundings. Use the image to localize the robot, understand the task, and plan the next move.
 """
 
         # if len(self.previous_commands) > 0:

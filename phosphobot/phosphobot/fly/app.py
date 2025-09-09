@@ -146,6 +146,11 @@ class AgentApp(App):
             return
         screen._write_to_log(prompt, "user")
         agent = RoboticAgent(task_description=prompt)
+        if prompt.strip() == "/init":
+            screen._write_to_log("Moving robot to initial position", "system")
+            asyncio.create_task(agent.phosphobot_client.move_init())
+            return
+
         self.agent_task = self.run_worker(self._run_agent(agent), exclusive=True)
 
     async def _run_agent(self, agent: RoboticAgent) -> None:
