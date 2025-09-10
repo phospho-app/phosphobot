@@ -12,7 +12,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from phosphobot.camera import AllCameras, get_all_cameras, ZMQCamera
+from phosphobot.camera import AllCameras, ZMQCamera, get_all_cameras
 from phosphobot.models import AddZMQCameraRequest
 
 router = APIRouter(tags=["camera"])

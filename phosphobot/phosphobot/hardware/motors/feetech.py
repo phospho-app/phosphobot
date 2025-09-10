@@ -21,13 +21,13 @@ import queue
 import threading
 import time
 from copy import deepcopy
+from typing import Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
 import scservo_sdk as scs
 import tqdm
 from loguru import logger
-from typing import List, Optional, Union, Dict, Tuple
 
 from phosphobot.hardware.motors.motor_utils import (
     RobotDeviceAlreadyConnectedError,

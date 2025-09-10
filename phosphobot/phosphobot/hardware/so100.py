@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, Literal, Optional, List, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
 import numpy as np
 from loguru import logger
@@ -10,8 +10,8 @@ from phosphobot.configs import SimulationMode, config
 from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware.base import BaseManipulator
 from phosphobot.hardware.motors.feetech import FeetechMotorsBus  # type: ignore
-from phosphobot.utils import get_resources_path
 from phosphobot.models import RobotConfigStatus
+from phosphobot.utils import get_resources_path
 
 
 class SO100Hardware(BaseManipulator):

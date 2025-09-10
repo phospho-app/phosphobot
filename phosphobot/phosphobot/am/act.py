@@ -1,15 +1,15 @@
 import asyncio
-from collections import deque
 import time
+from collections import deque
 from typing import Any, Dict, List, Literal, Optional
 
 import cv2
 import httpx
 import json_numpy  # type: ignore
 import numpy as np
-from loguru import logger
 from fastapi import HTTPException
 from huggingface_hub import HfApi
+from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from phosphobot.am.base import ActionModel

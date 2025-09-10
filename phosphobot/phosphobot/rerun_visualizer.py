@@ -1,5 +1,6 @@
-import numpy as np
 from typing import List
+
+import numpy as np
 from loguru import logger
 
 from phosphobot.camera import AllCameras

@@ -1,4 +1,3 @@
-import asyncio
 from loguru import logger
 
 logger.info("Starting phosphobot...")
@@ -85,6 +84,7 @@ import time
 from typing import Annotated
 
 import typer
+
 from phosphobot.types import SimulationMode
 
 
@@ -162,14 +162,16 @@ def info(
         print(cv2.getBuildInformation())
 
     if servos:
-        from phosphobot.hardware.motors.feetech import dump_servo_states_to_file  # type: ignore
+        from phosphobot.hardware.motors.feetech import (  # type: ignore
+            dump_servo_states_to_file,
+        )
         from phosphobot.utils import get_home_app_path
 
         # Diagnose SO-100 servos
         for port in ports:
             if port.pid == 21971:
                 dump_servo_states_to_file(
-                    get_home_app_path() / f"servo_states_{port.device}.csv",
+                    str(get_home_app_path() / f"servo_states_{port.device}.csv"),
                     port.device,
                 )
 

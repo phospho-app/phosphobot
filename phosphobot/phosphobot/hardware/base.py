@@ -1,18 +1,19 @@
+import asyncio
 import atexit
 import json
 import os
-import asyncio
 from abc import abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from fastapi import HTTPException
 import numpy as np
+from fastapi import HTTPException
 from loguru import logger
+from scipy.spatial.transform import Rotation as R  # type: ignore
+
 from phosphobot.configs import config as cfg
+from phosphobot.hardware import get_sim
 from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo, Temperature
 from phosphobot.models.lerobot_dataset import FeatureDetails
-from phosphobot.hardware import get_sim
-from scipy.spatial.transform import Rotation as R  # type: ignore
 from phosphobot.utils import (
     euler_from_quaternion,
     get_resources_path,

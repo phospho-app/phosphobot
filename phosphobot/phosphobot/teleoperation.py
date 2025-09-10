@@ -17,8 +17,8 @@ from phosphobot.hardware.base import BaseMobileRobot
 from phosphobot.models import (
     AppControlData,
     RobotStatus,
-    UDPServerInformationResponse,
     TeleopSettings,
+    UDPServerInformationResponse,
 )
 from phosphobot.robot import RobotConnectionManager
 from phosphobot.utils import get_local_network_ip

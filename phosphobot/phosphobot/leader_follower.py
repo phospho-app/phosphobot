@@ -9,10 +9,10 @@ from loguru import logger
 
 from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware import (
+    BaseManipulator,
+    RemotePhosphobot,
     SO100Hardware,
     get_sim,
-    RemotePhosphobot,
-    BaseManipulator,
 )
 from phosphobot.hardware.sim import PyBulletSimulation
 from phosphobot.utils import background_task_log_exceptions

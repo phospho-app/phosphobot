@@ -12,13 +12,13 @@ from serial.tools.list_ports_common import ListPortInfo
 from phosphobot.configs import config
 from phosphobot.hardware import (
     BaseRobot,
-    URDFLoader,
     KochHardware,
     LeKiwi,
     PiperHardware,
     RemotePhosphobot,
     SO100Hardware,
     UnitreeGo2,
+    URDFLoader,
     WX250SHardware,
     get_sim,
 )

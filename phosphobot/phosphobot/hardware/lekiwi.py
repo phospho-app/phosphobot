@@ -2,7 +2,7 @@ import json
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Deque, Optional, Tuple, Literal
+from typing import Any, Deque, Literal, Optional, Tuple
 
 import numpy as np
 import zmq

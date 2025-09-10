@@ -20,9 +20,9 @@ from .robot import (
     BaseRobot,
     BaseRobotConfig,
     BaseRobotPIDGains,
+    RobotConfigResponse,
     RobotConfigStatus,
     Temperature,
-    RobotConfigResponse,
 )
 
 

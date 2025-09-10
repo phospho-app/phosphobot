@@ -4,13 +4,12 @@ from typing import Any, List, Literal, Optional, Union
 
 import numpy as np
 from loguru import logger
-from phosphobot.models import BaseRobotConfig
 from piper_sdk import C_PiperInterface_V2
 
-
 from phosphobot.hardware.base import BaseManipulator
+from phosphobot.models import BaseRobotConfig
 from phosphobot.models.robot import RobotConfigStatus
-from phosphobot.utils import is_running_on_linux, get_resources_path
+from phosphobot.utils import get_resources_path, is_running_on_linux
 
 
 class PiperHardware(BaseManipulator):

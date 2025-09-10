@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Literal, Optional, List, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 from fastapi import BackgroundTasks, Depends
@@ -11,19 +11,21 @@ from loguru import logger
 from phosphobot.camera import AllCameras, BaseCamera, get_all_cameras
 from phosphobot.configs import config
 from phosphobot.hardware import BaseRobot
-from phosphobot.models import BaseDataset, Observation, Step
 
 # New imports for refactored Episode structure
 from phosphobot.models import (
+    BaseDataset,
     BaseEpisode,
     JsonEpisode,
-    LeRobotEpisode,
     LeRobotDataset,
+    LeRobotEpisode,
+    Observation,
+    Step,
 )
+from phosphobot.rerun_visualizer import RerunVisualizer
 from phosphobot.robot import RobotConnectionManager, get_rcm
 from phosphobot.types import VideoCodecs
 from phosphobot.utils import background_task_log_exceptions, get_home_app_path
-from phosphobot.rerun_visualizer import RerunVisualizer
 
 recorder = None  # Global variable to store the recorder instance
 
