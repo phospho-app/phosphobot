@@ -2,13 +2,12 @@ import random
 import string
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import av
 import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
-from huggingface_hub.errors import HfHubHTTPError
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -67,7 +66,7 @@ class ActionModel(ABC):
         raise NotImplementedError("""You cannot directly call the ActionModel class. 
                                   You need to use an implementation ( ACT, PI0,...) or implement you own class.""")
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> np.ndarray:
         """
         Makes the model instance callable, delegating to the forward method.
 
@@ -385,7 +384,7 @@ def generate_readme(
     wandb_run_url: Optional[str] = None,
     error_traceback: Optional[str] = None,
     return_readme_as_bytes: bool = False,
-):
+) -> Path | bytes:
     readme = f"""
 ---
 datasets: {dataset_repo_id}
@@ -559,5 +558,5 @@ class BaseTrainer(ABC):
     """
 
     @abstractmethod
-    def train(self):
+    def train(self) -> None:
         pass

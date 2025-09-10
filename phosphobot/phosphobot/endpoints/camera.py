@@ -20,7 +20,6 @@ router = APIRouter(tags=["camera"])
 
 @router.get(
     "/video/{camera_id}",
-    response_class=StreamingResponse,
     description="Stream video feed of the specified camera. "
     + "If no camera id is provided, the default camera is used. "
     + "Specify a target size and quality using query parameters.",
@@ -28,6 +27,7 @@ router = APIRouter(tags=["camera"])
         200: {"description": "Streaming video feed of the specified camera."},
         404: {"description": "Camera not available"},
     },
+    response_model=None,
 )
 def video_feed_for_camera(
     request: Request,
@@ -36,7 +36,7 @@ def video_feed_for_camera(
     width: Optional[int] = None,
     quality: Optional[int] = None,
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> StreamingResponse | HTTPException:
     """
     Stream video feed of the specified camera.
     """
@@ -163,7 +163,7 @@ async def get_all_camera_frames(
 )
 async def refresh_camera_list(
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> dict:
     """
     Refresh the list of available cameras.
     This operation can take a few seconds as it disconnects and reconnects to all cameras.
@@ -181,7 +181,7 @@ async def refresh_camera_list(
 async def add_zmq_camera_feed(
     query: AddZMQCameraRequest,
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> dict:
     """
     Add a camera feed from a ZMQ publisher.
     This allows the application to receive camera frames from a ZMQ publisher.

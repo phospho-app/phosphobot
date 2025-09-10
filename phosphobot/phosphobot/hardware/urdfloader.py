@@ -208,7 +208,7 @@ class URDFLoader(BaseManipulator):
 
     def _set_pid_gains_motors(
         self, servo_id: int, p_gain: int = 32, i_gain: int = 0, d_gain: int = 32
-    ):
+    ) -> None:
         pass
 
     def read_joints_position(

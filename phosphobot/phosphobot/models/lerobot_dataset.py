@@ -2449,7 +2449,7 @@ class Stats(BaseModel):
             self.square_sum = self.square_sum + np.sum(image_norm_32**2, axis=(0, 1))
             self.count += nb_pixels
 
-    def compute_from_rolling_images(self):
+    def compute_from_rolling_images(self) -> None:
         """
         Compute the mean and std from the rolling sum and square sum for images.
         """

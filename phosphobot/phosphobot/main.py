@@ -28,7 +28,7 @@ from phosphobot import __version__
 _splash_shown = False
 
 
-def print_phospho_splash():
+def print_phospho_splash() -> None:
     global _splash_shown
     if not _splash_shown:
         print(
@@ -54,7 +54,7 @@ from phosphobot.utils import fetch_latest_brew_version
 _version_check_started = False
 
 
-def fetch_latest_version():
+def fetch_latest_version() -> None:
     try:
         version = fetch_latest_brew_version(fail_silently=True)
         if version != "unknown" and (version != "v" + __version__):
@@ -100,7 +100,7 @@ def init_telemetry() -> None:
 cli = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     if value:
         print(f"phosphobot {__version__}")
         raise typer.Exit()
@@ -117,7 +117,7 @@ def main(
             callback=version_callback,
         ),
     ] = False,
-):
+) -> None:
     """
     phosphobot - A robotics teleoperation server.
     """
@@ -128,7 +128,7 @@ def main(
 def info(
     opencv: Annotated[bool, typer.Option(help="Show OpenCV information.")] = False,
     servos: Annotated[bool, typer.Option(help="Show servo information.")] = False,
-):
+) -> typer.Exit:
     """
     Show all serial ports (/dev/ttyUSB0) and camera information. Useful for debugging.
     """
@@ -190,7 +190,7 @@ def is_port_in_use(port: int, host: str) -> bool:
 
 
 @cli.command()
-def update():
+def update() -> None:
     """
     Display information on how to update the software.
     """
@@ -280,7 +280,7 @@ def run(
         bool,
         typer.Option(help="Disable all telemetry (Crash and Usage)."),
     ] = True,
-):
+) -> None:
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
     """

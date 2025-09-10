@@ -511,7 +511,7 @@ class BaseDataset:
         repo_id = repo_id or self.repo_id
         return self.HF_API.repo_exists(repo_id=repo_id, repo_type="dataset")
 
-    def sync_local_to_hub(self):
+    def sync_local_to_hub(self) -> None:
         """Reupload the dataset folder to Hugging Face"""
         username_or_orgid = get_hf_username_or_orgid()
         if username_or_orgid is None:
