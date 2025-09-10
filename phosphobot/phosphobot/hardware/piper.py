@@ -9,6 +9,7 @@ from piper_sdk import C_PiperInterface_V2
 
 
 from phosphobot.hardware.base import BaseManipulator
+from phosphobot.models.robot import RobotConfigStatus
 from phosphobot.utils import is_running_on_linux, get_resources_path
 
 
@@ -40,9 +41,9 @@ class PiperHardware(BaseManipulator):
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 
+    GRIPPER_SERVO_ID = 7
     # When using the set zero of gripper control, we observe that current position is set to -1800 and not to zero
     GRIPPER_ZERO_POSITION = -1800
-
     # Strength with which the gripper will close. Similar to the gripping threshold value of other robots,
     GRIPPER_EFFORT = 300
 
@@ -79,11 +80,7 @@ class PiperHardware(BaseManipulator):
         axis: Optional[List[float]] = None,
     ) -> None:
         self.can_name = can_name
-        super().__init__(
-            only_simulation=only_simulation,
-            axis=axis,
-        )
-        self.gripper_servo_id = 7
+        super().__init__(only_simulation=only_simulation, axis=axis)
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -224,7 +221,7 @@ class PiperHardware(BaseManipulator):
 
         raise: Exception if the routine has not been implemented
         """
-        if servo_id >= self.gripper_servo_id or servo_id < 1:
+        if servo_id >= self.GRIPPER_SERVO_ID or servo_id < 1:
             gripper_state = self.motors_bus.GetArmGripperMsgs().gripper_state
             return gripper_state.grippers_effort
         else:
@@ -249,15 +246,23 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
-        # Get current position
+        # If servo_id is 7 (gripper), write the gripper command
+        if servo_id == self.GRIPPER_SERVO_ID:
+            self.write_gripper_command(units)
+            return
+
+        # Otherwise, we need to write the position to the motor. We can only write all motors at once.
         current_position = self.read_joints_position(unit="motor_units", source="robot")
-        # Write the new position
+        # The last position is the gripper, so we drop it
+        current_position = current_position[:-1]
+
+        # Override the position of the specified servo_id
         current_position[servo_id - 1] = units
 
-        logger.info(f"Moving motors to {current_position}")
+        logger.debug(f"Piper: Moving servo {servo_id} to position {units}")
         # Clamp the position in the allowed range for the motors using self.piper_limits
         logger.debug(
-            f"Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
+            f"Piper: Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
         )
         if servo_id in self.piper_limits_degrees:
             min_limit = self.piper_limits_degrees[servo_id]["min_angle_limit"] * 1000
@@ -276,30 +281,61 @@ class PiperHardware(BaseManipulator):
     def write_group_motor_position(
         self, q_target: np.ndarray, enable_gripper: bool
     ) -> None:
-        # Move robot
-        joints = q_target[self.actuated_joints].tolist()
-
+        # First 6 values of q_target are the joints position.
         # Clamp joints in the allowed range for the motors using self.piper_limits_degrees * 1000
-        for i, joint in enumerate(joints):
-            if i + 1 in self.piper_limits_degrees:
+        clamped_joints = []
+        for i, joint in enumerate(q_target):
+            # in self.piper_limits_degrees, there are only indexes 1 to 6
+            servo_id = i + 1
+            if servo_id in self.piper_limits_degrees:
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
                 max_limit = self.piper_limits_degrees[i + 1]["max_angle_limit"] * 1000
-                joints[i] = np.clip(joint, min_limit, max_limit)
+                # q_target[i] = np.clip(joint, min_limit, max_limit)  # noqa: F821
+                clamped_joints.append(int(np.clip(joint, min_limit, max_limit)))
 
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
         )
+        self.motors_bus.JointCtrl(*clamped_joints)
 
-        self.motors_bus.JointCtrl(*[int(q) for q in joints])
-
-        if enable_gripper and len(q_target) >= self.gripper_servo_id:
-            self.write_motor_position(self.gripper_servo_id, q_target[-1])
+        # Move the gripper if it is enabled
+        if enable_gripper and len(q_target) >= self.GRIPPER_SERVO_ID:
+            self.write_gripper_command(q_target[-1])
 
     def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
         Read the position of the motor. This should return the position in motor units.
         """
         return self.read_group_motor_position()[servo_id - 1]
+
+    def read_joints_position(
+        self,
+        unit: Literal["rad", "motor_units", "degrees", "other"] = "rad",
+        source: Literal["sim", "robot"] = "robot",
+        joints_ids: Optional[List[int]] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+    ) -> np.ndarray:
+        """
+        Read the position of the joints. This should return the position in motor units.
+        """
+        # The parent method reads the joints, but not the gripper.
+        joints = super().read_joints_position(
+            unit=unit,
+            source=source,
+            joints_ids=joints_ids,
+            min_value=min_value,
+            max_value=max_value,
+        )
+
+        # Add the gripper position if it is not already present
+        if len(joints) < self.GRIPPER_SERVO_ID and (
+            joints_ids is None or self.GRIPPER_SERVO_ID in joints_ids
+        ):
+            gripper_position = self.read_gripper_command()
+            # Don't rescale the gripper position (need more R&D)
+            joints = np.array(joints.tolist() + [gripper_position]).astype(np.float32)
+        return joints
 
     def read_group_motor_position(self) -> np.ndarray:
         """
@@ -381,12 +417,13 @@ class PiperHardware(BaseManipulator):
             "Calibration failed. Please try again.",
         )
 
-    def read_gripper_command(self) -> float:
+    def read_gripper_command(self, source: Literal["sim", "robot"] = "robot") -> float:
         """
         Read if gripper is open or closed.
 
         command: 0 to close, 1 to open
         """
+
         if not self.is_connected:
             logger.warning("Robot not connected")
             return 0
@@ -419,3 +456,14 @@ class PiperHardware(BaseManipulator):
         Check if the robot is powered on.
         """
         return self.is_connected
+
+    def status(self) -> RobotConfigStatus:
+        """
+        Get the status of the robot.
+
+        Returns:
+            RobotConfigStatus object
+        """
+        return RobotConfigStatus(
+            name=self.name, device_name=self.can_name, robot_type="manipulator"
+        )

@@ -256,6 +256,12 @@ def run(
             help="Enable the cameras. If False, no camera will be detected. Useful in case of conflicts.",
         ),
     ] = True,
+    max_can_interfaces: Annotated[
+        int,
+        typer.Option(
+            help="Maximum expected CAN interfaces. Default is 4.",
+        ),
+    ] = 4,
     max_opencv_index: Annotated[
         int,
         typer.Option(
@@ -304,6 +310,7 @@ def run(
             can=can,
             cameras=cameras,
             max_opencv_index=max_opencv_index,
+            max_can_interfaces=max_can_interfaces,
             profile=profile,
             crash_telemetry=crash_telemetry,
             usage_telemetry=usage_telemetry,
@@ -327,6 +334,7 @@ def run(
                 can,
                 cameras,
                 max_opencv_index,
+                max_can_interfaces,
                 profile,
                 crash_telemetry,
                 usage_telemetry,

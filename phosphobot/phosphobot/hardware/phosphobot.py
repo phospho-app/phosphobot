@@ -399,7 +399,11 @@ class RemotePhosphobot(BaseRobot):
             params={"robot_id": self.robot_id},
         )
 
-    def read_joints_position(self, unit: str = "rad") -> np.ndarray:
+    def read_joints_position(
+        self,
+        unit: Literal["rad", "degrees", "motor_units"] = "rad",
+        source: Optional[Literal["sim", "robot"]] = None,
+    ) -> np.ndarray:
         """
         Read the current joint positions of the robot.
 
@@ -414,7 +418,7 @@ class RemotePhosphobot(BaseRobot):
 
         response = self.client.post(
             "/joints/read",
-            json={"unit": unit},
+            json={"unit": unit, "source": source},
             params={"robot_id": self.robot_id},
         )
         joints = response.json()

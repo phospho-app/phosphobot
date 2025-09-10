@@ -298,6 +298,7 @@ def start_server(
     can: bool = True,
     cameras: bool = True,
     max_opencv_index: int = 10,
+    max_can_interfaces: int = 4,
     profile: bool = False,
     crash_telemetry: bool = True,
     usage_telemetry: bool = True,
@@ -345,6 +346,7 @@ def start_server(
     config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
     config.ENABLE_CAN = can
     config.MAX_OPENCV_INDEX = max_opencv_index
+    config.MAX_CAN_INTERFACES = max_can_interfaces
 
     if not telemetry:
         config.CRASH_TELEMETRY = False
