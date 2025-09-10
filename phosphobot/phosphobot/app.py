@@ -332,11 +332,13 @@ def start_server(
             try:
                 level = logger.level(record.levelname).name
             except Exception:
-                level = record.levelno
+                level = record.levelno  # type: ignore
 
             # Find depth so loguru shows the original caller
             frame, depth = logging.currentframe(), 2
             while frame and frame.f_code.co_filename == logging.__file__:
+                if frame.f_back is None:
+                    break
                 frame = frame.f_back
                 depth += 1
 
