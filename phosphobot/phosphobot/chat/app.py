@@ -180,7 +180,7 @@ class AgentApp(App):
     }
     """
 
-    is_running: var[bool] = var(False)
+    is_agent_running: var[bool] = var(False)
     worker: Optional[Worker] = None
     current_agent: Optional[RoboticAgent] = None
     gripper_is_open: bool = True  # Track gripper state
@@ -243,7 +243,7 @@ class AgentApp(App):
         self.worker = self.run_worker(self._run_agent(agent), exclusive=True)
 
     async def _run_agent(self, agent: RoboticAgent) -> None:
-        self.is_running = True
+        self.is_agent_running = True
         try:
             async for event_type, payload in agent.run():
                 self.post_message(self.AgentUpdate(event_type, payload))

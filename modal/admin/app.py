@@ -1225,7 +1225,6 @@ def fastapi_app():
         logger.info(
             f"User {user.id} -> Gemini {request.method} {path} with query {request.url.query}"
         )
-        logger.debug(f"Request headers: {dict(request.headers)}")
 
         url = httpx.URL(path=f"/{path}", query=request.url.query.encode("utf-8"))
 
