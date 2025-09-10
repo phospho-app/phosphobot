@@ -1,5 +1,3 @@
-import asyncio
-
 from loguru import logger
 
 logger.info("Starting phosphobot...")
@@ -173,7 +171,7 @@ def info(
         for port in ports:
             if port.pid == 21971:
                 dump_servo_states_to_file(
-                    get_home_app_path() / f"servo_states_{port.device}.csv",
+                    str(get_home_app_path() / f"servo_states_{port.device}.csv"),
                     port.device,
                 )
 
