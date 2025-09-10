@@ -3,13 +3,14 @@ import datetime
 import logging
 from typing import Iterable, Optional
 
-from phosphobot.fly.agent import RoboticAgent
+from phosphobot.chat.agent import RoboticAgent
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand
 from textual.message import Message
 from textual.reactive import var
 from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog
+from textual.worker import Worker
 
 
 class AgentScreen(Screen):
@@ -96,7 +97,7 @@ class AgentApp(App):
     """
 
     is_running: var[bool] = var(False)
-    agent_task: var[Optional[asyncio.Task]] = var(None)
+    worker: Optional[Worker] = None
 
     class AgentUpdate(Message):
         def __init__(self, event_type: str, payload: dict) -> None:
@@ -151,7 +152,7 @@ class AgentApp(App):
             asyncio.create_task(agent.phosphobot_client.move_init())
             return
 
-        self.agent_task = self.run_worker(self._run_agent(agent), exclusive=True)
+        self.worker = self.run_worker(self._run_agent(agent), exclusive=True)
 
     async def _run_agent(self, agent: RoboticAgent) -> None:
         self.is_running = True
@@ -207,8 +208,8 @@ class AgentApp(App):
         if not screen:
             return
 
-        if self.is_running and self.agent_task:
-            self.agent_task.cancel()
+        if self.is_running and self.worker:
+            self.worker.cancel()
             screen._write_to_log("Interrupt requested. Stopping agent...", "system")
         else:
             screen._write_to_log("No agent is currently running.", "system")

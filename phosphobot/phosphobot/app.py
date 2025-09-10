@@ -38,6 +38,7 @@ from phosphobot.posthog import posthog, posthog_pageview
 from phosphobot.recorder import Recorder, get_recorder
 from phosphobot.robot import RobotConnectionManager, get_rcm
 from phosphobot.teleoperation import get_udp_server
+from phosphobot.types import SimulationMode
 from phosphobot.utils import (
     get_home_app_path,
     get_resources_path,
@@ -291,7 +292,7 @@ def start_server(
     host: str = "0.0.0.0",
     port: int = 80,
     reload: bool = False,
-    simulation: bool = False,
+    simulation: SimulationMode = SimulationMode.headless,
     only_simulation: bool = False,
     simulate_cameras: bool = False,
     realsense: bool = True,

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import os
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import cv2
 import httpx
@@ -175,7 +175,7 @@ Use the image to localize the end effector, understand the task, and give the in
         """
 
         # Build the content list with prompt and images
-        contents = [self.prompt]
+        contents: List[Union[genai.types.Part, str]] = [self.prompt]
         contents.extend(images)
 
         # Generate response with retry logic for ServerError and ClientError
@@ -185,7 +185,9 @@ Use the image to localize the end effector, understand the task, and give the in
         for attempt in range(max_retries):
             try:
                 response = await self.genai_client.aio.models.generate_content(
-                    model=self.model_id, contents=contents, config=self.config
+                    model=self.model_id,
+                    contents=contents,  # type: ignore
+                    config=self.config,
                 )
                 break  # Success, exit retry loop
             except ServerError as e:
@@ -245,7 +247,7 @@ Use the image to localize the end effector, understand the task, and give the in
         # )
         # self.chat_history.append({"role": "model", "parts": [response.text]})
         raw = response.text
-        command: Optional[GeminiAgentResponse] = response.parsed
+        command: Optional[GeminiAgentResponse] = response.parsed  # type: ignore
 
         return command, raw
 
@@ -270,7 +272,7 @@ class RoboticAgent:
         """
 
         frames = await self.phosphobot_client.get_camera_image()
-        resized_frames = []
+        resized_frames: List[genai.types.Part] = []
         for camera_id, frame in frames.items():
             # If the images_sizes is not None, decode the base64 image and resize it
             if self.images_sizes:
@@ -288,7 +290,7 @@ class RoboticAgent:
                     )
                     # Convert back to bytes
                     _, resized_data = cv2.imencode(".jpg", image)
-                    frame = genai.types.Part.from_bytes(
+                    part = genai.types.Part.from_bytes(
                         data=resized_data.tobytes(), mime_type="image/jpeg"
                     )
                 else:
@@ -296,9 +298,9 @@ class RoboticAgent:
                     continue
             else:
                 # If images_sizes is None, just convert the base64 string to a Part
-                frame = genai.types.Part.from_text(text=frame)
+                part = genai.types.Part.from_text(text=frame)
 
-            resized_frames.append(frame)
+            resized_frames.append(part)
 
         return resized_frames
 
@@ -317,23 +319,23 @@ class RoboticAgent:
 
         # Use a mapping to convert command strings to function calls
         command_map = {
-            "move_left": {"rz": 10},
-            "move_right": {"rz": -10},
-            "move_forward": {"x": 5},
-            "move_backward": {"x": -5},
-            "move_up": {"z": 5},
-            "move_down": {"z": -5},
-            "move_gripper_up": {"rx": 10},
-            "move_gripper_down": {"rx": -10},
-            "close_gripper": {"gripper": 1},
-            "open_gripper": {"gripper": 0},
+            "move_left": {"rz": 10.0},
+            "move_right": {"rz": -10.0},
+            "move_forward": {"x": 5.0},
+            "move_backward": {"x": -5.0},
+            "move_up": {"z": 5.0},
+            "move_down": {"z": -5.0},
+            "move_gripper_up": {"rx": 10.0},
+            "move_gripper_down": {"rx": -10.0},
+            "close_gripper": {"gripper": 1.0},
+            "open_gripper": {"gripper": 0.0},
         }
         next_robot_move = command_map.get(command.next_robot_move)
         if next_robot_move is None:
             logger.warning(
                 f"Invalid command received: {command.next_robot_move}. Skipping execution."
             )
-            return
+            return None
         # Call the phosphobot client to move the robot
         await self.phosphobot_client.move_relative(**next_robot_move)
         return next_robot_move
