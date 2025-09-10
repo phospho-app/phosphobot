@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import platform
 import uuid
 from functools import wraps
@@ -50,7 +51,7 @@ def is_github_actions() -> bool:
     return os.getenv("GITHUB_ACTIONS") == "true"
 
 
-def get_or_create_unique_id(token_path: str) -> str:
+def get_or_create_unique_id(token_path: Path) -> str:
     """
     Retrieve or generate a unique ID, storing it in a token file. This is an
     anonymous identifier for the user.
