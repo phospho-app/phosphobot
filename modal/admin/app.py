@@ -25,9 +25,10 @@ phosphobot_dir = (
 )
 admin_image = (
     modal.Image.debian_slim(python_version="3.10")
-    .pip_install(
+    .uv_pip_install(
         "ffmpeg-python>=0.2.0",
         "stripe",
+        "httpx",
     )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
@@ -435,6 +436,7 @@ class PublicUser(BaseModel):
         modal.Secret.from_name("huggingface"),
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("stripe"),
+        modal.Secret.from_name("gemini"),
     ],
     # We keep at least one instance of the app running
     min_containers=1,
@@ -442,13 +444,17 @@ class PublicUser(BaseModel):
 @modal.concurrent(max_inputs=1000)
 @modal.asgi_app()
 def fastapi_app():
+    import httpx
+    import stripe
+
     from datetime import datetime, timezone
 
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
     from fastapi.exceptions import HTTPException
-    import stripe
+
+    from supabase_auth.types import User as SupabaseUser
 
     stripe.api_key = os.environ["STRIPE_API_KEY"]
 
@@ -1183,6 +1189,138 @@ def fastapi_app():
                 logger.error(f"No user found with subscription_id: {subscription_id}")
 
         return {"status": "ok"}
+
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    GEMINI_API_URL = "https://generativelanguage.googleapis.com"
+
+    if not GEMINI_API_KEY:
+        # This will prevent the app from starting if the secret is missing
+        raise RuntimeError("GEMINI_API_KEY not found in environment secrets.")
+
+    gemini_client = httpx.AsyncClient(base_url=GEMINI_API_URL)
+
+    async def get_user_and_check_quota(
+        token: HTTPAuthorizationCredentials = Depends(auth_scheme),
+    ) -> SupabaseUser:
+        user_auth = supabase_client.auth.get_user(jwt=token.credentials)
+        if not user_auth:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+        # Check if the user is a pro user
+        user_data = (
+            supabase_client.table("users")
+            .select("*")
+            .eq("id", user_auth.user.id)
+            .execute()
+        )
+        if not user_data.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        user_plan = user_data.data[0].get("plan", None)
+        if user_plan != "pro":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This endpoint is only available for PRO users",
+            )
+
+        return user_auth.user
+
+    from fastapi.responses import StreamingResponse
+
+    @web_app.api_route(
+        "/gemini/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"]
+    )
+    async def proxy_to_gemini(
+        request: Request,
+        path: str,
+        user: SupabaseUser = Depends(get_user_and_check_quota),
+    ):
+        logger.info(
+            f"User {user.id} -> Gemini {request.method} {path} with query {request.url.query}"
+        )
+
+        url = httpx.URL(path=f"/{path}", query=request.url.query.encode("utf-8"))
+
+        # Copy headers but remove problematic ones
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower()
+            not in {
+                "authorization",
+                "host",
+                "content-encoding",  # Remove content-encoding to avoid compression issues
+            }
+        }
+        headers["x-goog-api-key"] = GEMINI_API_KEY
+
+        # Explicitly set accept-encoding to avoid compression issues
+        headers["Accept-Encoding"] = "identity"
+
+        body = await request.body()
+        logger.debug(f"Request body size: {len(body)} bytes")
+
+        req = gemini_client.build_request(
+            method=request.method,
+            url=url,
+            headers=headers,
+            content=body or None,
+        )
+
+        try:
+            resp = await gemini_client.send(req, stream=True)
+            logger.debug(f"Gemini API response status: {resp.status_code}")
+            logger.debug(f"Gemini API response headers: {dict(resp.headers)}")
+
+        except httpx.RequestError as e:
+            logger.exception("Error contacting Gemini")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to reach Gemini API",
+            )
+
+        async def iter_stream():
+            chunk_count = 0
+            total_size = 0
+            try:
+                async for chunk in resp.aiter_bytes():
+                    chunk_count += 1
+                    total_size += len(chunk)
+                    if chunk_count <= 5:  # Log first 5 chunks
+                        logger.debug(f"Gemini chunk {chunk_count}: {len(chunk)} bytes")
+                    yield chunk
+                logger.debug(
+                    f"Gemini stream completed: {chunk_count} chunks, {total_size} total bytes"
+                )
+            except Exception as e:
+                logger.error(f"Error in Gemini stream iteration: {str(e)}")
+                raise
+            finally:
+                await resp.aclose()
+
+        # Filter out problematic headers
+        passthrough_headers = {
+            k: v
+            for k, v in resp.headers.items()
+            if k.lower()
+            not in {
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "content-encoding",  # Remove content-encoding to avoid decompression issues
+            }
+        }
+
+        logger.debug(f"Returning Gemini response with status: {resp.status_code}")
+        return StreamingResponse(
+            iter_stream(),
+            status_code=resp.status_code,
+            headers=passthrough_headers,
+        )
 
     # Required by modal
     return web_app

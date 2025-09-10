@@ -299,7 +299,7 @@ class AgentApp(App):
         screen = self._get_main_screen()
         if not screen:
             return
-        
+
         if self.is_agent_running and self.worker:
             self.worker.cancel()
             screen._write_to_log("Interrupt requested. Stopping agent...", "system")

@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import os
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import cv2
@@ -12,6 +11,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from phosphobot.configs import config
+from phosphobot.utils import get_local_ip
 
 
 class PhosphobotClient:
@@ -122,19 +122,18 @@ class GeminiAgent:
         self,
         model_id: str = "gemini-2.5-flash",
         task_description: str = "Pick up white foam",
-        thinking_budget: int = 100,
+        thinking_budget: int = 0,
     ):
         """
         Robot-controlling agent using Gemini VLM.
         """
-        from dotenv import load_dotenv
 
-        load_dotenv()
-
-        if not os.environ.get("GEMINI_API_KEY"):
-            raise ValueError("GEMINI_API_KEY environment variable is not set.")
-
-        self.genai_client = genai.Client()
+        self.genai_client = genai.Client(
+            api_key="some_key",
+            http_options=genai.types.HttpOptions(
+                base_url=f"http://{get_local_ip()}:{config.PORT}/chat/gemini"
+            ),
+        )
         self.thinking_budget = thinking_budget
         self.model_id = model_id
         self.phosphobot_client = PhosphobotClient()
