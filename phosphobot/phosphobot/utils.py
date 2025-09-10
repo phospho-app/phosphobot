@@ -78,13 +78,13 @@ def get_quaternion_from_euler(euler_angles: np.ndarray, degrees: bool) -> np.nda
 
 
 def print_numpy_array(
-    arr,
-    precision=2,
-    max_line_width=100,
-    suppress_small=True,
-    show_shape=True,
-    show_dtype=True,
-):
+    arr: np.ndarray,
+    precision: int = 2,
+    max_line_width: int = 100,
+    suppress_small: bool = True,
+    show_shape: bool = True,
+    show_dtype: bool = True,
+) -> None:
     """
     Customizable pretty-printer for NumPy arrays.
 
@@ -127,7 +127,9 @@ def print_numpy_array(
     np.set_printoptions()
 
 
-def cartesian_to_polar(x, y, z):
+def cartesian_to_polar(
+    x: np.ndarray, y: np.ndarray, z: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert cartesian coordinates to polar coordinates
     """
@@ -138,7 +140,9 @@ def cartesian_to_polar(x, y, z):
     return r, theta, z
 
 
-def polar_to_cartesian(r, theta, z):
+def polar_to_cartesian(
+    r: np.ndarray, theta: np.ndarray, z: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert polar coordinates to cartesian coordinates
     """
@@ -225,7 +229,7 @@ def login_to_hf(revalidate: bool = True) -> bool:
         return False
 
 
-def zip_folder(folder_path, zip_path):
+def zip_folder(folder_path: str, zip_path: str) -> None:
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(folder_path):
             for file in files:
@@ -403,7 +407,7 @@ def nd_array_custom_before_validator(x: Any) -> np.ndarray:
         raise ValueError("Invalid type for numpy array")
 
 
-def nd_array_custom_serializer(x: np.ndarray):
+def nd_array_custom_serializer(x: np.ndarray) -> list:
     # custom serialization logic: convert to list
     return x.tolist()
 

@@ -15,7 +15,7 @@ from phosphobot.configs import config
 
 
 class PhosphobotClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.server_url = f"http://localhost:{config.PORT}"
         self.client = httpx.AsyncClient(base_url=self.server_url)
 
@@ -183,6 +183,7 @@ Use the image to localize the end effector, understand the task, and give the in
         # Generate response with retry logic for ServerError and ClientError
         max_retries = 3
         retry_delay = 5
+        response = None
 
         for attempt in range(max_retries):
             try:
@@ -240,6 +241,10 @@ Use the image to localize the end effector, understand the task, and give the in
                     # Re-raise if it's a different ClientError
                     raise
 
+        if response is None:
+            logger.error("Failed to get response after all retry attempts.")
+            return None, None
+
         # # Add to chat history (Gemini format)
         # self.chat_history.append(
         #     {
@@ -263,10 +268,13 @@ class RoboticAgent:
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
         task_description: str = "Pick up white foam",
+        manual_control: bool = False,
     ):
         self.images_sizes = images_sizes
         self.phosphobot_client = PhosphobotClient()
         self.task_description = task_description
+        self.manual_control = manual_control
+        self.manual_command: Optional[str] = None
 
     async def get_images(self) -> List[genai.types.Part]:
         """
@@ -306,20 +314,34 @@ class RoboticAgent:
 
         return resized_frames
 
-    async def execute_command(
-        self, command: Optional[GeminiAgentResponse]
-    ) -> Optional[Dict[str, float]]:
+    def set_manual_command(self, command: str) -> None:
         """
-        Execute the command by moving the robot.
+        Set a manual command for the robot.
         """
-        if command is None:
-            logger.warning("No command received. Skipping execution.")
-            return None
-        if command == "nothing":
-            logger.info("Received 'nothing' command. Skipping execution.")
-            return None
+        self.manual_command = command
 
-        # Use a mapping to convert command strings to function calls
+    def get_manual_command(self) -> Optional[str]:
+        """
+        Get the current manual command and clear it.
+        """
+        command = self.manual_command
+        self.manual_command = None
+        return command
+
+    def toggle_control_mode(self) -> str:
+        """
+        Toggle between AI and manual control modes.
+        Returns the new mode.
+        """
+        self.manual_control = not self.manual_control
+        mode = "manual" if self.manual_control else "AI"
+        logger.info(f"Switched to {mode} control mode")
+        return mode
+
+    def _get_movement_parameters(self, command: str) -> Optional[Dict[str, float]]:
+        """
+        Get movement parameters for a given command string.
+        """
         command_map = {
             "move_left": {"rz": 10.0},
             "move_right": {"rz": -10.0},
@@ -332,10 +354,39 @@ class RoboticAgent:
             "close_gripper": {"gripper": 1.0},
             "open_gripper": {"gripper": 0.0},
         }
-        next_robot_move = command_map.get(command.next_robot_move)
+        return command_map.get(command)
+
+    async def execute_command(
+        self, command: Optional[GeminiAgentResponse]
+    ) -> Optional[Dict[str, float]]:
+        """
+        Execute the AI command by moving the robot.
+        """
+        if command is None:
+            logger.warning("No command received. Skipping execution.")
+            return None
+        if command == "nothing":
+            logger.info("Received 'nothing' command. Skipping execution.")
+            return None
+
+        next_robot_move = self._get_movement_parameters(command.next_robot_move)
         if next_robot_move is None:
             logger.warning(
                 f"Invalid command received: {command.next_robot_move}. Skipping execution."
+            )
+            return None
+        # Call the phosphobot client to move the robot
+        await self.phosphobot_client.move_relative(**next_robot_move)
+        return next_robot_move
+
+    async def execute_manual_command(self, command: str) -> Optional[Dict[str, float]]:
+        """
+        Execute a manual command by moving the robot.
+        """
+        next_robot_move = self._get_movement_parameters(command)
+        if next_robot_move is None:
+            logger.warning(
+                f"Invalid manual command received: {command}. Skipping execution."
             )
             return None
         # Call the phosphobot client to move the robot
@@ -352,36 +403,82 @@ class RoboticAgent:
         yield "step_output", {"desc": f"Robot status: {self.robot_status}"}
         yield "step_done", {"success": True}
 
+        # Manual control setup
+        if self.manual_control:
+            yield "start_step", {"desc": "Manual control mode enabled."}
+            yield (
+                "step_output",
+                {
+                    "desc": "Manual control active. Use set_manual_command() to control the robot."
+                },
+            )
+            yield "step_done", {"success": True}
+
+        # Initialize AI agent
         yield "start_step", {"desc": "Initializing the AI agent."}
-        # TODO: Here, you'd need to interpret the task description to make sure the agent understands what to do.
         try:
             self.gemini_agent = GeminiAgent(task_description=self.task_description)
         except Exception as e:
             yield "step_error", {"error": f"Failed to initialize agent: {str(e)}"}
             return
+        yield "step_done", {"success": True}
 
-        for i in range(10):
-            yield "log", {"text": f"Step {i + 1} of 10."}
-            # Get images
-            images = await self.get_images()
-            if not images:
+        step_count = 0
+        max_steps = 50
+
+        while step_count < max_steps:
+            current_mode = "manual" if self.manual_control else "AI"
+
+            if self.manual_control:
+                # MANUAL MODE: Wait for manual commands without consuming steps
+                manual_command = self.get_manual_command()
+                if manual_command:
+                    step_count += 1
+                    yield (
+                        "log",
+                        {
+                            "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
+                        },
+                    )
+                    yield "step_output", {"output": f"Manual command: {manual_command}"}
+                    execution_result = await self.execute_manual_command(manual_command)
+                    yield (
+                        "step_output",
+                        {"output": f"Execution result: {execution_result}"},
+                    )
+                else:
+                    # Wait for user input without consuming a step
+                    await asyncio.sleep(0.1)
+                    continue  # Don't increment step_count, just wait
+            else:
+                # AI MODE: Only run AI processing
+                step_count += 1
                 yield (
-                    "step_error",
-                    {"error": "No images received from cameras. Skipping step."},
+                    "log",
+                    {
+                        "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
+                    },
                 )
-                continue
-            # Run the Gemini agent
-            next_command, raw = await self.gemini_agent.run(images=images)
-            yield (
-                "step_output",
-                {"output": f"Next command: {next_command} (raw: {raw})"},
-            )
-            # Execute the command
-            execution_result = await self.execute_command(next_command)
-            yield (
-                "step_output",
-                {"output": f"Execution result: {execution_result}"},
-            )
+                images = await self.get_images()
+                if not images:
+                    yield (
+                        "step_error",
+                        {"error": "No images received from cameras. Skipping step."},
+                    )
+                    continue
+                # Run the Gemini agent
+                next_command, raw = await self.gemini_agent.run(images=images)
+                yield (
+                    "step_output",
+                    {"output": f"AI command: {next_command} (raw: {raw})"},
+                )
+                # Execute the command
+                execution_result = await self.execute_command(next_command)
+                yield (
+                    "step_output",
+                    {"output": f"Execution result: {execution_result}"},
+                )
 
         yield "step_done", {"success": True}
-        yield "log", {"text": "Robotic agent run completed."}
+        control_mode = "manual" if self.manual_control else "AI"
+        yield "log", {"text": f"Robotic agent run completed in {control_mode} mode."}
