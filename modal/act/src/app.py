@@ -26,6 +26,8 @@ from phosphobot.am.base import (
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
 
+os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
+
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -372,19 +374,19 @@ async def serve(
                 nonlocal last_bbox_computed
                 nonlocal policy
 
-                assert (
-                    len(current_qpos) == model_specifics.state_size[0]
-                ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-                assert (
-                    len(images) <= len(model_specifics.video_keys)
-                ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+                assert len(current_qpos) == model_specifics.state_size[0], (
+                    f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+                )
+                assert len(images) <= len(model_specifics.video_keys), (
+                    f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+                )
                 if len(images) > 0:
-                    assert (
-                        len(images[0].shape) == 3
-                    ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-                    assert (
-                        len(images[0].shape) == 3 and images[0].shape[2] == 3
-                    ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+                    assert len(images[0].shape) == 3, (
+                        f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+                    )
+                    assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
+                        f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+                    )
 
                 with torch.no_grad(), torch.autocast(device_type="cuda"):
                     current_qpos = current_qpos.copy()

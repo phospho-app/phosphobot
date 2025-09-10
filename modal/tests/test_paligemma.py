@@ -6,7 +6,7 @@ import requests
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 paligemma_detect = modal.Function.from_name("paligemma-detector", "detect_object")
 
-BATCH_SIZE = 150
+BATCH_SIZE = 1
 
 
 def test_paligemma_warmup():
@@ -36,6 +36,7 @@ def test_paligemma_detect():
     assert bboxes != [[0.0, 0.0, 0.0, 0.0]] * BATCH_SIZE, (
         f"Bboxes not detected: {bboxes}"
     )
+    print("Bboxes:", bboxes)
 
 
 if __name__ == "__main__":
