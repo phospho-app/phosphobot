@@ -20,7 +20,6 @@ router = APIRouter(tags=["camera"])
 
 @router.get(
     "/video/{camera_id}",
-    response_class=StreamingResponse,
     description="Stream video feed of the specified camera. "
     + "If no camera id is provided, the default camera is used. "
     + "Specify a target size and quality using query parameters.",
@@ -28,6 +27,7 @@ router = APIRouter(tags=["camera"])
         200: {"description": "Streaming video feed of the specified camera."},
         404: {"description": "Camera not available"},
     },
+    response_model=None,
 )
 def video_feed_for_camera(
     request: Request,

@@ -10,7 +10,7 @@ from phosphobot.utils import fetch_latest_brew_version, is_running_on_pi
 router = APIRouter(tags=["update"])
 
 
-@router.post("/update/version")
+@router.post("/update/version", response_model=dict)
 async def get_latest_available_version(run_quick: bool = False) -> dict | HTTPException:
     """
     Get the latest available version of the teleop software.
