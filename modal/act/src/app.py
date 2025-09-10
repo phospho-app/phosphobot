@@ -26,8 +26,6 @@ from phosphobot.am.base import (
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
 
-os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
-
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(

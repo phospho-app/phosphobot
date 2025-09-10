@@ -6,8 +6,6 @@ from PIL import Image
 from loguru import logger
 from typing import List
 
-os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
-
 # Modal image with all necessary dependencies
 paligemma_image = modal.Image.debian_slim(python_version="3.13").uv_pip_install(
     "accelerate>=1.7.0",

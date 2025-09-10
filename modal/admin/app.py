@@ -19,8 +19,6 @@ from phosphobot.am.base import TrainingRequest
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.models import CancelTrainingRequest
 
-os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
-
 
 phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent / "phosphobot" / "phosphobot"

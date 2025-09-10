@@ -56,3 +56,8 @@ jobs:
         run: |
           cd modal
           make deploy_paligemma
+
+      - name: Deploy Vllm
+        run: |
+          cd modal
+          make deploy_vllm

@@ -15,8 +15,6 @@ import modal
 from phosphobot.am.base import TrainingParamsGr00T
 from phosphobot.am.gr00t import Gr00tSpawnConfig
 
-os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
-
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
