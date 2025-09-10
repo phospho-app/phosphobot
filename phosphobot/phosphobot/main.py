@@ -162,8 +162,8 @@ def info(
         print(cv2.getBuildInformation())
 
     if servos:
-        from phosphobot.hardware.motors.feetech import (
-            dump_servo_states_to_file,  # type: ignore
+        from phosphobot.hardware.motors.feetech import (  # type: ignore
+            dump_servo_states_to_file,
         )
         from phosphobot.utils import get_home_app_path
 
