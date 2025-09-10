@@ -1,5 +1,4 @@
 import asyncio
-import os
 import platform
 import socket
 from asyncio import CancelledError
