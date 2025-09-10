@@ -146,7 +146,10 @@ async def get_all_camera_frames(
             response[camera_id] = None
 
     if not response:
-        raise HTTPException(status_code=503, detail="No camera frames available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"No frames captured from any camera: frames={frames} and cameras={cameras}",
+        )
 
     return response
 

@@ -12,6 +12,10 @@ prod:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
 	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
+# Fly agent run
+fly:
+	cd phosphobot && uv run --python 3.10 phosphobot run --fly --simulation=headless --no-crash-telemetry
+
 # Same as prod, but with the simulation GUI (useful when adding new robots to test)
 prod_gui:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)

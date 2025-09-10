@@ -1,11 +1,16 @@
-import socket
+import asyncio
+import os
 import platform
-from random import random
+import socket
+from asyncio import CancelledError
 from contextlib import asynccontextmanager
+from random import random
+import sys
 from typing import Any, AsyncGenerator, Callable
 
 import sentry_sdk
 import typer
+import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, applications
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -15,7 +20,7 @@ from loguru import logger
 from rich import print
 
 from phosphobot import __version__
-from phosphobot.camera import AllCameras, get_all_cameras_no_init, get_all_cameras
+from phosphobot.camera import AllCameras, get_all_cameras, get_all_cameras_no_init
 from phosphobot.configs import config
 from phosphobot.endpoints import (
     auth_router,
@@ -33,6 +38,7 @@ from phosphobot.posthog import posthog, posthog_pageview
 from phosphobot.recorder import Recorder, get_recorder
 from phosphobot.robot import RobotConnectionManager, get_rcm
 from phosphobot.teleoperation import get_udp_server
+from phosphobot.types import SimulationMode
 from phosphobot.utils import (
     get_home_app_path,
     get_resources_path,
@@ -280,3 +286,124 @@ if config.PROFILE:
         with open(filepath, "w") as out:
             out.write(profiler.output(renderer=renderer))
         return response
+
+
+def start_server(
+    host: str = "0.0.0.0",
+    port: int = 80,
+    reload: bool = False,
+    simulation: SimulationMode = SimulationMode.headless,
+    only_simulation: bool = False,
+    simulate_cameras: bool = False,
+    realsense: bool = True,
+    can: bool = True,
+    cameras: bool = True,
+    max_opencv_index: int = 10,
+    max_can_interfaces: int = 4,
+    profile: bool = False,
+    crash_telemetry: bool = True,
+    usage_telemetry: bool = True,
+    telemetry: bool = True,
+    silent: bool = False,
+) -> None:
+    """
+    Start the FastAPI server.
+    """
+
+    log_dir = get_home_app_path()
+    log_file_path = log_dir / "logs.txt"
+
+    if silent:
+        # Only log errors in silent mode
+        logger.remove()
+        logger.add(
+            sys.stderr,
+            level="ERROR",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        )
+
+    # Configure loguru to write logs to a file.
+    # This one sink will capture all logs, including those from uvicorn.
+    logger.add(
+        log_file_path,
+        level="DEBUG",  # Set to DEBUG to capture all details
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        rotation="2 MB",
+        retention="7 days",
+        enqueue=True,  # Makes logging thread-safe/process-safe
+        backtrace=True,
+        diagnose=True,
+    )
+    logger.info("Loguru file logging is configured. Server starting...")
+
+    config.SIM_MODE = simulation
+    config.ONLY_SIMULATION = only_simulation
+    config.SIMULATE_CAMERAS = simulate_cameras
+    config.ENABLE_REALSENSE = realsense
+    config.ENABLE_CAMERAS = cameras
+    config.PORT = port
+    config.PROFILE = profile
+    config.CRASH_TELEMETRY = crash_telemetry  # Enable crash telemetry by default
+    config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
+    config.ENABLE_CAN = can
+    config.MAX_OPENCV_INDEX = max_opencv_index
+    config.MAX_CAN_INTERFACES = max_can_interfaces
+
+    if not telemetry:
+        config.CRASH_TELEMETRY = False
+        config.USAGE_TELEMETRY = False
+
+    # Start the FastAPI app using uvicorn with port retry logic
+    ports = [port]
+    if port == 80:
+        ports += list(range(8020, 8040))  # 8020-8039 inclusive
+
+    success = False
+    for current_port in ports:
+        if is_port_in_use(current_port, host):
+            logger.warning(f"Port {current_port} is unavailable. Trying next...")
+            continue
+
+        try:
+            # Update config with current port
+            config.PORT = current_port
+
+            server_config = uvicorn.Config(
+                "phosphobot.app:app",
+                host=host,
+                port=current_port,
+                reload=reload,
+                timeout_graceful_shutdown=1,
+                log_config=None if silent else uvicorn.config.LOGGING_CONFIG,
+            )
+            server = uvicorn.Server(config=server_config)
+
+            # Run the server within the existing event loop
+            asyncio.run(server.serve())
+            success = True
+            break
+        except OSError as e:
+            if "address already in use" in str(e).lower():
+                logger.warning(f"Port conflict on {current_port}: {e}")
+                continue
+            logger.error(f"Critical server error: {e}")
+            raise typer.Exit(code=1)
+        except KeyboardInterrupt:
+            logger.debug("Server stopped by user.")
+            raise typer.Exit(code=0)
+        except CancelledError:
+            logger.debug("Server shutdown gracefully.")
+            raise typer.Exit(code=0)
+
+    if not success:
+        logger.warning(
+            "All ports failed. Try a custom port with:\n"
+            "phosphobot run --port 8000\n\n"
+            "Check used ports with:\n"
+            "sudo lsof -i :80 # Replace 80 with your port"
+        )
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    typer.run(start_server)

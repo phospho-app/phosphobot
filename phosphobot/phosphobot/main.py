@@ -1,4 +1,4 @@
-from asyncio import CancelledError
+import asyncio
 from loguru import logger
 
 logger.info("Starting phosphobot...")
@@ -85,8 +85,6 @@ import time
 from typing import Annotated
 
 import typer
-import uvicorn
-from phosphobot.configs import config
 from phosphobot.types import SimulationMode
 
 
@@ -226,6 +224,7 @@ def update():
 
 @cli.command()
 def run(
+    chat: Annotated[bool, typer.Option(help="Run phosphobot in chat mode.")] = False,
     host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
     simulation: Annotated[
@@ -297,73 +296,60 @@ def run(
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
     """
+    from phosphobot.app import start_server
 
-    config.SIM_MODE = simulation
-    config.ONLY_SIMULATION = only_simulation
-    config.SIMULATE_CAMERAS = simulate_cameras
-    config.ENABLE_REALSENSE = realsense
-    config.ENABLE_CAMERAS = cameras
-    config.PORT = port
-    config.PROFILE = profile
-    config.CRASH_TELEMETRY = crash_telemetry  # Enable crash telemetry by default
-    config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
-    config.ENABLE_CAN = can
-    config.MAX_OPENCV_INDEX = max_opencv_index
-    config.MAX_CAN_INTERFACES = max_can_interfaces
-
-    if not telemetry:
-        config.CRASH_TELEMETRY = False
-        config.USAGE_TELEMETRY = False
-
-    # Start the FastAPI app using uvicorn with port retry logic
-    ports = [port]
-    if port == 80:
-        ports += list(range(8020, 8040))  # 8020-8039 inclusive
-
-    success = False
-    for current_port in ports:
-        if is_port_in_use(current_port, host):
-            logger.warning(f"Port {current_port} is unavailable. Trying next...")
-            continue
-
-        try:
-            # Update config with current port
-            config.PORT = current_port
-
-            uvicorn.run(
-                "phosphobot.app:app",
-                host=host,
-                port=current_port,
-                reload=reload,
-                timeout_graceful_shutdown=1,
-            )
-            success = True
-            break
-        except OSError as e:
-            if "address already in use" in str(e).lower():
-                logger.warning(f"Port conflict on {current_port}: {e}")
-                continue
-            logger.error(f"Critical server error: {e}")
-            raise typer.Exit(code=1)
-        except KeyboardInterrupt:
-            logger.debug("Server stopped by user.")
-            raise typer.Exit(code=0)
-        except CancelledError:
-            logger.debug("Server shutdown gracefully.")
-            raise typer.Exit(code=0)
-        # Log the full traceback for unexpected errors
-        # except Exception as e:
-        #     logger.error(f"Unexpected error: {e}")
-        #     raise typer.Exit(code=1)
-
-    if not success:
-        logger.warning(
-            "All ports failed. Try a custom port with:\n"
-            "phosphobot run --port 8000\n\n"
-            "Check used ports with:\n"
-            "sudo lsof -i :80 # Replace 80 with your port"
+    if not chat:
+        start_server(
+            host=host,
+            port=port,
+            reload=reload,
+            simulation=simulation,
+            only_simulation=only_simulation,
+            simulate_cameras=simulate_cameras,
+            realsense=realsense,
+            can=can,
+            cameras=cameras,
+            max_opencv_index=max_opencv_index,
+            max_can_interfaces=max_can_interfaces,
+            profile=profile,
+            crash_telemetry=crash_telemetry,
+            usage_telemetry=usage_telemetry,
+            telemetry=telemetry,
         )
-        raise typer.Exit(code=1)
+    else:
+        # Create a new thread with the server
+        import threading
+
+        # Start the server in a separate thread
+        thread = threading.Thread(
+            target=start_server,
+            args=(
+                host,
+                port,
+                reload,
+                simulation,
+                only_simulation,
+                simulate_cameras,
+                realsense,
+                can,
+                cameras,
+                max_opencv_index,
+                max_can_interfaces,
+                profile,
+                crash_telemetry,
+                usage_telemetry,
+                telemetry,
+                True,  # silent mode to avoid logging text
+            ),
+            daemon=True,  # Ensure the thread exits when the main program exits
+        )
+        thread.start()
+
+        # Launch in chat mode
+        from phosphobot.chat.app import AgentApp
+
+        app = AgentApp()
+        app.run()
 
 
 if __name__ == "__main__":
