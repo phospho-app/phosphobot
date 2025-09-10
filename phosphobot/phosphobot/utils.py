@@ -15,7 +15,7 @@ import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, Tuple, Union, Optional
+from typing import Annotated, Any, Literal, Optional, Tuple, Union
 
 import av
 import cv2
@@ -28,7 +28,6 @@ from fastapi import HTTPException
 from huggingface_hub import HfApi, login
 from loguru import logger
 from pydantic import BaseModel, BeforeValidator, PlainSerializer
-
 
 from phosphobot.types import VideoCodecs
 

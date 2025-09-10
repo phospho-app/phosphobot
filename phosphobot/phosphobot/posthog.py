@@ -10,7 +10,6 @@ from phosphobot import __version__
 from phosphobot.configs import config
 from phosphobot.utils import get_home_app_path, get_tokens
 
-
 tokens = get_tokens()
 posthog = Posthog(
     project_api_key=tokens.POSTHOG_API_KEY or "",

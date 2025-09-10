@@ -1,11 +1,11 @@
 import asyncio
 from typing import Any, List, Literal, Optional, Tuple
+
 import httpx
 import numpy as np
-
-from phosphobot.hardware.base import BaseRobot
 from loguru import logger
 
+from phosphobot.hardware.base import BaseRobot
 from phosphobot.models import BaseRobotConfig, RobotConfigStatus
 
 

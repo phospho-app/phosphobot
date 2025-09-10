@@ -2,10 +2,10 @@ import asyncio
 import os
 import platform
 import socket
+import sys
 from asyncio import CancelledError
 from contextlib import asynccontextmanager
 from random import random
-import sys
 from typing import Any, AsyncGenerator, Callable
 
 import sentry_sdk
@@ -41,9 +41,9 @@ from phosphobot.teleoperation import get_udp_server
 from phosphobot.types import SimulationMode
 from phosphobot.utils import (
     get_home_app_path,
+    get_local_ip,
     get_resources_path,
     login_to_hf,
-    get_local_ip,
 )
 
 

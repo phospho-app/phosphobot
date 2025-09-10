@@ -6,8 +6,8 @@ from typing import Optional
 from fastapi import HTTPException
 from loguru import logger
 from supabase import AsyncClient, acreate_client
-from supabase_auth.types import Session as SupabaseSession
 from supabase_auth.errors import AuthRetryableError
+from supabase_auth.types import Session as SupabaseSession
 
 from phosphobot.models import Session
 from phosphobot.utils import get_home_app_path, get_tokens

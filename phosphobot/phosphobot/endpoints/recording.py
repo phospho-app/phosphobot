@@ -16,13 +16,13 @@ from phosphobot.hardware.base import BaseManipulator
 from phosphobot.models import (
     BaseDataset,
     BaseEpisode,
+    InfoModel,
     RecordingPlayRequest,
     RecordingStartRequest,
     RecordingStopRequest,
     RecordingStopResponse,
     StatusResponse,
 )
-from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
 from phosphobot.posthog import is_github_actions
 from phosphobot.recorder import Recorder, get_recorder

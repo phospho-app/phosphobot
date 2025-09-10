@@ -7,7 +7,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from loguru import logger
 from serial.tools import list_ports
 
-
 from phosphobot.models import (
     LocalDevice,
     NetworkCredentials,
@@ -18,8 +17,8 @@ from phosphobot.models import (
 )
 from phosphobot.utils import (
     background_task_log_exceptions,
-    is_running_on_pi,
     get_local_subnet,
+    is_running_on_pi,
     scan_network_devices,
 )
 
