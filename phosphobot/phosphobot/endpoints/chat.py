@@ -1,6 +1,6 @@
 import asyncio
 import time
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 import httpx
 from supabase_auth.types import Session as SupabaseSession
@@ -47,6 +47,7 @@ async def proxy_to_internal_gemini(
 
     # Extract host from MODAL_API_URL and set it explicitly
     modal_url = tokens.MODAL_API_URL
+    assert modal_url, "MODAL_API_URL must be set in tokens.toml"
     modal_host = modal_url.split("//")[1].split("/")[0]
     headers["Host"] = modal_host
 

@@ -1212,7 +1212,7 @@ def fastapi_app():
         # TODO: Adds quota check (eg: PRO)
         return user_auth.user
 
-    from fastapi.responses import JSONResponse, StreamingResponse
+    from fastapi.responses import StreamingResponse
 
     @web_app.api_route(
         "/gemini/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"]
