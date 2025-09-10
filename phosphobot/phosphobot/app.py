@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import platform
 import socket
 import sys
@@ -322,6 +323,30 @@ def start_server(
         backtrace=True,
         diagnose=True,
     )
+
+    # Intercept stdlib logging and forward to loguru.
+    # If not doing that, then tracebacks are not logged to the file.
+    class InterceptHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            # Translate logging level name to loguru level (fallback to levelno)
+            try:
+                level = logger.level(record.levelname).name
+            except Exception:
+                level = record.levelno
+
+            # Find depth so loguru shows the original caller
+            frame, depth = logging.currentframe(), 2
+            while frame and frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            logger.opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
+
+    # Replace handlers for the root logger (and be safe: set level to lowest so all messages are forwarded)
+    logging.root.handlers = [InterceptHandler()]
+
     logger.info("Loguru file logging is configured. Server starting...")
 
     config.SIM_MODE = simulation

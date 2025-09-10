@@ -19,37 +19,39 @@ async def proxy_to_internal_gemini(
 ):
     tokens = get_tokens()
 
-    # copy headers, strip hop-by-hop and incoming authorization
+    # Log incoming request
+    logger.debug(f"Incoming request: method={request.method}, path={path}")
+    # logger.debug(f"Request headers: {dict(request.headers)}")
+
+    # Copy headers but exclude problematic ones
     headers = {
         k: v
         for k, v in request.headers.items()
         if k.lower()
         not in {
-            "host",
+            "host",  # Remove host header as we'll set it explicitly
             "authorization",
             "connection",
             "keep-alive",
             "transfer-encoding",
+            "content-encoding",  # Remove content-encoding to avoid compression issues
         }
     }
     headers["Authorization"] = f"Bearer {session.access_token}"
 
+    # Extract host from MODAL_API_URL and set it explicitly
+    modal_url = tokens.MODAL_API_URL
+    modal_host = modal_url.split("//")[1].split("/")[0]
+    headers["Host"] = modal_host
+
     query = request.url.query
-    url = f"{tokens.MODAL_API_URL}/gemini/{path}"
+    url = f"{modal_url}/gemini/{path}"
     if query:
         url = f"{url}?{query}"
 
-    # read the request body once
     body_bytes = await request.body()
+    logger.debug(f"Request body size: {len(body_bytes)} bytes")
 
-    logger.debug(
-        "proxy_to_internal_gemini forwarding request: url=%s method=%s body_size=%d",
-        url,
-        request.method,
-        len(body_bytes or b""),
-    )
-
-    # give generous timeout for potentially large payloads
     timeout = httpx.Timeout(120.0, connect=30.0)
 
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -60,34 +62,53 @@ async def proxy_to_internal_gemini(
                 headers=headers,
                 content=body_bytes or None,
             )
+            logger.debug(f"Forwarding to: {url}")
+            logger.debug(f"With headers: {dict(headers)}")
 
-            # send with stream=True to stream response back
             upstream_resp = await client.send(req, stream=True)
+            logger.debug(f"Upstream response status: {upstream_resp.status_code}")
+            # logger.debug(f"Upstream response headers: {dict(upstream_resp.headers)}")
 
-        except httpx.RequestError:
-            logger.exception("Error contacting internal Gemini proxy")
+        except httpx.RequestError as e:
+            logger.error(f"Error contacting internal Gemini proxy: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Failed to reach internal Gemini proxy",
             )
 
-    # NOTE: upstream_resp is a httpx.Response and still open for streaming
     async def iter_stream():
+        chunk_count = 0
+        total_size = 0
         try:
             async for chunk in upstream_resp.aiter_bytes():
-                # optional debug: logger.debug("upstream chunk len=%d", len(chunk))
+                chunk_count += 1
+                total_size += len(chunk)
+                if chunk_count <= 5:  # Log first 5 chunks
+                    logger.debug(f"Chunk {chunk_count}: {len(chunk)} bytes")
                 yield chunk
+            logger.debug(
+                f"Stream completed: {chunk_count} chunks, {total_size} total bytes"
+            )
+        except Exception as e:
+            logger.error(f"Error in stream iteration: {str(e)}")
+            raise
         finally:
-            # ensure upstream connection is closed if generator exits early
             await upstream_resp.aclose()
 
+    # Filter out problematic headers
     passthrough_headers = {
         k: v
         for k, v in upstream_resp.headers.items()
-        if k.lower() not in {"transfer-encoding", "connection", "keep-alive"}
+        if k.lower()
+        not in {
+            "transfer-encoding",
+            "connection",
+            "keep-alive",
+            "content-encoding",  # Remove content-encoding to avoid decompression issues
+        }
     }
 
-    # If upstream returned an error status, stream it back with same status and body
+    logger.debug(f"Returning response with status: {upstream_resp.status_code}")
     return StreamingResponse(
         iter_stream(),
         status_code=upstream_resp.status_code,

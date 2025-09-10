@@ -1222,25 +1222,32 @@ def fastapi_app():
         path: str,
         user: SupabaseUser = Depends(get_user_and_check_quota),
     ):
-        """
-        Proxy endpoint for the Google Gemini API.
-        Authenticates user and forwards request transparently.
-        """
-
         logger.info(
             f"User {user.id} -> Gemini {request.method} {path} with query {request.url.query}"
         )
+        logger.debug(f"Request headers: {dict(request.headers)}")
 
         url = httpx.URL(path=f"/{path}", query=request.url.query.encode("utf-8"))
 
+        # Copy headers but remove problematic ones
         headers = {
             k: v
             for k, v in request.headers.items()
-            if k.lower() not in {"authorization", "host"}
+            if k.lower()
+            not in {
+                "authorization",
+                "host",
+                "content-encoding",  # Remove content-encoding to avoid compression issues
+            }
         }
         headers["x-goog-api-key"] = GEMINI_API_KEY
 
+        # Explicitly set accept-encoding to avoid compression issues
+        headers["Accept-Encoding"] = "identity"
+
         body = await request.body()
+        logger.debug(f"Request body size: {len(body)} bytes")
+
         req = gemini_client.build_request(
             method=request.method,
             url=url,
@@ -1250,7 +1257,10 @@ def fastapi_app():
 
         try:
             resp = await gemini_client.send(req, stream=True)
-        except httpx.RequestError:
+            logger.debug(f"Gemini API response status: {resp.status_code}")
+            logger.debug(f"Gemini API response headers: {dict(resp.headers)}")
+
+        except httpx.RequestError as e:
             logger.exception("Error contacting Gemini")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -1258,15 +1268,38 @@ def fastapi_app():
             )
 
         async def iter_stream():
-            async for chunk in resp.aiter_bytes():
-                yield chunk
+            chunk_count = 0
+            total_size = 0
+            try:
+                async for chunk in resp.aiter_bytes():
+                    chunk_count += 1
+                    total_size += len(chunk)
+                    if chunk_count <= 5:  # Log first 5 chunks
+                        logger.debug(f"Gemini chunk {chunk_count}: {len(chunk)} bytes")
+                    yield chunk
+                logger.debug(
+                    f"Gemini stream completed: {chunk_count} chunks, {total_size} total bytes"
+                )
+            except Exception as e:
+                logger.error(f"Error in Gemini stream iteration: {str(e)}")
+                raise
+            finally:
+                await resp.aclose()
 
+        # Filter out problematic headers
         passthrough_headers = {
             k: v
             for k, v in resp.headers.items()
-            if k.lower() not in {"transfer-encoding", "connection", "keep-alive"}
+            if k.lower()
+            not in {
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "content-encoding",  # Remove content-encoding to avoid decompression issues
+            }
         }
 
+        logger.debug(f"Returning Gemini response with status: {resp.status_code}")
         return StreamingResponse(
             iter_stream(),
             status_code=resp.status_code,
