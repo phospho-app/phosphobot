@@ -154,7 +154,7 @@ class BaseRobot(ABC):
         """
         raise NotImplementedError
 
-    def move_to_sleep_sync(self):
+    def move_to_sleep_sync(self) -> None:
         asyncio.run(self.move_to_sleep())
 
 

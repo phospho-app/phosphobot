@@ -15,7 +15,7 @@ from phosphobot.configs import config
 
 
 class PhosphobotClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.server_url = f"http://localhost:{config.PORT}"
         self.client = httpx.AsyncClient(base_url=self.server_url)
 

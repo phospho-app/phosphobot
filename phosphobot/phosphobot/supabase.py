@@ -77,7 +77,7 @@ async def get_client() -> AsyncClient:
 
     async def set_session_with_retry(
         access_token, refresh_token, max_retries=3, delay=2
-    ):
+    ) -> bool:
         current_delay = delay
         for attempt in range(max_retries):
             try:
@@ -95,6 +95,7 @@ async def get_client() -> AsyncClient:
                 else:
                     logger.error(f"Failed after {max_retries} attempts: {e}")
                     return False
+        return False
 
     if session:
         if (

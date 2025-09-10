@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from typing import List, Optional, Tuple
+from phosphobot.types import SimulationMode
 
 import pybullet as p
 from loguru import logger
@@ -20,29 +21,29 @@ class PyBulletSimulation:
     A comprehensive wrapper class for PyBullet simulation environment.
     """
 
-    def __init__(self, sim_mode="headless"):
+    def __init__(self, sim_mode: SimulationMode = SimulationMode.headless) -> None:
         """
         Initialize the PyBullet simulation environment.
 
         Args:
-            sim_mode (str): Simulation mode - "headless" or "gui"
+            sim_mode (SimulationMode): Simulation mode - "headless" or "gui"
         """
         self.sim_mode = sim_mode
         self.connected = False
-        self.robots = {}  # Store loaded robots
+        self.robots: dict = {}  # Store loaded robots
         self.init_simulation()
 
     def init_simulation(self) -> None:
         """
         Initialize the pybullet simulation environment based on the configuration.
         """
-        if self.sim_mode == "headless":
+        if self.sim_mode == SimulationMode.headless:
             p.connect(p.DIRECT)
             p.setGravity(0, 0, -9.81)
             self.connected = True
             logger.debug("Simulation: headless mode enabled")
 
-        elif self.sim_mode == "gui":
+        elif self.sim_mode == SimulationMode.gui:
             # Spin up a new process for the simulation
             absolute_path = os.path.abspath(
                 os.path.join(

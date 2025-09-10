@@ -46,11 +46,11 @@ def with_failure_tracking(func):
     return wrapper
 
 
-def is_github_actions():
+def is_github_actions() -> bool:
     return os.getenv("GITHUB_ACTIONS") == "true"
 
 
-def get_or_create_unique_id(token_path):
+def get_or_create_unique_id(token_path: str) -> str:
     """
     Retrieve or generate a unique ID, storing it in a token file. This is an
     anonymous identifier for the user.

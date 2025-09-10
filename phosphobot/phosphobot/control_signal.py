@@ -8,19 +8,19 @@ from uuid import uuid4
 
 
 class ControlSignal:
-    def __init__(self):
+    def __init__(self) -> None:
         self._running = False
         self._lock = threading.Lock()
 
-    def start(self):
+    def start(self) -> None:
         with self._lock:
             self._running = True
 
-    def stop(self):
+    def stop(self) -> None:
         with self._lock:
             self._running = False
 
-    def is_in_loop(self):
+    def is_in_loop(self) -> bool:
         with self._lock:
             return self._running
 
@@ -28,31 +28,31 @@ class ControlSignal:
 class AIControlSignal(ControlSignal):
     _status: Literal["stopped", "running", "paused", "waiting"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._status = "stopped"
         self.id = str(uuid4())
         self._is_in_loop = False
 
-    def new_id(self):
+    def new_id(self) -> None:
         self.id = str(uuid4())
 
-    def start(self):
+    def start(self) -> None:
         with self._lock:
             self._is_in_loop = True
             self._status = "waiting"
 
-    def set_running(self):
+    def set_running(self) -> None:
         with self._lock:
             self._is_in_loop = True
             self._status = "running"
 
-    def stop(self):
+    def stop(self) -> None:
         with self._lock:
             self._is_in_loop = False
             self._status = "stopped"
 
-    def is_in_loop(self):
+    def is_in_loop(self) -> bool:
         with self._lock:
             return self._is_in_loop
 
@@ -61,7 +61,7 @@ class AIControlSignal(ControlSignal):
         return self._status
 
     @status.setter
-    def status(self, value: Literal["stopped", "running", "paused", "waiting"]):
+    def status(self, value: Literal["stopped", "running", "paused", "waiting"]) -> None:
         if value == "stopped":
             self.stop()
         elif value == "running":

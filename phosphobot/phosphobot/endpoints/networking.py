@@ -26,7 +26,7 @@ router = APIRouter(tags=["networking"])
 
 
 @background_task_log_exceptions
-async def setup_hotspot_bg():
+async def setup_hotspot_bg() -> None:
     """Background task for hotspot setup and activation"""
     try:
         # Check if setup has already been done
@@ -106,7 +106,7 @@ dhcp-range=192.168.1.2,192.168.1.200,12h
 
 
 @background_task_log_exceptions
-async def connect_to_network_bg(ssid: str, password: str):
+async def connect_to_network_bg(ssid: str, password: str) -> None:
     """Background task for network connection"""
 
     try:
@@ -142,7 +142,9 @@ async def connect_to_network_bg(ssid: str, password: str):
 
 
 @router.post("/network/hotspot", response_model=StatusResponse)
-async def activate_hotspot(background_tasks: BackgroundTasks):
+async def activate_hotspot(
+    background_tasks: BackgroundTasks,
+) -> StatusResponse | HTTPException:
     """
     Endpoint to activate the hotspot on the Raspberry Pi.
     Returns immediately and performs setup in the background.
@@ -156,15 +158,15 @@ async def activate_hotspot(background_tasks: BackgroundTasks):
     return StatusResponse(
         status="ok",
         message="Hotspot activation started. The hotspot is being configured and will be available shortly",
-        SSID="phosphobot",
-        connect_and_visit="http://phosphobot.local",
-    )  # type: ignore
+        SSID="phosphobot",  # type: ignore
+        connect_and_visit="http://phosphobot.local",  # type: ignore
+    )
 
 
 @router.post("/network/connect", response_model=StatusResponse)
 async def switch_to_network(
     credentials: NetworkCredentials, background_tasks: BackgroundTasks
-):
+) -> StatusResponse | HTTPException:
     """
     Endpoint to connect phosphobot to a new network.
     Returns immediately and performs connection in the background.
