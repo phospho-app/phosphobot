@@ -224,7 +224,7 @@ def update():
 
 @cli.command()
 def run(
-    fly: Annotated[bool, typer.Option(help="Run phosphobot in fly mode.")] = False,
+    chat: Annotated[bool, typer.Option(help="Run phosphobot in chat mode.")] = False,
     host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
     simulation: Annotated[
@@ -298,7 +298,7 @@ def run(
     """
     from phosphobot.app import start_server
 
-    if not fly:
+    if not chat:
         start_server(
             host=host,
             port=port,
@@ -345,8 +345,8 @@ def run(
         )
         thread.start()
 
-        # Launch in fly mode
-        from phosphobot.fly.app import AgentApp
+        # Launch in chat mode
+        from phosphobot.chat.app import AgentApp
 
         app = AgentApp()
         app.run()
