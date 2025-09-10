@@ -454,7 +454,6 @@ def fastapi_app():
     from fastapi.responses import JSONResponse
     from fastapi.exceptions import HTTPException
 
-    from fastapi import Response
     from supabase_auth.types import User as SupabaseUser
 
     stripe.api_key = os.environ["STRIPE_API_KEY"]
@@ -1209,7 +1208,25 @@ def fastapi_app():
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
             )
-        # TODO: Adds quota check (eg: PRO)
+        # Check if the user is a pro user
+        user_data = (
+            supabase_client.table("users")
+            .select("*")
+            .eq("id", user_auth.user.id)
+            .execute()
+        )
+        if not user_data.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        user_plan = user_data.data[0].get("plan", None)
+        if user_plan != "pro":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This endpoint is only available for PRO users",
+            )
+
         return user_auth.user
 
     from fastapi.responses import StreamingResponse
