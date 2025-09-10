@@ -19,27 +19,23 @@ async def proxy_to_internal_gemini(
 ):
     tokens = get_tokens()
 
-    # Log incoming request
     logger.debug(f"Incoming request: method={request.method}, path={path}")
-    # logger.debug(f"Request headers: {dict(request.headers)}")
 
-    # Copy headers but exclude problematic ones
     headers = {
         k: v
         for k, v in request.headers.items()
         if k.lower()
         not in {
-            "host",  # Remove host header as we'll set it explicitly
+            "host",
             "authorization",
             "connection",
             "keep-alive",
             "transfer-encoding",
-            "content-encoding",  # Remove content-encoding to avoid compression issues
+            "content-encoding",
         }
     }
     headers["Authorization"] = f"Bearer {session.access_token}"
 
-    # Extract host from MODAL_API_URL and set it explicitly
     modal_url = tokens.MODAL_API_URL
     modal_host = modal_url.split("//")[1].split("/")[0]
     headers["Host"] = modal_host
@@ -52,7 +48,8 @@ async def proxy_to_internal_gemini(
     body_bytes = await request.body()
     logger.debug(f"Request body size: {len(body_bytes)} bytes")
 
-    timeout = httpx.Timeout(120.0, connect=30.0)
+    # Increased timeout
+    timeout = httpx.Timeout(300.0, connect=60.0)
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
@@ -63,11 +60,9 @@ async def proxy_to_internal_gemini(
                 content=body_bytes or None,
             )
             logger.debug(f"Forwarding to: {url}")
-            logger.debug(f"With headers: {dict(headers)}")
 
             upstream_resp = await client.send(req, stream=True)
             logger.debug(f"Upstream response status: {upstream_resp.status_code}")
-            # logger.debug(f"Upstream response headers: {dict(upstream_resp.headers)}")
 
         except httpx.RequestError as e:
             logger.error(f"Error contacting internal Gemini proxy: {str(e)}")
@@ -83,19 +78,22 @@ async def proxy_to_internal_gemini(
             async for chunk in upstream_resp.aiter_bytes():
                 chunk_count += 1
                 total_size += len(chunk)
-                if chunk_count <= 5:  # Log first 5 chunks
+                if chunk_count <= 5:
                     logger.debug(f"Chunk {chunk_count}: {len(chunk)} bytes")
                 yield chunk
             logger.debug(
                 f"Stream completed: {chunk_count} chunks, {total_size} total bytes"
             )
+        except httpx.ReadError as e:
+            logger.error(f"Read error during streaming: {repr(e)}")
+            # Optionally, you can re-raise or handle differently
+            raise
         except Exception as e:
-            logger.error(f"Error in stream iteration: {str(e)}")
+            logger.error(f"Unexpected error in stream iteration: {repr(e)}")
             raise
         finally:
             await upstream_resp.aclose()
 
-    # Filter out problematic headers
     passthrough_headers = {
         k: v
         for k, v in upstream_resp.headers.items()
@@ -104,7 +102,7 @@ async def proxy_to_internal_gemini(
             "transfer-encoding",
             "connection",
             "keep-alive",
-            "content-encoding",  # Remove content-encoding to avoid decompression issues
+            "content-encoding",
         }
     }
 
