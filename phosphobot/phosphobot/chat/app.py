@@ -12,6 +12,9 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog
 from textual.worker import Worker
 
+from phosphobot.utils import get_local_ip
+from phosphobot.configs import config
+
 
 class AgentScreen(Screen):
     """The main screen for the agent application."""
@@ -19,13 +22,19 @@ class AgentScreen(Screen):
     def compose(self) -> ComposeResult:
         """Create the UI layout and widgets."""
         yield RichLog(id="chat-log", wrap=True, highlight=True)
-        yield Input(placeholder="Type a prompt and press Enter...", id="chat-input")
+        yield Input(
+            placeholder="Click here, type a prompt and press Enter to send",
+            id="chat-input",
+        )
         yield Footer()
 
     def on_mount(self) -> None:
         """Focus the input when the screen is mounted."""
         self._write_to_log(
-            "Welcome! Enter a prompt or press Ctrl+P for commands.", "system"
+            "🧪 Welcome to phosphobot chat!\n\n"
+            + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
+            + "\nEnter a prompt in the box below or press Ctrl+P for commands.",
+            "system",
         )
         self.query_one(Input).focus()
 
@@ -48,11 +57,11 @@ class AgentScreen(Screen):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         style, prefix = "", ""
         if who == "user":
-            style, prefix = "bold magenta", f"[{timestamp} YOU] "
+            style, prefix = "bold white", f"[{timestamp} YOU] "
         elif who == "agent":
-            style, prefix = "bold blue", f"[{timestamp} AGENT] "
+            style, prefix = "bold green", f"[{timestamp} AGENT] "
         elif who == "system":
-            style, prefix = "italic dim", f"[{timestamp} SYS] "
+            style, prefix = "italic green", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
 
 
@@ -91,7 +100,7 @@ class AgentApp(App):
     }
     #chat-input {
         dock: bottom;
-        height: 3;
+        height: 8;
         margin: 0 2 1 2;
     }
     """

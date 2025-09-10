@@ -43,6 +43,7 @@ from phosphobot.utils import (
     get_home_app_path,
     get_resources_path,
     login_to_hf,
+    get_local_ip,
 )
 
 
@@ -53,20 +54,6 @@ def init_telemetry() -> None:
     from phosphobot.sentry import init_sentry
 
     init_sentry()
-
-
-def get_local_ip() -> str:
-    """
-    Get the local IP address of the server.
-    """
-    try:
-        # Create a temporary socket to get the local IP
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))  # Doesn't actually send data
-            server_ip = s.getsockname()[0]
-    except Exception:
-        server_ip = "localhost"
-    return server_ip
 
 
 @asynccontextmanager

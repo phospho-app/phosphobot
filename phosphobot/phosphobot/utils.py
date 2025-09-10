@@ -1003,3 +1003,17 @@ async def scan_network_devices(
         logger.warning(f"Fast scan failed: {e}. Falling back to slow scan...")
         ALLOWED_TO_RUN_SCAPY = False
         return await slow_arp_scan()
+
+
+def get_local_ip() -> str:
+    """
+    Get the local IP address of the server.
+    """
+    try:
+        # Create a temporary socket to get the local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))  # Doesn't actually send data
+            server_ip = s.getsockname()[0]
+    except Exception:
+        server_ip = "localhost"
+    return server_ip

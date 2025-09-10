@@ -97,20 +97,6 @@ def init_telemetry() -> None:
     init_sentry()
 
 
-def get_local_ip() -> str:
-    """
-    Get the local IP address of the server.
-    """
-    try:
-        # Create a temporary socket to get the local IP
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))  # Doesn't actually send data
-            server_ip = s.getsockname()[0]
-    except Exception:
-        server_ip = "localhost"
-    return server_ip
-
-
 cli = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 
 
