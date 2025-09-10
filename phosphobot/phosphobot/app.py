@@ -30,6 +30,7 @@ from phosphobot.endpoints import (
     recording_router,
     training_router,
     update_router,
+    chat_router,
 )
 from phosphobot.hardware import get_sim
 from phosphobot.models import ServerStatus
@@ -201,6 +202,7 @@ app.include_router(pages_router)
 app.include_router(networking_router)
 app.include_router(update_router)
 app.include_router(auth_router)
+app.include_router(chat_router)
 
 # TODO : Only allow secured origins
 app.add_middleware(

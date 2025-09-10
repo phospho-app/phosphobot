@@ -105,7 +105,7 @@ class AgentApp(App):
     }
     """
 
-    is_agent_running: var[bool] = var(False)
+    is_running: var[bool] = var(False)
     worker: Optional[Worker] = None
 
     class AgentUpdate(Message):
@@ -164,14 +164,14 @@ class AgentApp(App):
         self.worker = self.run_worker(self._run_agent(agent), exclusive=True)
 
     async def _run_agent(self, agent: RoboticAgent) -> None:
-        self.is_agent_running = True
+        self.is_running = True
         try:
             async for event_type, payload in agent.run():
                 self.post_message(self.AgentUpdate(event_type, payload))
         except asyncio.CancelledError:
             self.post_message(self.AgentUpdate("log", {"text": "Agent stopped."}))
         finally:
-            self.is_agent_running = False
+            self.is_running = False
             self.agent_task = None
 
     def on_agent_app_agent_update(self, message: AgentUpdate) -> None:

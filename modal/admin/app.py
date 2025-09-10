@@ -25,7 +25,7 @@ phosphobot_dir = (
 )
 admin_image = (
     modal.Image.debian_slim(python_version="3.10")
-    .pip_install(
+    .uv_pip_install(
         "ffmpeg-python>=0.2.0",
         "stripe",
         "httpx",
@@ -444,13 +444,18 @@ class PublicUser(BaseModel):
 @modal.concurrent(max_inputs=1000)
 @modal.asgi_app()
 def fastapi_app():
+    import httpx
+    import stripe
+
     from datetime import datetime, timezone
 
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
     from fastapi.exceptions import HTTPException
-    import stripe
+
+    from fastapi import Response
+    from supabase_auth.types import User as SupabaseUser
 
     stripe.api_key = os.environ["STRIPE_API_KEY"]
 
@@ -1186,11 +1191,6 @@ def fastapi_app():
 
         return {"status": "ok"}
 
-    import httpx
-    from fastapi import Depends, Response
-    from supabase_auth.types import User as SupabaseUser
-
-    # 1. Gemini Proxy Configuration
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
     GEMINI_API_URL = "https://generativelanguage.googleapis.com"
 
@@ -1209,39 +1209,10 @@ def fastapi_app():
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
             )
-
-        # user_id = user_auth.user.id
-
-        # Fetch user's profile and quota from your 'users' table
-        # user_profile = (
-        #     supabase_client.table("users")
-        #     # .select("gemini_quota")
-        #     .eq("id", user_id)
-        #     .limit(1)
-        #     .execute()
-        # )
-
-        # if not user_profile.data:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="User profile not found.",
-        #     )
-
-        # quota = user_profile.data[0].get("gemini_quota", 0)
-
-        # if quota <= 0:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        #         detail="You have exceeded your Gemini API quota.",
-        #     )
-        # # Decrement the quota
-        # new_quota = quota - 1
-        # supabase_client.table("users").update({"gemini_quota": new_quota}).eq(
-        #     "id", user_id
-        # ).execute()
-
-        # Return the user object to be used in the endpoint if needed
+        # TODO: Adds quota check (eg: PRO)
         return user_auth.user
+
+    from fastapi.responses import JSONResponse, StreamingResponse
 
     @web_app.api_route(
         "/gemini/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"]
@@ -1252,49 +1223,55 @@ def fastapi_app():
         user: SupabaseUser = Depends(get_user_and_check_quota),
     ):
         """
-        A proxy endpoint for the Google Gemini API.
-        It authenticates users and checks their quota before forwarding the request.
+        Proxy endpoint for the Google Gemini API.
+        Authenticates user and forwards request transparently.
         """
-        logger.info(f"Proxying Gemini request for user {user.id} to path: {path}")
 
-        # Construct the full URL to the Gemini API
+        logger.info(
+            f"User {user.id} -> Gemini {request.method} {path} with query {request.url.query}"
+        )
+
         url = httpx.URL(path=f"/{path}", query=request.url.query.encode("utf-8"))
 
-        # Prepare the request to be forwarded
-        headers = dict(request.headers)
-        headers["host"] = gemini_client.base_url.host
-        # Add the Gemini API key to the outgoing request
-        # Gemini expects the key in the `x-goog-api-key` header.
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() not in {"authorization", "host"}
+        }
         headers["x-goog-api-key"] = GEMINI_API_KEY
-        # It's good practice to remove the user's original authorization header
-        headers.pop("authorization", None)
 
-        # Build and send the request using the httpx client
+        body = await request.body()
         req = gemini_client.build_request(
             method=request.method,
             url=url,
             headers=headers,
-            content=await request.body(),
-            timeout=30.0,
+            content=body or None,
         )
 
         try:
             resp = await gemini_client.send(req, stream=True)
-        except httpx.RequestError as e:
-            logger.error(f"Error proxying request to Gemini: {e}")
+        except httpx.RequestError:
+            logger.exception("Error contacting Gemini")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"An error occurred while contacting the Gemini API: {e}",
+                detail="Failed to reach Gemini API",
             )
 
-        # Stream the response back to the original client
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            headers=dict(resp.headers),
-        )
+        async def iter_stream():
+            async for chunk in resp.aiter_bytes():
+                yield chunk
 
-    # --- END: Gemini Proxy Integration ---
+        passthrough_headers = {
+            k: v
+            for k, v in resp.headers.items()
+            if k.lower() not in {"transfer-encoding", "connection", "keep-alive"}
+        }
+
+        return StreamingResponse(
+            iter_stream(),
+            status_code=resp.status_code,
+            headers=passthrough_headers,
+        )
 
     # Required by modal
     return web_app
