@@ -41,9 +41,9 @@ class PiperHardware(BaseManipulator):
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 
+    GRIPPER_SERVO_ID = 7
     # When using the set zero of gripper control, we observe that current position is set to -1800 and not to zero
     GRIPPER_ZERO_POSITION = -1800
-
     # Strength with which the gripper will close. Similar to the gripping threshold value of other robots,
     GRIPPER_EFFORT = 300
 
@@ -80,11 +80,7 @@ class PiperHardware(BaseManipulator):
         axis: Optional[List[float]] = None,
     ) -> None:
         self.can_name = can_name
-        super().__init__(
-            only_simulation=only_simulation,
-            axis=axis,
-        )
-        self.gripper_servo_id = 7
+        super().__init__(only_simulation=only_simulation, axis=axis)
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -225,7 +221,7 @@ class PiperHardware(BaseManipulator):
 
         raise: Exception if the routine has not been implemented
         """
-        if servo_id >= self.gripper_servo_id or servo_id < 1:
+        if servo_id >= self.GRIPPER_SERVO_ID or servo_id < 1:
             gripper_state = self.motors_bus.GetArmGripperMsgs().gripper_state
             return gripper_state.grippers_effort
         else:
@@ -250,15 +246,23 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
-        # Get current position
+        # If servo_id is 7 (gripper), write the gripper command
+        if servo_id == self.GRIPPER_SERVO_ID:
+            self.write_gripper_command(units)
+            return
+
+        # Otherwise, we need to write the position to the motor. We can only write all motors at once.
         current_position = self.read_joints_position(unit="motor_units", source="robot")
-        # Write the new position
+        # The last position is the gripper, so we drop it
+        current_position = current_position[:-1]
+
+        # Override the position of the specified servo_id
         current_position[servo_id - 1] = units
 
-        logger.info(f"Moving motors to {current_position}")
+        logger.debug(f"Piper: Moving servo {servo_id} to position {units}")
         # Clamp the position in the allowed range for the motors using self.piper_limits
         logger.debug(
-            f"Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
+            f"Piper: Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
         )
         if servo_id in self.piper_limits_degrees:
             min_limit = self.piper_limits_degrees[servo_id]["min_angle_limit"] * 1000
@@ -295,7 +299,7 @@ class PiperHardware(BaseManipulator):
         self.motors_bus.JointCtrl(*clamped_joints)
 
         # Move the gripper if it is enabled
-        if enable_gripper and len(q_target) >= self.gripper_servo_id:
+        if enable_gripper and len(q_target) >= self.GRIPPER_SERVO_ID:
             self.write_gripper_command(q_target[-1])
 
     def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
@@ -325,8 +329,8 @@ class PiperHardware(BaseManipulator):
         )
 
         # Add the gripper position if it is not already present
-        if len(joints) < self.gripper_servo_id and (
-            joints_ids is None or self.gripper_servo_id in joints_ids
+        if len(joints) < self.GRIPPER_SERVO_ID and (
+            joints_ids is None or self.GRIPPER_SERVO_ID in joints_ids
         ):
             gripper_position = self.read_gripper_command()
             # Don't rescale the gripper position (need more R&D)
