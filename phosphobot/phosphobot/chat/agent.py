@@ -10,11 +10,12 @@ from google import genai
 from google.genai.errors import ClientError, ServerError
 from loguru import logger
 from pydantic import BaseModel
+from phosphobot.configs import config
 
 
 class PhosphobotClient:
-    def __init__(self, server_url: str = "http://localhost:80"):
-        self.server_url = server_url
+    def __init__(self):
+        self.server_url = f"http://localhost:{config.PORT}"
         self.client = httpx.AsyncClient(base_url=self.server_url)
 
     async def status(self) -> Dict[str, str]:
