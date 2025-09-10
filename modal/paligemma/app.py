@@ -6,8 +6,10 @@ from PIL import Image
 from loguru import logger
 from typing import List
 
+os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
+
 # Modal image with all necessary dependencies
-paligemma_image = modal.Image.debian_slim(python_version="3.10").pip_install(
+paligemma_image = modal.Image.debian_slim(python_version="3.13").uv_pip_install(
     "accelerate>=1.7.0",
     "pyarrow>=20.0.0",
     "torch>=2.7.0",
@@ -20,11 +22,12 @@ paligemma_image = modal.Image.debian_slim(python_version="3.10").pip_install(
 app = modal.App("paligemma-detector")
 paligemma_volume = modal.Volume.from_name("PaliGemma", create_if_missing=True)
 
+MINUTE = 60  # seconds
 
 FUNCTION_IMAGE = paligemma_image
 FUNCTION_GPU: list[str | modal.gpu._GPUConfig | None] = ["T4"]
-FUNCTION_SCALEDOWN_WINDOW = 60  # seconds
-FUNCTION_TIMEOUT = 300  # seconds
+FUNCTION_SCALEDOWN_WINDOW = 1 * MINUTE
+FUNCTION_TIMEOUT = 5 * MINUTE
 
 
 class ObjectDetectionProcessor:
