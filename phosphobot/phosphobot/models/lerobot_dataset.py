@@ -3111,7 +3111,7 @@ class EpisodesStatsFeatures(BaseModel):
         model_dict.pop("save_cartesian")
         metadata = model_dict.pop("add_metadata")
 
-        keys_to_pop = []
+        keys_to_pop: list[str] = []
 
         # Convert count to a list and remove sum and square_sum for compatibility
         for key, value in model_dict.items():
