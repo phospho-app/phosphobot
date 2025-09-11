@@ -443,31 +443,27 @@ class PiperHardware(BaseManipulator):
         else:
             raise ValueError(f"Unknown source: {source}")
 
+        # Calculate normalized gripper position [0, 1]
+        normalized = (gripper_position - self.GRIPPER_ZERO_POSITION) / (
+            self.GRIPPER_MAX_ANGLE * 1000
+        )
+
         if unit == "motor_units":
             # Don't do anything
             pass
         elif unit == "rad":
-            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, 2 * pi)
-            gripper_units = (
-                (gripper_position - self.GRIPPER_ZERO_POSITION)
-                / (self.GRIPPER_MAX_ANGLE * 1000)
-            ) * (2 * np.pi)
+            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, pi / 2)
+            gripper_units = normalized * (np.pi / 2)
         elif unit == "degrees":
-            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, 360)
-            gripper_units = (
-                (gripper_position - self.GRIPPER_ZERO_POSITION)
-                / (self.GRIPPER_MAX_ANGLE * 1000)
-            ) * 360
+            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, 90)
+            gripper_units = normalized * 90
         elif unit == "other":
             # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (min_value, max_value)
             if min_value is None or max_value is None:
                 raise ValueError(
                     "min_value and max_value must be provided for 'other' unit."
                 )
-            gripper_units = (
-                (gripper_position - self.GRIPPER_ZERO_POSITION)
-                / (self.GRIPPER_MAX_ANGLE * 1000)
-            ) * (max_value - min_value) + min_value
+            gripper_units = normalized * (max_value - min_value) + min_value
         else:
             raise ValueError(f"Unknown unit: {unit}")
 
@@ -481,13 +477,9 @@ class PiperHardware(BaseManipulator):
         Convert radians to an open command for the gripper.
         The open command is in the range [0, 1], where 0 is fully closed and 1 is fully open.
         """
-        # If out of range, clip between 0 and 2pi
-        if radians < 0 or radians > 2 * np.pi:
-            radians = np.clip(radians, 0, 2 * np.pi)
-        # Convert from (0, 2 * pi) to (0, 1) where 0 is fully closed and 1 is fully open
-        open_command = radians / (2 * np.pi)
-        # Clip the open command between 0 and 1
-        open_command = np.clip(open_command, 0, 1)
+        # Clip to valid range and normalize to [0, 1]
+        clipped_radians = np.clip(radians, 0, np.pi / 2)  # Max 90 degrees (π/2 rad)
+        open_command = clipped_radians / (np.pi / 2)  # Normalize to [0, 1]
         logger.debug(
             f"Piper: Converting radians {radians} to open command {open_command}"
         )
