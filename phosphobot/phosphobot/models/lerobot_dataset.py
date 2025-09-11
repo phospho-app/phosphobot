@@ -1376,10 +1376,10 @@ class LeRobotEpisode(BaseEpisode):
                 episode_data_dict["observation_cartesian_state"].append(
                     step_item.observation.state.astype(np.float32)
                 )
-            if step_item.action_cartesian is not None:
-                episode_data_dict["action_cartesian"].append(
-                    step_item.action_cartesian.astype(np.float32)
-                )
+                if step_item.action_cartesian is not None:
+                    episode_data_dict["action_cartesian"].append(
+                        step_item.action_cartesian.astype(np.float32)
+                    )
 
             # Additional metadata fields, if any
             if self.add_metadata:
@@ -2618,6 +2618,7 @@ class StatsModel(BaseModel):
 
         # Pass observation_images into the model constructor
         stats = cls(**stats_dict, observation_images=observation_images)
+        logger.debug(f"Loaded stats: {stats}")
         stats.add_metadata = add_metadata
         stats.save_cartesian = save_cartesian if save_cartesian is not None else False
         return stats
@@ -3100,14 +3101,22 @@ class EpisodesStatsFeatures(BaseModel):
         model_dict.pop("save_cartesian")
         metadata = model_dict.pop("add_metadata")
 
+        keys_to_pop = []
+
         # Convert count to a list and remove sum and square_sum for compatibility
         for key, value in model_dict.items():
+            if value is None:
+                keys_to_pop.append(key)
+                continue
             if isinstance(value["count"], int):
                 value["count"] = [value["count"]]
             if "sum" in value.keys():
                 value.pop("sum")
             if "square_sum" in value.keys():
                 value.pop("square_sum")
+
+        for key in keys_to_pop:
+            model_dict.pop(key)
 
         # Patch the dataset with metadata if available
         if metadata is not None:

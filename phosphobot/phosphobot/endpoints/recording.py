@@ -181,15 +181,13 @@ async def start_recording_episode(
                 )
             # Also check the size of metadata fields
             for label in metadata_labels:
-                if (
-                    getattr(info_model.features, label) is not None
-                    and query.add_metadata is not None
-                    and label in query.add_metadata
-                    and len(getattr(info_model.features, label))
-                    != len(query.add_metadata[label])
-                ):
+                request_label_length = (
+                    len(query.add_metadata[label]) if query.add_metadata else 0
+                )
+                info_label_length = getattr(info_model.features, label)["shape"][0]
+                if request_label_length != info_label_length:
                     raise KeyError(
-                        f"Metadata label {label} has size {len(getattr(info_model.features, label))} in the dataset but size {len(query.add_metadata[label])} in the request."
+                        f"Metadata label {label} has size {info_label_length} in the dataset but size {request_label_length} in the request."
                     )
 
             # Get action dimensions from existing dataset
