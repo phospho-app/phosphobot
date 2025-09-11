@@ -1,5 +1,4 @@
 import asyncio
-import base64
 from typing import Dict, List, Literal, Optional, Union
 
 from google import genai
@@ -155,7 +154,7 @@ Use the image to localize the end effector, understand the task, and give the in
 
         if response is None:
             logger.error("Failed to get response after all retry attempts.")
-            return None, None
+            return ChatResponse(endpoint=None, endpoint_params=None)
 
         # # Add to chat history (Gemini format)
         # self.chat_history.append(
@@ -172,14 +171,23 @@ Use the image to localize the end effector, understand the task, and give the in
 
         return ChatResponse(
             endpoint="move_relative",
-            endpoint_params=self._get_movement_parameters(command.next_robot_move),
-            command=command,
+            endpoint_params=self._get_movement_parameters(command),
         )
 
-    def _get_movement_parameters(self, command: str) -> Optional[Dict[str, float]]:
+    def _get_movement_parameters(
+        self, command: Optional[GeminiAgentResponse]
+    ) -> Optional[Dict[str, float]]:
         """
         Get movement parameters for a given command string.
         """
+        if command is None:
+            logger.warning("Received None GeminiAgentResponse, returning None.")
+            return None
+
+        if command.next_robot_move is None:
+            logger.warning("Received None next_robot_move, returning None.")
+            return None
+
         command_map = {
             "move_left": {"rz": 10.0},
             "move_right": {"rz": -10.0},
@@ -192,4 +200,4 @@ Use the image to localize the end effector, understand the task, and give the in
             "close_gripper": {"gripper": 1.0},
             "open_gripper": {"gripper": 0.0},
         }
-        return command_map.get(command)
+        return command_map.get(command.next_robot_move)
