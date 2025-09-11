@@ -3097,6 +3097,8 @@ class EpisodesStatsFeatures(BaseModel):
         for key, value in model_dict["observation.images"].items():
             model_dict[key] = value
         model_dict.pop("observation.images")
+        model_dict.pop("save_cartesian")
+        metadata = model_dict.pop("add_metadata")
 
         # Convert count to a list and remove sum and square_sum for compatibility
         for key, value in model_dict.items():
@@ -3106,6 +3108,17 @@ class EpisodesStatsFeatures(BaseModel):
                 value.pop("sum")
             if "square_sum" in value.keys():
                 value.pop("square_sum")
+
+        # Patch the dataset with metadata if available
+        if metadata is not None:
+            for key, value in metadata.items():
+                model_dict[key] = {
+                    "max": value,
+                    "min": value,
+                    "mean": value,
+                    "std": [0.0] * len(value),
+                    "count": model_dict["action"]["count"],
+                }
 
         # Add the episode index
         result_dict = {"episode_index": self.episode_index, "stats": model_dict}
