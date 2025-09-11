@@ -17,6 +17,7 @@ from fastapi import (
 )
 from loguru import logger
 from scipy.spatial.transform import Rotation as R
+import serial
 from supabase_auth.types import Session as SupabaseSession
 
 from phosphobot.ai_control import CustomAIControlSignal, setup_ai_control
@@ -1279,6 +1280,22 @@ async def add_robot_connection(
             message=f"Robot connection to {query.robot_name} added",
             robot_id=robot_id,
         )
+    except serial.SerialException as e:
+        if "Access is denied" in str(e):
+            logger.warning(
+                f"Failed to add robot connection: {e}\n{traceback.format_exc()}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission error: {e}. If you're on Windows, try running with WSL (Windows Subsystem for Linux) or phosphobot has the authorization to use the serial port.",
+            )
+        else:
+            logger.error(
+                f"Failed to add robot connection (SerialException): {e}\n{traceback.format_exc()}"
+            )
+            raise HTTPException(
+                status_code=400, detail=f"Failed to add robot connection: {e}"
+            )
     except Exception as e:
         logger.error(f"Failed to add robot connection: {e}\n{traceback.format_exc()}")
         raise HTTPException(
