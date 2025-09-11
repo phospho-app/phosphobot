@@ -90,7 +90,7 @@ Use the image to localize the end effector, understand the task, and give the in
         # Build the content list with prompt and images
         contents: List[Union[genai.types.Part, str]] = [self.prompt]
         # Images are base64 encoded strings
-        contents.extend([genai.types.Part.from_text(image) for image in images])
+        contents.extend([genai.types.Part.from_text(text=image) for image in images])
 
         # Generate response with retry logic for ServerError and ClientError
         max_retries = 3
