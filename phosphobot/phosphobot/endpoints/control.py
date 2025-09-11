@@ -7,6 +7,7 @@ from typing import Optional, cast
 import httpx
 import json_numpy  # type: ignore
 import numpy as np
+import serial
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -17,7 +18,6 @@ from fastapi import (
 )
 from loguru import logger
 from scipy.spatial.transform import Rotation as R
-import serial
 from supabase_auth.types import Session as SupabaseSession
 
 from phosphobot.ai_control import CustomAIControlSignal, setup_ai_control
