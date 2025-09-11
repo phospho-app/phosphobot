@@ -190,7 +190,7 @@ Use the image to localize the end effector, understand the task, and give the in
             "move_down": {"z": -5.0},
             "move_gripper_up": {"rx": 10.0},
             "move_gripper_down": {"rx": -10.0},
-            "close_gripper": {"gripper": 1.0},
-            "open_gripper": {"gripper": 0.0},
+            "close_gripper": {"open": 0.0},
+            "open_gripper": {"open": 1.0},
         }
         return command_map.get(command.next_robot_move)

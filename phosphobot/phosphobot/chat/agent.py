@@ -13,7 +13,7 @@ from phosphobot.models import ChatRequest, ChatResponse
 class PhosphobotClient:
     def __init__(self) -> None:
         self.server_url = f"http://{get_local_ip()}:{config.PORT}"
-        self.client = httpx.AsyncClient(base_url=self.server_url)
+        self.client = httpx.AsyncClient(base_url=self.server_url, timeout=5.0)
 
     async def status(self) -> Dict[str, str]:
         """
@@ -38,7 +38,7 @@ class PhosphobotClient:
         rx: float = 0.0,
         ry: float = 0.0,
         rz: float = 0.0,
-        gripper: Optional[float] = None,
+        open: Optional[float] = None,
     ) -> None:
         response = await self.client.post(
             "/move/relative",
@@ -49,7 +49,7 @@ class PhosphobotClient:
                 "rx": rx,
                 "ry": ry,
                 "rz": rz,
-                "open": gripper,
+                "open": open,
             },
         )
         response.raise_for_status()
@@ -188,8 +188,8 @@ class RoboticAgent:
             "move_down": {"z": -5.0},
             "move_gripper_up": {"rx": 10.0},
             "move_gripper_down": {"rx": -10.0},
-            "close_gripper": {"gripper": 1.0},
-            "open_gripper": {"gripper": 0.0},
+            "close_gripper": {"open": 0.0},
+            "open_gripper": {"open": 1.0},
         }
         next_robot_move = command_map.get(command)
         if next_robot_move is None:
@@ -240,7 +240,9 @@ class RoboticAgent:
                         },
                     )
                     yield "step_output", {"output": f"Manual command: {manual_command}"}
-                    execution_result = await self.execute_manual_command(manual_command)
+                    execution_result = await self.execute_manual_command(
+                        command=manual_command
+                    )
                     yield (
                         "step_output",
                         {"output": f"Execution result: {execution_result}"},
@@ -269,7 +271,7 @@ class RoboticAgent:
                     )
                     continue  # Skip this step if no images
 
-                next_command = await self.phosphobot_client.chat(
+                chat_response = await self.phosphobot_client.chat(
                     chat_request=ChatRequest(
                         prompt=self.task_description,
                         # Convert dict to list of base64 strings
@@ -278,10 +280,12 @@ class RoboticAgent:
                 )
                 yield (
                     "step_output",
-                    {"output": f"AI command: {next_command.model_dump()}"},
+                    {"output": f"AI command: {chat_response.model_dump()}"},
                 )
                 # Execute the command
-                execution_result = await self.execute_command(next_command=next_command)
+                execution_result = await self.execute_command(
+                    chat_response=chat_response
+                )
                 yield (
                     "step_output",
                     {"output": f"Execution result: {execution_result}"},
