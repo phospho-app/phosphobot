@@ -1,18 +1,15 @@
 import asyncio
 import base64
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Union
 
-import cv2
-import httpx
-import numpy as np
 from google import genai
 from google.genai.errors import ClientError, ServerError
 from loguru import logger
 from pydantic import BaseModel
 
 from phosphobot.configs import config
-from phosphobot.utils import get_local_ip
 from phosphobot.models import ChatResponse
+from phosphobot.utils import get_local_ip
 
 
 class GeminiAgentResponse(BaseModel):
@@ -92,15 +89,8 @@ Use the image to localize the end effector, understand the task, and give the in
 
         # Build the content list with prompt and images
         contents: List[Union[genai.types.Part, str]] = [self.prompt]
-        contents.extend(
-            [
-                genai.types.Part(
-                    mime_type="image/jpeg",
-                    data=base64.b64decode(image),
-                )
-                for image in images
-            ]
-        )
+        # Images are base64 encoded strings
+        contents.extend([genai.types.Part.from_text(image) for image in images])
 
         # Generate response with retry logic for ServerError and ClientError
         max_retries = 3
