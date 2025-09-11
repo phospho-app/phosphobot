@@ -1,6 +1,5 @@
 import json
 import os
-from pyexpat import features
 import shutil
 import tempfile
 import time
@@ -113,7 +112,9 @@ class LeRobotDataset(BaseDataset):
         if self.format_version == "lerobot_v2.1":
             if self.episodes_stats_model is None or force:
                 self.episodes_stats_model = EpisodesStatsModel.from_jsonl(
-                    meta_folder_path=self.meta_folder_full_path
+                    meta_folder_path=self.meta_folder_full_path,
+                    add_metadata=add_metadata,
+                    save_cartesian=save_cartesian,
                 )
         elif self.format_version == "lerobot_v2":
             if self.stats_model is None or force:  # Only for v2
@@ -1292,9 +1293,9 @@ class LeRobotEpisode(BaseEpisode):
             freq=freq,
             codec=codec,
             target_size=target_size,
+            is_cartesian=save_cartesian if save_cartesian else False,
+            add_metadata=add_metadata,
         )
-        episode.is_cartesian = save_cartesian if save_cartesian is not None else False
-        episode.add_metadata = add_metadata
         return episode
 
     async def append_step(self, step: Step, **kwargs) -> None:
@@ -1375,10 +1376,10 @@ class LeRobotEpisode(BaseEpisode):
                 episode_data_dict["observation_cartesian_state"].append(
                     step_item.observation.state.astype(np.float32)
                 )
-                if step_item.action_cartesian is not None:
-                    episode_data_dict["action_cartesian"].append(
-                        step_item.action_cartesian.astype(np.float32)
-                    )
+            if step_item.action_cartesian is not None:
+                episode_data_dict["action_cartesian"].append(
+                    step_item.action_cartesian.astype(np.float32)
+                )
 
             # Additional metadata fields, if any
             if self.add_metadata:
@@ -2534,13 +2535,27 @@ class StatsModel(BaseModel):
     """
 
     model_config = ConfigDict(extra="allow")
+    add_metadata: Optional[Dict[str, list]] = None
+    save_cartesian: bool = False
 
     observation_state: Stats = Field(
         default_factory=Stats,
         serialization_alias="observation.state",
         validation_alias=AliasChoices("observation.state", "observation_state"),
     )
+    observation_cartesian_state: Optional[Stats] = Field(
+        default_factory=Stats,
+        serialization_alias="observation_cartesian.state",
+        validation_alias=AliasChoices(
+            "observation_cartesian.state", "observation_cartesian_state"
+        ),
+    )
     action: Stats = Field(default_factory=Stats)
+    action_cartesian: Optional[Stats] = Field(
+        default_factory=Stats,
+        serialization_alias="action_cartesian",
+        validation_alias=AliasChoices("action_cartesian", "action.cartesian"),
+    )
     timestamp: Stats = Field(default_factory=Stats)
     frame_index: Stats = Field(default_factory=Stats)
     episode_index: Stats = Field(default_factory=Stats)
@@ -2560,6 +2575,13 @@ class StatsModel(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def set_action_cartesian(self) -> "StatsModel":
+        if self.save_cartesian is False:
+            self.action_cartesian = None
+            self.observation_cartesian_state = None
+        return self
+
     @classmethod
     def from_json(
         cls,
@@ -2575,13 +2597,16 @@ class StatsModel(BaseModel):
             not os.path.exists(f"{meta_folder_path}/stats.json")
             or os.stat(f"{meta_folder_path}/stats.json").st_size == 0
         ):
-            stats = cls()
+            stats = cls(
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian if save_cartesian is not None else False,
+            )
             return stats
 
         with open(
             f"{meta_folder_path}/stats.json", "r", encoding=DEFAULT_FILE_ENCODING
         ) as f:
-            stats_dict: Dict[str, Stats] = json.load(f)
+            stats_dict = json.load(f)
 
         # Create a temporary dictionary for observation_images
         observation_images = {}
@@ -2592,7 +2617,10 @@ class StatsModel(BaseModel):
                 observation_images[key] = stats_dict.pop(key)
 
         # Pass observation_images into the model constructor
-        return cls(**stats_dict, observation_images=observation_images)
+        stats = cls(**stats_dict, observation_images=observation_images)
+        stats.add_metadata = add_metadata
+        stats.save_cartesian = save_cartesian if save_cartesian is not None else False
+        return stats
 
     def to_json(self, meta_folder_path: str) -> None:
         """
@@ -2604,6 +2632,12 @@ class StatsModel(BaseModel):
         for key, value in model_dict["observation.images"].items():
             model_dict[key] = value
         model_dict.pop("observation.images")
+        model_dict.pop("save_cartesian")
+        model_dict.pop("add_metadata")
+
+        if not self.save_cartesian:
+            model_dict.pop("action_cartesian", None)
+            model_dict.pop("observation_cartesian.state", None)
 
         with open(
             f"{meta_folder_path}/stats.json", "w", encoding=DEFAULT_FILE_ENCODING
@@ -2629,6 +2663,11 @@ class StatsModel(BaseModel):
         self.index.update(np.array([self.index.count]))
         self.episode_index.update(np.array([episode_index]))
         self.frame_index.update(np.array([current_step_index]))
+        if self.save_cartesian:
+            self.action_cartesian.update(np.array([step.action_cartesian]))  # type: ignore
+            self.observation_cartesian_state.update(  # type: ignore
+                np.array([step.observation.state])
+            )
 
         # TODO: Implement multiple language instructions
         # This should be the index of the instruction as it's in tasks.jsonl (TasksModel)
@@ -2673,6 +2712,22 @@ class StatsModel(BaseModel):
                             value.compute_from_rolling_images()
                     except ValueError as e:
                         logger.error(f"Error computing mean and std for {key}: {e}")
+
+        if self.add_metadata is not None:
+            for key, value in self.add_metadata.items():
+                # We create a Stats object with max,
+                self.__setattr__(
+                    key,
+                    Stats(
+                        max=np.array(value),
+                        min=np.array(value),
+                        mean=np.array(value),
+                        std=np.zeros(len(value), dtype=np.float32),
+                        count=self.action.count,  # All stats have the same count
+                        sum=np.array(value) * self.action.count,
+                        square_sum=np.array(value) ** 2 * self.action.count,
+                    ),
+                )
 
         self.to_json(meta_folder_path)
 
@@ -3065,6 +3120,8 @@ class EpisodesStatsModel(BaseModel):
     """
 
     episodes_stats: List[EpisodesStatsFeatures] = Field(default_factory=list)
+    save_cartesian: bool = False
+    add_metadata: Optional[Dict[str, list]] = None
 
     def update(self, step: Step, episode_index: int, current_step_index: int) -> None:
         """
@@ -3086,7 +3143,9 @@ class EpisodesStatsModel(BaseModel):
         # If the episode index does not exist, create a new entry
         new_episode_stats = EpisodesStatsFeatures(
             episode_index=episode_index,
-            stats=StatsModel(),
+            stats=StatsModel(
+                save_cartesian=self.save_cartesian, add_metadata=self.add_metadata
+            ),
         )
         new_episode_stats.stats.update(
             step=step,
@@ -3108,7 +3167,12 @@ class EpisodesStatsModel(BaseModel):
                 f.write(episode_stats.to_json() + "\n")
 
     @classmethod
-    def from_jsonl(cls, meta_folder_path: str) -> "EpisodesStatsModel":
+    def from_jsonl(
+        cls,
+        meta_folder_path: str,
+        add_metadata: Optional[dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
+    ) -> "EpisodesStatsModel":
         """
         Read the episodes_stats.jsonl file in the meta folder path.
         If the file does not exist, return an empty EpisodeStatsModel.
@@ -3117,7 +3181,12 @@ class EpisodesStatsModel(BaseModel):
             not os.path.exists(f"{meta_folder_path}/episodes_stats.jsonl")
             or os.stat(f"{meta_folder_path}/episodes_stats.jsonl").st_size == 0
         ):
-            return EpisodesStatsModel()
+            episode_stats = EpisodesStatsModel()
+            episode_stats.add_metadata = add_metadata
+            episode_stats.save_cartesian = (
+                save_cartesian if save_cartesian is not None else False
+            )
+            return episode_stats
 
         with open(
             f"{meta_folder_path}/episodes_stats.jsonl",
@@ -3150,6 +3219,10 @@ class EpisodesStatsModel(BaseModel):
 
         episodes_stats_model = EpisodesStatsModel(
             episodes_stats=list(_episodes_stats_dict.values())
+        )
+        episodes_stats_model.add_metadata = add_metadata
+        episodes_stats_model.save_cartesian = (
+            save_cartesian if save_cartesian is not None else False
         )
 
         return episodes_stats_model

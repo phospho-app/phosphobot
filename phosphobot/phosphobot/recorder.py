@@ -602,14 +602,16 @@ class Recorder:
         robot: BaseRobot,
         robot_idx: int,
         source: Literal["sim", "robot"],
-        do_forward: bool = False,
+        do_forward: Optional[bool] = False,
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get observation from a single robot.
         This runs in the thread pool.
         """
         try:
-            return robot.get_observation(source=source, do_forward=do_forward)
+            return robot.get_observation(
+                source=source, do_forward=do_forward if do_forward else False
+            )
         except Exception as e:
             logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
             return None, None
