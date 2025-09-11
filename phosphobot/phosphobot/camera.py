@@ -10,7 +10,17 @@ import time
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Literal, Optional, Tuple, cast
+from typing import (
+    Any,
+    AsyncGenerator,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    cast,
+)
 
 import cv2
 import numpy as np
@@ -189,8 +199,8 @@ def detect_camera_type(
 
 # TODO: Handle multiple realsense cameras
 def _find_cameras(
-    possible_camera_ids: list[int],
-    raise_when_empty=False,
+    possible_camera_ids: List[int],
+    raise_when_empty: bool = False,
     camera_names: List[str] = [],
 ) -> list[int]:
     """
@@ -304,10 +314,10 @@ class BaseCamera(ABC):
     height: int
     fps: int
 
-    def __init__(self):
+    def __init__(self) -> None:
         atexit.register(self.stop)
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.stop()
 
     @property
@@ -566,13 +576,13 @@ class DummyCamera(VideoCamera):
         width: int = 640,
         height: int = 480,
         fps: int = 30,
-    ):
+    ) -> None:
         self.width = width
         self.height = height
         self.fps = fps
         super().__init__(camera_type=camera_type)
 
-    def init_camera(self):
+    def init_camera(self) -> bool:
         """
         The simulated camera cannot be opened with opencv, so we return True.
         """
@@ -867,7 +877,7 @@ try:
             return self.realsense_camera.is_active
 
         @is_active.setter
-        def is_active(self, value):
+        def is_active(self, value: bool) -> None:
             return
 
         def get_rgb_frame(
@@ -907,11 +917,11 @@ except ImportError:
     REALSENSE_AVAILABLE = False
 
     class RealSenseCamera(BaseCamera):  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> None:
             raise ImportError("Install pyrealsense2 to add RealSense camera support.")
 
     class RealSenseVirtualCamera(VideoCamera):  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Iterable[Any], **kwargs: Dict[str, Any]) -> None:
             raise ImportError("Install pyrealsense2 to add RealSense camera support.")
 
 
@@ -1112,7 +1122,7 @@ class AllCameras:
 
         return all_cameras
 
-    def detect_cameras(self):
+    def detect_cameras(self) -> None:
         """
         Detect all cameras connected to the computer and initialize them.
         """
@@ -1237,7 +1247,7 @@ class AllCameras:
         self._cameras_ids_to_record = self.camera_ids
         self._is_detecting = False
 
-    def add_custom_camera(self, camera: BaseCamera):
+    def add_custom_camera(self, camera: BaseCamera) -> None:
         """
         Manually adds an initialized custom camera instance to the list of active cameras.
         This is useful for adding virtual or non-discoverable cameras like ZMQCamera.
@@ -1437,7 +1447,7 @@ class AllCameras:
             ],
         )
 
-    def stop(self):
+    def stop(self) -> None:
         for camera in self.cameras:
             camera.stop()
 
@@ -1513,7 +1523,7 @@ class AllCameras:
         return self._cameras_ids_to_record
 
     @cameras_ids_to_record.setter
-    def cameras_ids_to_record(self, camera_ids: Optional[List[int]]):
+    def cameras_ids_to_record(self, camera_ids: Optional[List[int]]) -> None:
         """
         Set the camera ids to record.
         """
@@ -1552,7 +1562,7 @@ class AllCameras:
         return self._main_camera
 
     @main_camera.setter
-    def main_camera(self, camera: BaseCamera):
+    def main_camera(self, camera: BaseCamera) -> None:
         """
         Explicitly set the main camera.
         """

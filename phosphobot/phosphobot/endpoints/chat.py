@@ -16,7 +16,7 @@ tokens = get_tokens()
 async def ai_control_chat(
     request: ChatRequest,
     session: SupabaseSession = Depends(user_is_logged_in),
-):
+) -> ChatResponse:
     """
     Endpoint to handle AI control chat requests.
     """

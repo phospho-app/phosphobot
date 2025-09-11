@@ -512,7 +512,12 @@ def create_video_file(
         stream.pix_fmt = "yuv420p"  # type: ignore
         return container, stream
 
-    def process_and_encode(frame: np.ndarray, stream, container, size: Tuple[int, int]):
+    def process_and_encode(
+        frame: np.ndarray,
+        stream: av.stream.Stream,
+        container: av.container.OutputContainer,
+        size: Tuple[int, int],
+    ) -> None:
         # Convert to uint8 RGB if needed
         if frame.dtype != np.uint8:
             frame = np.clip(frame, 0, 255).astype(np.uint8)

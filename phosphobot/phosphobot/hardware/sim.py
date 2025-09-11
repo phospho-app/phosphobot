@@ -2,12 +2,15 @@
 PyBullet Simulation wrapper class
 """
 
+import io
 import os
 import subprocess
 import sys
 import threading
 import time
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 from phosphobot.types import SimulationMode
 
 import pybullet as p
@@ -56,7 +59,7 @@ class PyBulletSimulation:
                 )
             )
 
-            def _stream_to_console(pipe):
+            def _stream_to_console(pipe: io.BufferedReader) -> None:
                 """Continuously read from *pipe* and write to stdout."""
                 try:
                     with pipe:
@@ -121,7 +124,7 @@ class PyBulletSimulation:
             # A bit invasive. Can we do something better?
             subprocess.run(["pkill", "-f", "python3.8"])
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         Cleanup when object is destroyed.
         """
@@ -300,10 +303,10 @@ class PyBulletSimulation:
 
     def inverse_kinematics(
         self,
-        robot_id,
+        robot_id: int,
         end_effector_link_index: int,
-        target_position,
-        target_orientation,
+        target_position: np.ndarray,
+        target_orientation: Optional[np.ndarray],
         rest_poses: List,
         joint_damping: Optional[List] = None,
         lower_limits: Optional[List] = None,
@@ -408,7 +411,7 @@ class PyBulletSimulation:
         return joint_info
 
     def add_debug_text(
-        self, text: str, text_position, text_color_RGB: list, life_time: int = 3
+        self, text: str, text_position: list, text_color_RGB: list, life_time: int = 3
     ) -> None:
         """
         Add debug text to the simulation.
@@ -550,7 +553,9 @@ class PyBulletSimulation:
 
         return p.getDynamicsInfo(robot_id, link_index)
 
-    def change_dynamics(self, robot_id: int, link_index: int = -1, **kwargs) -> None:
+    def change_dynamics(
+        self, robot_id: int, link_index: int = -1, **kwargs: Dict[str, Any]
+    ) -> None:
         """
         Change dynamics properties of a robot body/link.
 

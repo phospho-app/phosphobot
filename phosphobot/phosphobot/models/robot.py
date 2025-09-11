@@ -1,7 +1,7 @@
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from loguru import logger
@@ -44,7 +44,7 @@ class BaseRobot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_info_for_dataset(self):
+    def get_info_for_dataset(self) -> Any:
         """
         Generate information about the robot useful for the dataset.
         Return a BaseRobotInfo object. (see models.dataset.BaseRobotInfo)
@@ -55,7 +55,7 @@ class BaseRobot(ABC):
     @abstractmethod
     def get_observation(
         self, source: Literal["sim", "robot"]
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
         This method should return the observation of the robot.
@@ -110,7 +110,7 @@ class BaseRobot(ABC):
         self,
         target_position: np.ndarray,  # cartesian np.array
         target_orientation_rad: Optional[np.ndarray],  # rad np.array
-        **kwargs,
+        **kwargs: Dict[str, Any],
     ) -> None:
         """
         Move the robot to the target position and orientation.
@@ -119,7 +119,9 @@ class BaseRobot(ABC):
         raise NotImplementedError
 
     @classmethod
-    def from_port(cls, port: ListPortInfo, **kwargs) -> Optional["BaseRobot"]:
+    def from_port(
+        cls, port: ListPortInfo, **kwargs: Dict[str, Any]
+    ) -> Optional["BaseRobot"]:
         """
         Return the robot class from the port information.
         """
@@ -280,9 +282,9 @@ class BaseRobotConfig(BaseModel):
             The path to the saved file
         """
         filename = f"{self.name}_{serial_id}_config.json"
-        assert "/" not in filename, (
-            "Filename cannot contain '/'. Did you pass a device_name instead of SERIAL_ID?"
-        )
+        assert (
+            "/" not in filename
+        ), "Filename cannot contain '/'. Did you pass a device_name instead of SERIAL_ID?"
         filepath = str(get_home_app_path() / "calibration" / filename)
         logger.info(f"Saving configuration to {filepath}")
         self.to_json(filepath)

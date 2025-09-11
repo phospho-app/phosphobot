@@ -1,6 +1,6 @@
 import asyncio
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
 from loguru import logger
@@ -201,7 +201,7 @@ class RoboticAgent:
         await self.phosphobot_client.move_relative(**next_robot_move)
         return next_robot_move
 
-    async def run(self):
+    async def run(self) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
         """
         An async generator that yields events for the UI to handle.
         Events are tuples of (event_type: str, payload: dict).

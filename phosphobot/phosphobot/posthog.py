@@ -3,7 +3,7 @@ from pathlib import Path
 import platform
 import uuid
 from functools import wraps
-from typing import Optional
+from typing import Any, Optional
 
 from posthog import Posthog
 
@@ -29,7 +29,7 @@ _failure_threshold = 3
 
 def with_failure_tracking(func):
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> None:
         global _failure_count
 
         if posthog.disabled:
