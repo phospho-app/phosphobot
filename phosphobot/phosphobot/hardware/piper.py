@@ -331,8 +331,10 @@ class PiperHardware(BaseManipulator):
         if len(joints) < self.GRIPPER_SERVO_ID and (
             joints_ids is None or self.GRIPPER_SERVO_ID in joints_ids
         ):
-            gripper_position = self.read_gripper_command()
-            # Don't rescale the gripper position (need more R&D)
+            gripper_position = self.read_gripper_command(
+                source=source, unit=unit, min_value=min_value, max_value=max_value
+            )
+
             joints = np.array(joints.tolist() + [gripper_position]).astype(np.float32)
         return joints
 
@@ -416,19 +418,80 @@ class PiperHardware(BaseManipulator):
             "Calibration failed. Please try again.",
         )
 
-    def read_gripper_command(self, source: Literal["sim", "robot"] = "robot") -> float:
+    def read_gripper_command(
+        self,
+        source: Literal["sim", "robot"] = "robot",
+        unit: Literal["motor_units", "rad", "degrees", "other"] = "motor_units",
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+    ) -> float:
         """
         Read if gripper is open or closed.
-
-        command: 0 to close, 1 to open
         """
 
         if not self.is_connected:
             logger.warning("Robot not connected")
             return 0
 
-        gripper_ctrl = self.motors_bus.GetArmGripperMsgs().gripper_state
-        return gripper_ctrl.grippers_angle
+        if source == "robot":
+            gripper_ctrl = self.motors_bus.GetArmGripperMsgs().gripper_state
+            gripper_position = gripper_ctrl.grippers_angle
+        elif source == "sim":
+            raise NotImplementedError(
+                "Reading gripper command from simulation is not implemented for Piper."
+            )
+        else:
+            raise ValueError(f"Unknown source: {source}")
+
+        if unit == "motor_units":
+            # Don't do anything
+            pass
+        elif unit == "rad":
+            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, 2 * pi)
+            gripper_units = (
+                (gripper_position - self.GRIPPER_ZERO_POSITION)
+                / (self.GRIPPER_MAX_ANGLE * 1000)
+            ) * (2 * np.pi)
+        elif unit == "degrees":
+            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, 360)
+            gripper_units = (
+                (gripper_position - self.GRIPPER_ZERO_POSITION)
+                / (self.GRIPPER_MAX_ANGLE * 1000)
+            ) * 360
+        elif unit == "other":
+            # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (min_value, max_value)
+            if min_value is None or max_value is None:
+                raise ValueError(
+                    "min_value and max_value must be provided for 'other' unit."
+                )
+            gripper_units = (
+                (gripper_position - self.GRIPPER_ZERO_POSITION)
+                / (self.GRIPPER_MAX_ANGLE * 1000)
+            ) * (max_value - min_value) + min_value
+        else:
+            raise ValueError(f"Unknown unit: {unit}")
+
+        logger.debug(
+            f"Piper: Converted gripper position {gripper_position} to {gripper_units} in {unit}"
+        )
+        return gripper_units
+
+    def _rad_to_open_command(self, radians: float) -> float:
+        """
+        Convert radians to an open command for the gripper.
+        The open command is in the range [0, 1], where 0 is fully closed and 1 is fully open.
+        """
+        # If out of range, clip between 0 and 2pi
+        if radians < 0 or radians > 2 * np.pi:
+            radians = np.clip(radians, 0, 2 * np.pi)
+        # Convert from (0, 2 * pi) to (0, 1) where 0 is fully closed and 1 is fully open
+        open_command = radians / (2 * np.pi)
+        # Clip the open command between 0 and 1
+        open_command = np.clip(open_command, 0, 1)
+        logger.debug(
+            f"Piper: Converting radians {radians} to open command {open_command}"
+        )
+        return open_command
 
     def write_gripper_command(self, command: float) -> None:
         """
@@ -440,6 +503,7 @@ class PiperHardware(BaseManipulator):
             logger.debug("Robot not connected, cannot write gripper command")
             return
         # Gripper -> Convert from 0->RESOLUTION to 0->GRIPPER_MAX_ANGLE
+        logger.debug(f"Piper: Writing gripper command {command}")
         unit_degree = command * self.GRIPPER_MAX_ANGLE
         unit_command = self.GRIPPER_ZERO_POSITION + int(unit_degree) * 1000
         self.motors_bus.GripperCtrl(

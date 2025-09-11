@@ -1065,11 +1065,7 @@ class BaseManipulator(BaseRobot):
         self.SLEEP_POSITION = None
         self.config = None
 
-    def control_gripper(
-        self,
-        open_command: float,  # Should be between 0 and 1
-        **kwargs: Any,
-    ) -> None:
+    def control_gripper(self, open_command: float, **kwargs: Any) -> None:
         """
         Open or close the gripper until object is gripped.
         open_command: 0 to close, 1 to open
