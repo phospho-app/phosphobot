@@ -2618,9 +2618,15 @@ class StatsModel(BaseModel):
 
         # Pass observation_images into the model constructor
         stats = cls(**stats_dict, observation_images=observation_images)
-        logger.debug(f"Loaded stats: {stats}")
         stats.add_metadata = add_metadata
         stats.save_cartesian = save_cartesian if save_cartesian is not None else False
+        if stats.save_cartesian:
+            stats.action_cartesian = Stats.model_validate(
+                stats_dict["action_cartesian"]
+            )
+            stats.observation_cartesian_state = Stats.model_validate(
+                stats_dict["observation_cartesian.state"]
+            )
         return stats
 
     def to_json(self, meta_folder_path: str) -> None:
