@@ -17,11 +17,11 @@ import supabase
 from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.base import TrainingRequest
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
-from phosphobot.models import CancelTrainingRequest
+from phosphobot.models import CancelTrainingRequest, ChatResponse, ChatRequest
 
 
 phosphobot_dir = (
-    Path(__file__).parent.parent.parent.parent / "phosphobot" / "phosphobot"
+    Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 admin_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -445,7 +445,6 @@ class PublicUser(BaseModel):
 @modal.concurrent(max_inputs=1000)
 @modal.asgi_app()
 def fastapi_app():
-    import httpx
     import stripe
 
     from datetime import datetime, timezone
@@ -456,7 +455,6 @@ def fastapi_app():
     from fastapi.exceptions import HTTPException
 
     from supabase_auth.types import User as SupabaseUser
-    from phosphobot.models import ChatRequest
 
     stripe.api_key = os.environ["STRIPE_API_KEY"]
 
@@ -1222,7 +1220,7 @@ def fastapi_app():
 
         return user_auth.user
 
-    @web_app.post("/ai-control/chat")
+    @web_app.post("/ai-control/chat", response_model=ChatResponse)
     async def ai_control_chat(
         request: ChatRequest,
         user: SupabaseUser = Depends(get_user_and_check_quota),

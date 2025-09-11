@@ -7,7 +7,7 @@ from loguru import logger
 
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
-from phosphobot.models import ChatResponse
+from phosphobot.models import ChatRequest, ChatResponse
 
 
 class PhosphobotClient:
@@ -19,7 +19,7 @@ class PhosphobotClient:
         """
         Get the status of the robot.
         """
-        response = await self.client.get("/status")
+        response = await self.client.get("/status", timeout=10.0)
         response.raise_for_status()
         return response.json()
 
@@ -101,7 +101,7 @@ class PhosphobotClient:
         response = await self.client.post("/move/init")
         response.raise_for_status()
 
-    async def chat(self, prompt: str, images: List[str]) -> ChatResponse:
+    async def chat(self, chat_request: ChatRequest) -> ChatResponse:
         """
         Send a chat request to the AI model.
 
@@ -111,10 +111,7 @@ class PhosphobotClient:
 
         response = await self.client.post(
             "/ai-control/chat",
-            json={
-                "prompt": prompt,
-                "images": images,
-            },
+            json=chat_request.model_dump(mode="json"),
         )
         response.raise_for_status()
         return ChatResponse.model_validate(response.json())
@@ -225,20 +222,6 @@ class RoboticAgent:
             )
             yield "step_done", {"success": True}
 
-        # Initialize AI agent
-        yield "start_step", {"desc": "Initializing the AI agent."}
-        try:
-            self.phosphobot_client.chat(
-                prompt=self.task_description,
-                images=await self.phosphobot_client.get_camera_image(
-                    resize=self.resize
-                ),
-            )
-        except Exception as e:
-            yield "step_error", {"error": f"Failed to initialize agent: {str(e)}"}
-            return
-        yield "step_done", {"success": True}
-
         step_count = 0
         max_steps = 50
 
@@ -275,21 +258,30 @@ class RoboticAgent:
                         "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
                     },
                 )
-                images = await self.get_images()
+                # Run the agent
+                images = await self.phosphobot_client.get_camera_image(
+                    resize=self.resize
+                )
                 if not images:
                     yield (
-                        "step_error",
-                        {"error": "No images received from cameras. Skipping step."},
+                        "step_output",
+                        {"output": "No images received from cameras. Skipping step."},
                     )
-                    continue
-                # Run the Gemini agent
-                next_command, raw = await self.gemini_agent.run(images=images)
+                    continue  # Skip this step if no images
+
+                next_command = await self.phosphobot_client.chat(
+                    chat_request=ChatRequest(
+                        prompt=self.task_description,
+                        # Convert dict to list of base64 strings
+                        images=list(images.values()),
+                    )
+                )
                 yield (
                     "step_output",
-                    {"output": f"AI command: {next_command} (raw: {raw})"},
+                    {"output": f"AI command: {next_command.model_dump()}"},
                 )
                 # Execute the command
-                execution_result = await self.execute_command(next_command)
+                execution_result = await self.execute_command(next_command=next_command)
                 yield (
                     "step_output",
                     {"output": f"Execution result: {execution_result}"},

@@ -6,9 +6,7 @@ from google.genai.errors import ClientError, ServerError
 from loguru import logger
 from pydantic import BaseModel
 
-from phosphobot.configs import config
 from phosphobot.models import ChatResponse
-from phosphobot.utils import get_local_ip
 
 
 class GeminiAgentResponse(BaseModel):
@@ -42,12 +40,7 @@ class GeminiAgent:
         Robot-controlling agent using Gemini VLM.
         """
 
-        self.genai_client = genai.Client(
-            api_key="some_key",
-            http_options=genai.types.HttpOptions(
-                base_url=f"http://{get_local_ip()}:{config.PORT}/chat/gemini"
-            ),
-        )
+        self.genai_client = genai.Client()
         self.thinking_budget = thinking_budget
         self.model_id = model_id
         self.task_description = task_description
