@@ -54,7 +54,7 @@ class BaseRobot(ABC):
 
     @abstractmethod
     def get_observation(
-        self, source: Literal["sim", "robot"]
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.

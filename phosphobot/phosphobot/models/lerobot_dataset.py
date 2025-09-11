@@ -1,5 +1,6 @@
 import json
 import os
+from pyexpat import features
 import shutil
 import tempfile
 import time
@@ -117,7 +118,9 @@ class LeRobotDataset(BaseDataset):
         elif self.format_version == "lerobot_v2":
             if self.stats_model is None or force:  # Only for v2
                 self.stats_model = StatsModel.from_json(
-                    meta_folder_path=self.meta_folder_full_path
+                    meta_folder_path=self.meta_folder_full_path,
+                    add_metadata=add_metadata,
+                    save_cartesian=save_cartesian,
                 )
 
         if self.episodes_model is None or force:
@@ -1170,6 +1173,8 @@ class LeRobotEpisode(BaseEpisode):
     freq: int  # Recording frequency (Hz)
     codec: VideoCodecs  # For saving videos
     target_size: tuple[int, int]  # For video creation (width, height)
+    is_cartesian: bool = False  # Whether to save cartesian coordinates
+    add_metadata: Optional[Dict[str, list]] = None  # Extra metadata to save
 
     # Paths are derived from the dataset_manager and episode_index (from metadata)
     @property
@@ -1280,7 +1285,7 @@ class LeRobotEpisode(BaseEpisode):
             f"Starting new LeRobotEpisode, index: {episode_idx}, task: '{instruction}' (idx: {task_idx}) for dataset '{dataset_manager.dataset_name}'."
         )
 
-        return cls(
+        episode = cls(
             steps=[],
             metadata=episode_metadata,
             dataset_manager=dataset_manager,
@@ -1288,6 +1293,9 @@ class LeRobotEpisode(BaseEpisode):
             codec=codec,
             target_size=target_size,
         )
+        episode.is_cartesian = save_cartesian if save_cartesian is not None else False
+        episode.add_metadata = add_metadata
+        return episode
 
     async def append_step(self, step: Step, **kwargs) -> None:
         self.add_step(step)  # Appends to self.steps, manages is_first/is_last flags
@@ -1336,6 +1344,12 @@ class LeRobotEpisode(BaseEpisode):
             "frame_index": [],
             "index": [],
         }
+        if self.is_cartesian:
+            episode_data_dict["action_cartesian"] = []
+            episode_data_dict["observation_cartesian_state"] = []
+        if self.add_metadata:
+            for key in self.add_metadata.keys():
+                episode_data_dict[key] = []
 
         # We rewrite the timestamps based on the frequency to validate LeRobot tests
         timestamps_for_episode = (np.arange(len(self.steps)) / self.freq).tolist()
@@ -1356,6 +1370,20 @@ class LeRobotEpisode(BaseEpisode):
             # "index" is the global frame index across the entire dataset
             episode_data_dict["index"].append(local_frame_idx + global_frame_offset)
             episode_data_dict["task_index"].append(self.metadata["task_index"])
+            # If cartesian, add those fields too
+            if self.is_cartesian:
+                episode_data_dict["observation_cartesian_state"].append(
+                    step_item.observation.state.astype(np.float32)
+                )
+                if step_item.action_cartesian is not None:
+                    episode_data_dict["action_cartesian"].append(
+                        step_item.action_cartesian.astype(np.float32)
+                    )
+
+            # Additional metadata fields, if any
+            if self.add_metadata:
+                for key, values_list in self.add_metadata.items():
+                    episode_data_dict[key].append(values_list)
 
             if (
                 step_item.action is None
@@ -1698,6 +1726,8 @@ class LeRobotEpisode(BaseEpisode):
 
 
 class LeRobotEpisodeModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     action: List[List[float]]
     observation_state: List[List[float]] = Field(
         validation_alias=AliasChoices("observation.state", "observation_state")
@@ -2503,6 +2533,8 @@ class StatsModel(BaseModel):
     The other stats are dim 1
     """
 
+    model_config = ConfigDict(extra="allow")
+
     observation_state: Stats = Field(
         default_factory=Stats,
         serialization_alias="observation.state",
@@ -2529,7 +2561,12 @@ class StatsModel(BaseModel):
     )
 
     @classmethod
-    def from_json(cls, meta_folder_path: str) -> "StatsModel":
+    def from_json(
+        cls,
+        meta_folder_path: str,
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
+    ) -> "StatsModel":
         """
         Read the stats.json file in the meta folder path.
         If the file does not exist, return an empty StatsModel.
@@ -2538,7 +2575,8 @@ class StatsModel(BaseModel):
             not os.path.exists(f"{meta_folder_path}/stats.json")
             or os.stat(f"{meta_folder_path}/stats.json").st_size == 0
         ):
-            return cls()
+            stats = cls()
+            return stats
 
         with open(
             f"{meta_folder_path}/stats.json", "r", encoding=DEFAULT_FILE_ENCODING
@@ -3289,6 +3327,14 @@ class InfoFeatures(BaseModel):
         serialization_alias="observation.state",
         validation_alias=AliasChoices("observation.state", "observation_state"),
     )
+    observation_cartesian_state: Optional[FeatureDetails] = Field(
+        default=None,
+        serialization_alias="observation_cartesian.state",
+        validation_alias=AliasChoices(
+            "observation_cartesian.state",
+            "observation_cartesian_state",
+        ),
+    )
 
     timestamp: FeatureDetails = Field(
         default_factory=lambda: FeatureDetails(dtype="float32", shape=[1], names=None)
@@ -3341,16 +3387,6 @@ class InfoFeatures(BaseModel):
             "observation_environment_state",
             "observation.environment_state",
             "observation_environment.state",
-        ),
-    )
-    observation_cartesian_environment_state: Optional[FeatureDetails] = Field(
-        default=None,
-        serialization_alias="observation_cartesian.environment_state",
-        validation_alias=AliasChoices(
-            "observation_cartesian.environment.state",
-            "observation_cartesian_environment_state",
-            "observation_cartesian.environment_state",
-            "observation_cartesian.environment.state",
         ),
     )
 
@@ -3528,19 +3564,6 @@ class InfoModel(BaseModel):
 
             info_model.codebase_version = "v2.1" if format == "lerobot_v2.1" else "v2.0"
 
-            if save_cartesian:
-                info_model.features.action_cartesian = FeatureDetails(
-                    dtype="float32",
-                    shape=[7],
-                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
-                )
-                info_model.features.observation_cartesian_environment_state = (
-                    FeatureDetails(
-                        dtype="float32",
-                        shape=[7],
-                        names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
-                    )
-                )
             for key, value in (add_metadata or {}).items():
                 if hasattr(info_model.features, key):
                     raise ValueError(
@@ -3553,6 +3576,19 @@ class InfoModel(BaseModel):
                         shape=[len(value)],
                         names=None,
                     ),
+                )
+
+            if save_cartesian:
+                # Cartesian action and observation_state will never depend on the robot type
+                info_model.features.action_cartesian = FeatureDetails(
+                    dtype="float32",
+                    shape=[7],
+                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
+                )
+                info_model.features.observation_cartesian_state = FeatureDetails(
+                    dtype="float32",
+                    shape=[7],
+                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
                 )
 
             return info_model
