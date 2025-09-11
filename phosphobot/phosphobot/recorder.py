@@ -100,6 +100,12 @@ class Recorder:
         # Stored for push_to_hub if initiated from here
         branch_path: Optional[str] = None,
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
+        save_cartesian: Optional[
+            bool
+        ] = False,  # Saves cartesian positions if True (only for robots with simulators)
+        add_metadata: Optional[
+            dict[str, list]
+        ] = None,  # Additional metadata to save with each step
     ) -> None:
         if target_size is None:
             target_size = (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1])
@@ -157,6 +163,8 @@ class Recorder:
                 target_size=target_size,
                 instruction=instruction,
                 all_camera_key_names=self.cameras.get_all_camera_key_names(),
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian,
             )
         else:
             logger.error(f"Unknown episode format: {self.episode_format}")

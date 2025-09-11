@@ -13,6 +13,7 @@ from loguru import logger
 from pydantic import (
     AliasChoices,
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
@@ -82,6 +83,8 @@ class LeRobotDataset(BaseDataset):
         fps: Optional[int] = None,
         all_camera_key_names: Optional[List[str]] = None,
         force: bool = False,
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
     ):
         """Loads existing meta files or initializes new ones if they don't exist."""
         logger.debug(
@@ -96,6 +99,8 @@ class LeRobotDataset(BaseDataset):
                 all_camera_key_names=all_camera_key_names,
                 fps=fps,
                 format=self.format_version,
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian,
             )
             # Edit the .format_version field to match the dataset format
             if "2.1" in self.info_model.codebase_version:
@@ -1224,6 +1229,8 @@ class LeRobotEpisode(BaseEpisode):
         target_size: tuple[int, int],  # width, height
         instruction: Optional[str],
         all_camera_key_names: List[str],
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
         **kwargs,
     ) -> "LeRobotEpisode":
         # Ensure meta models are loaded/initialized in the dataset manager
@@ -1233,6 +1240,8 @@ class LeRobotEpisode(BaseEpisode):
             target_size=target_size,  # Used by InfoModel if creating new
             fps=freq,
             all_camera_key_names=all_camera_key_names,
+            add_metadata=add_metadata,
+            save_cartesian=save_cartesian,
         )
 
         # These must not be None after the above call
@@ -3265,7 +3274,17 @@ class VideoFeatureDetails(FeatureDetails):
 
 
 class InfoFeatures(BaseModel):
+    model_config = ConfigDict(extra="allow")
     action: FeatureDetails
+    action_cartesian: Optional[FeatureDetails] = Field(
+        default=None,
+        serialization_alias="action_cartesian",
+        validation_alias=AliasChoices(
+            "action_cartesian",
+            "action.cartesian",
+        ),
+    )
+
     observation_state: FeatureDetails = Field(
         serialization_alias="observation.state",
         validation_alias=AliasChoices("observation.state", "observation_state"),
@@ -3322,6 +3341,16 @@ class InfoFeatures(BaseModel):
             "observation_environment_state",
             "observation.environment_state",
             "observation_environment.state",
+        ),
+    )
+    observation_cartesian_environment_state: Optional[FeatureDetails] = Field(
+        default=None,
+        serialization_alias="observation_cartesian.environment_state",
+        validation_alias=AliasChoices(
+            "observation_cartesian.environment.state",
+            "observation_cartesian_environment_state",
+            "observation_cartesian.environment_state",
+            "observation_cartesian.environment.state",
         ),
     )
 
@@ -3452,6 +3481,8 @@ class InfoModel(BaseModel):
         target_size: Optional[tuple[int, int]] = None,
         all_camera_key_names: Optional[List[str]] = None,
         format: Literal["lerobot_v2", "lerobot_v2.1"] = "lerobot_v2.1",
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
     ) -> "InfoModel":
         """
         Read the info.json file in the meta folder path.
@@ -3496,6 +3527,33 @@ class InfoModel(BaseModel):
                 )
 
             info_model.codebase_version = "v2.1" if format == "lerobot_v2.1" else "v2.0"
+
+            if save_cartesian:
+                info_model.features.action_cartesian = FeatureDetails(
+                    dtype="float32",
+                    shape=[7],
+                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
+                )
+                info_model.features.observation_cartesian_environment_state = (
+                    FeatureDetails(
+                        dtype="float32",
+                        shape=[7],
+                        names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
+                    )
+                )
+            for key, value in (add_metadata or {}).items():
+                if hasattr(info_model.features, key):
+                    raise ValueError(
+                        f"Metadata key {key} already exists in InfoFeatures. Please choose another name."
+                    )
+                info_model.features.__setattr__(
+                    key,
+                    FeatureDetails(
+                        dtype="float32",
+                        shape=[len(value)],
+                        names=None,
+                    ),
+                )
 
             return info_model
 

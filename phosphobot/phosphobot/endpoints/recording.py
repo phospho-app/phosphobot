@@ -207,6 +207,8 @@ async def start_recording_episode(
         cameras_ids_to_record=cameras_ids_to_record,
         instruction=query.instruction or config.DEFAULT_TASK_INSTRUCTION,
         enable_rerun=query.enable_rerun_visualization,
+        save_cartesian=query.save_cartesian,
+        add_metadata=query.add_metadata,
     )
     return StatusResponse()
 
