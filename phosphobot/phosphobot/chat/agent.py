@@ -283,13 +283,7 @@ class RoboticAgent:
                     {"output": f"AI command: {chat_response.model_dump()}"},
                 )
                 # Execute the command
-                execution_result = await self.execute_command(
-                    chat_response=chat_response
-                )
-                yield (
-                    "step_output",
-                    {"output": f"Execution result: {execution_result}"},
-                )
+                await self.execute_command(chat_response=chat_response)
 
         yield "step_done", {"success": True}
         control_mode = "manual" if self.manual_control else "AI"
