@@ -1065,7 +1065,7 @@ export function BrowsePage() {
         open={openShuffleModal}
         onOpenChange={setOpenShuffleModal}
         title="Shuffle Datasets"
-        description="This will shuffle the selected datasets."
+        description="This will shuffle the selected datasets in place (no copy)."
         confirmLabel={loading ? "Shuffling..." : "Shuffle"}
         isLoading={loading}
         onConfirm={async () => {

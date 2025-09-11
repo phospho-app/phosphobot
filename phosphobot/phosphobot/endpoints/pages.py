@@ -1008,29 +1008,11 @@ async def shuffle_dataset(query: DatasetShuffleRequest) -> StatusResponse:
             message="You can only shuffle datasets of type v2.1",
         )
 
-    # Shuffle the dataset
+    # Create a dataset object
     dataset = LeRobotDataset(path=dataset_path, enforce_path=True)
 
-    # Name of the new dataset after shuffling
-    new_dataset_name = f"{query.dataset_path}_shuffled"
-    while os.path.exists(os.path.join(ROOT_DIR, new_dataset_name)):
-        # Find if a int suffix is already present
-        if new_dataset_name.endswith("_shuffled"):
-            # If it ends with _shuffled, we can add a number
-            new_dataset_name += "_1"
-        else:
-            # Otherwise, parse the int and increment it
-            try:
-                suffix = int(new_dataset_name.split("_")[-1])
-                new_dataset_name = (
-                    "_".join(new_dataset_name.split("_")[:-1]) + f"_{suffix + 1}"
-                )
-            except ValueError:
-                # If the suffix is not an int, we just add _1
-                new_dataset_name += "_1"
-
     try:
-        dataset.shuffle_dataset(new_dataset_name=new_dataset_name)
+        dataset.shuffle_dataset()
     except Exception as e:
         logger.warning(f"Error shuffling dataset: {e}")
         return StatusResponse(

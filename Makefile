@@ -105,7 +105,7 @@ submodule:
 	git submodule update --init --recursive
 
 types: 
-	cd phosphobot && uv run mypy . --check-untyped-defs --ignore-missing-imports --follow-imports=silent
+	cd phosphobot && uv run mypy . --check-untyped-defs --disallow-untyped-defs --ignore-missing-imports --follow-imports=silent
 
 sort:
 	cd phosphobot && uv run ruff check --select I --fix .

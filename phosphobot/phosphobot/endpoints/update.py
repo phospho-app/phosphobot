@@ -11,7 +11,7 @@ router = APIRouter(tags=["update"])
 
 
 @router.post("/update/version", response_model=dict)
-async def get_latest_available_version(run_quick: bool = False) -> dict | HTTPException:
+async def get_latest_available_version(run_quick: bool = False) -> dict:
     """
     Get the latest available version of the teleop software.
     Works only on raspberry pi devices.
@@ -60,8 +60,8 @@ async def get_latest_available_version(run_quick: bool = False) -> dict | HTTPEx
         )
 
 
-@router.get("/update/upgrade-to-latest-version")
-async def upgrade_to_latest_version():
+@router.get("/update/upgrade-to-latest-version", response_model=dict)
+async def upgrade_to_latest_version() -> dict:
     """
     Upgrade the teleop software to the latest available version.
     Checks the latest available version and upgrades the software if necessary.

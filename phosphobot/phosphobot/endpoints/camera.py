@@ -107,6 +107,8 @@ def video_feed_for_camera(
     },
 )
 async def get_all_camera_frames(
+    resize_x: Optional[int] = None,
+    resize_y: Optional[int] = None,
     cameras: AllCameras = Depends(get_all_cameras),
 ) -> Dict[str, Optional[str]]:
     """
@@ -118,7 +120,12 @@ async def get_all_camera_frames(
     logger.debug("Received request for all camera frames")
 
     # We can add a resize here if needed
-    frames = cameras.get_rgb_frames_for_all_cameras()
+    if resize_x is not None and resize_y is not None:
+        resize = (resize_x, resize_y)
+    else:
+        resize = None
+
+    frames = cameras.get_rgb_frames_for_all_cameras(resize=resize)
 
     # Initialize response dictionary
     response: Dict[str, Optional[str]] = {}

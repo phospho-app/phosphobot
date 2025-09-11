@@ -275,7 +275,6 @@ async def move_to_absolute_position(
                 await robot.move_robot_absolute(
                     target_position=target_position,
                     target_orientation_rad=target_orientation_rad,
-                    interpolate_trajectory=False,
                 )
                 current_position, current_orientation = robot.forward_kinematics()
                 position_residual = np.linalg.norm(current_position - target_position)
