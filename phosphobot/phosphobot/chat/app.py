@@ -15,6 +15,32 @@ from textual.events import Key
 from phosphobot.chat.agent import RoboticAgent
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
+from phosphobot import __version__
+
+
+def ascii_test_tube() -> str:
+    return f"""
+                                                  
+                                 [grey46](((((%%(([/grey46]        
+                               [grey46](((((((([/grey46][white]&&&&[/white][grey46](([/grey46]     
+                            [grey46](((((([/grey46][white]&&&[/white][grey46](((([/grey46][white]&&&&&[/white][grey46](*[/grey46]  
+                          [grey46](((((([/grey46][white]&&&&&&&[/white][grey46]((((([/grey46][white]&&&&[/white][grey46]([/grey46] 
+                       [grey46](((((([/grey46][white]&&&&&&&&&&&&[/white][grey46]((((((((([/grey46]
+                     [grey46](((((([/grey46][white]&&&&&&&&&&&&&&&&&[/white][grey46](((((([/grey46]
+                  [grey46](((((([/grey46][bright_green]###(////////////[/bright_green][white]%&[/white][grey46](((((([/grey46]  
+                [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]     
+             [grey46](((((([/grey46][bright_green]##################[/bright_green][grey46](((((([/grey46]       
+           [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]          
+        [grey46](((((([/grey46][bright_green]#####(///###///###[/bright_green][grey46](((((([/grey46]      [green]phosphobot chat[/green]
+      [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]         [green]{__version__}[/green]
+   [grey46](((((([/grey46][bright_green]#####/############[/bright_green][grey46](((((([/grey46]           [green]Copyright (c) 2025 phospho[/green]
+  [grey46]((((([/grey46][bright_green]##########////###[/bright_green][grey46](((((([/grey46]              [green]https://phospho.ai[/green]
+ [grey46](((([/grey46][bright_green]#####(/##########[/bright_green][grey46](((((([/grey46]                      
+ [grey46](((([/grey46][bright_green]####(///######[/bright_green][grey46](((((([/grey46]                         
+ [grey46]((((([/grey46][bright_green]###########[/bright_green][grey46](((((([/grey46]                           
+  [grey46](((((([/grey46][bright_green]######[/bright_green][grey46](((((([/grey46]                              
+    [grey46](((((((((((((([/grey46]                                
+    """
 
 
 class AgentScreen(Screen):
@@ -68,13 +94,28 @@ class AgentScreen(Screen):
 
     def on_mount(self) -> None:
         """Focus the input when the screen is mounted."""
+
+        # self._write_to_log(
+        #     "🧪 Welcome to phosphobot chat!\n\n"
+        #     + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
+        #     + "\nEnter a prompt in the box below or press Ctrl+P for commands.\n"
+        #     + "💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!",
+        #     "system",
+        # )
         self._write_to_log(
-            "🧪 Welcome to phosphobot chat!\n\n"
-            + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
-            + "\nEnter a prompt in the box below or press Ctrl+P for commands.\n"
-            + "💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!",
+            f"""🧪 Welcome to phosphobot chat!
+
+{ascii_test_tube()}
+
+Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
+
+Enter a prompt in the box below or press Ctrl+P for commands.
+
+💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!
+""",
             "system",
         )
+
         self.query_one(Input).focus()
 
     def set_running_state(self, running: bool) -> None:
@@ -100,7 +141,7 @@ class AgentScreen(Screen):
         elif running:
             self.app.sub_title = "Agent is running..."
             input_widget.disabled = running
-            input_widget.placeholder = "Agent running... (Ctrl+I to stop)"
+            input_widget.placeholder = "Agent running... (Ctrl+S to stop)"
         else:
             self.app.sub_title = "Ready"
             input_widget.disabled = False

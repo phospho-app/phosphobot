@@ -6,7 +6,7 @@ from google.genai.errors import ClientError, ServerError
 from loguru import logger
 from pydantic import BaseModel
 
-from phosphobot.models import ChatResponse
+from phosphobot.models import ChatRequest, ChatResponse
 
 
 class GeminiAgentResponse(BaseModel):
@@ -33,7 +33,6 @@ class GeminiAgent:
     def __init__(
         self,
         model_id: str = "gemini-2.5-flash",
-        task_description: str = "Pick up white foam",
         thinking_budget: int = 0,
     ):
         """
@@ -43,7 +42,6 @@ class GeminiAgent:
         self.genai_client = genai.Client()
         self.thinking_budget = thinking_budget
         self.model_id = model_id
-        self.task_description = task_description
 
     @property
     def prompt(self) -> str:
@@ -74,10 +72,15 @@ Use the image to localize the end effector, understand the task, and give the in
             response_schema=GeminiAgentResponse,
         )
 
-    async def run(self, images: List[str]) -> ChatResponse:
+    async def run(self, chat_request: ChatRequest) -> ChatResponse:
         """
-        Run the agent for 1 step.
+        Run the agent.
         """
+
+        self.task_description = chat_request.prompt
+        images = chat_request.images
+        if not images:
+            images = []
 
         # Build the content list with prompt and images
         contents: List[Union[genai.types.Part, str]] = [self.prompt]

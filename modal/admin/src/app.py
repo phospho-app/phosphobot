@@ -1222,7 +1222,7 @@ def fastapi_app():
 
     @web_app.post("/ai-control/chat", response_model=ChatResponse)
     async def ai_control_chat(
-        request: ChatRequest,
+        chat_request: ChatRequest,
         user: SupabaseUser = Depends(get_user_and_check_quota),
     ):
         """
@@ -1231,8 +1231,8 @@ def fastapi_app():
 
         from .chat import GeminiAgent
 
-        gemini_agent = GeminiAgent(task_description=request.prompt)
-        return await gemini_agent.run(images=request.images)
+        gemini_agent = GeminiAgent()
+        return await gemini_agent.run(chat_request=chat_request)
 
     # Required by modal
     return web_app
