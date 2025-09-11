@@ -505,7 +505,7 @@ class PiperHardware(BaseManipulator):
         # Gripper -> Convert from 0->RESOLUTION to 0->GRIPPER_MAX_ANGLE
         logger.debug(f"Piper: Writing gripper command {command}")
         unit_degree = command * self.GRIPPER_MAX_ANGLE
-        unit_command = self.GRIPPER_ZERO_POSITION + int(unit_degree) * 1000
+        unit_command = self.GRIPPER_ZERO_POSITION + int(unit_degree * 1000)
         self.motors_bus.GripperCtrl(
             gripper_angle=unit_command,
             gripper_effort=self.GRIPPER_EFFORT,
