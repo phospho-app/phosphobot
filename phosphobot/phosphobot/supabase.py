@@ -76,7 +76,10 @@ async def get_client() -> AsyncClient:
     session = load_session()
 
     async def set_session_with_retry(
-        access_token, refresh_token, max_retries=3, delay=2
+        access_token: str,
+        refresh_token: str,
+        max_retries: int = 3,
+        delay: float = 2,
     ) -> bool:
         current_delay = delay
         for attempt in range(max_retries):

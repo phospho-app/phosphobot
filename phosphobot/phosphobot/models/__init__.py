@@ -1247,3 +1247,28 @@ class TeleopSettingsRequest(BaseModel):
         gt=0,
         examples=[1.0, 0.5, 2.0],
     )
+
+
+class ChatRequest(BaseModel):
+    """
+    Control the robot with a natural language prompt.
+    """
+
+    prompt: str = Field(
+        ...,
+        description="The task to be performed by the robot, described in natural language.",
+    )
+    images: Optional[List[str]] = Field(
+        None, description="base64 encoded images to be sent with the request. "
+    )
+
+
+class ChatResponse(BaseModel):
+    """
+    Response to the chat request.
+    """
+
+    endpoint: Optional[str] = Field(None, description="The next endpoint to call.")
+    endpoint_params: Optional[Dict[str, Any]] = Field(
+        None, description="Parameters to pass to the next endpoint."
+    )

@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand
@@ -10,10 +10,37 @@ from textual.reactive import var
 from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog
 from textual.worker import Worker
+from textual.events import Key
 
 from phosphobot.chat.agent import RoboticAgent
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
+from phosphobot import __version__
+
+
+def ascii_test_tube() -> str:
+    return f"""
+                                                  
+                                 [grey46](((((%%(([/grey46]        
+                               [grey46](((((((([/grey46][white]&&&&[/white][grey46](([/grey46]     
+                            [grey46](((((([/grey46][white]&&&[/white][grey46](((([/grey46][white]&&&&&[/white][grey46](*[/grey46]  
+                          [grey46](((((([/grey46][white]&&&&&&&[/white][grey46]((((([/grey46][white]&&&&[/white][grey46]([/grey46] 
+                       [grey46](((((([/grey46][white]&&&&&&&&&&&&[/white][grey46]((((((((([/grey46]
+                     [grey46](((((([/grey46][white]&&&&&&&&&&&&&&&&&[/white][grey46](((((([/grey46]
+                  [grey46](((((([/grey46][bright_green]###(////////////[/bright_green][white]%&[/white][grey46](((((([/grey46]  
+                [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]     
+             [grey46](((((([/grey46][bright_green]##################[/bright_green][grey46](((((([/grey46]       
+           [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]          
+        [grey46](((((([/grey46][bright_green]#####(///###///###[/bright_green][grey46](((((([/grey46]      [green]phosphobot chat[/green]
+      [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]         [green]{__version__}[/green]
+   [grey46](((((([/grey46][bright_green]#####/############[/bright_green][grey46](((((([/grey46]           [green]Copyright (c) 2025 phospho[/green]
+  [grey46]((((([/grey46][bright_green]##########////###[/bright_green][grey46](((((([/grey46]              [green]https://phospho.ai[/green]
+ [grey46](((([/grey46][bright_green]#####(/##########[/bright_green][grey46](((((([/grey46]                      
+ [grey46](((([/grey46][bright_green]####(///######[/bright_green][grey46](((((([/grey46]                         
+ [grey46]((((([/grey46][bright_green]###########[/bright_green][grey46](((((([/grey46]                           
+  [grey46](((((([/grey46][bright_green]######[/bright_green][grey46](((((([/grey46]                              
+    [grey46](((((((((((((([/grey46]                                
+    """
 
 
 class AgentScreen(Screen):
@@ -28,7 +55,7 @@ class AgentScreen(Screen):
         )
         yield Footer()
 
-    def on_key(self, event) -> None:
+    def on_key(self, event: Key) -> None:
         """Handle key presses at screen level to bypass input focus for manual control."""
         app = self.app
         if not isinstance(app, AgentApp) or not app.current_agent:
@@ -67,13 +94,28 @@ class AgentScreen(Screen):
 
     def on_mount(self) -> None:
         """Focus the input when the screen is mounted."""
+
+        # self._write_to_log(
+        #     "🧪 Welcome to phosphobot chat!\n\n"
+        #     + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
+        #     + "\nEnter a prompt in the box below or press Ctrl+P for commands.\n"
+        #     + "💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!",
+        #     "system",
+        # )
         self._write_to_log(
-            "🧪 Welcome to phosphobot chat!\n\n"
-            + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
-            + "\nEnter a prompt in the box below or press Ctrl+P for commands.\n"
-            + "💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!",
+            f"""🧪 Welcome to phosphobot chat!
+
+{ascii_test_tube()}
+
+Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
+
+Enter a prompt in the box below or press Ctrl+P for commands.
+
+💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!
+""",
             "system",
         )
+
         self.query_one(Input).focus()
 
     def set_running_state(self, running: bool) -> None:
@@ -99,14 +141,14 @@ class AgentScreen(Screen):
         elif running:
             self.app.sub_title = "Agent is running..."
             input_widget.disabled = running
-            input_widget.placeholder = "Agent running... (Ctrl+I to stop)"
+            input_widget.placeholder = "Agent running... (Ctrl+S to stop)"
         else:
             self.app.sub_title = "Ready"
             input_widget.disabled = False
             input_widget.placeholder = "Type a prompt and press Enter..."
             input_widget.focus()
 
-    def _write_to_log(self, content: str, who: str):
+    def _write_to_log(self, content: str, who: str) -> None:
         """Write a formatted message to the RichLog."""
         log = self.query_one(RichLog)
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -119,7 +161,7 @@ class AgentScreen(Screen):
             style, prefix = "italic green", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
 
-    def _show_manual_controls(self):
+    def _show_manual_controls(self) -> None:
         """Display the manual control layout."""
         controls_text = """
 [bold green]🎮 Manual Control Commands:[/bold green]
@@ -141,11 +183,11 @@ Mode:
 
 
 class RichLogHandler(logging.Handler):
-    def __init__(self, rich_log: RichLog):
+    def __init__(self, rich_log: RichLog) -> None:
         super().__init__()
         self.rich_log = rich_log
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         message = self.format(record)
         self.rich_log.write(f"[DIM]{record.name}[/DIM] - {message}")
 
@@ -218,19 +260,19 @@ class AgentApp(App):
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         prompt = event.value.strip()
         if not prompt:
-            return
+            return None
 
         screen = self._get_main_screen()
         if not screen:
-            return
+            return None
 
         screen.query_one(Input).clear()
         self._handle_prompt(prompt, screen)
 
-    def _handle_prompt(self, prompt: str, screen: AgentScreen):
+    def _handle_prompt(self, prompt: str, screen: AgentScreen) -> None:
         if self.is_agent_running:
             screen._write_to_log("An agent is already running.", "system")
-            return
+            return None
         screen._write_to_log(prompt, "user")
         agent = RoboticAgent(task_description=prompt)
         self.current_agent = agent  # Store reference for manual control
@@ -238,7 +280,7 @@ class AgentApp(App):
         if prompt.strip() == "/init":
             screen._write_to_log("Moving robot to initial position", "system")
             asyncio.create_task(agent.phosphobot_client.move_init())
-            return
+            return None
 
         self.worker = self.run_worker(self._run_agent(agent), exclusive=True)
 

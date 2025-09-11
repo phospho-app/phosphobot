@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.117"
+version = "0.3.119"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
@@ -49,7 +49,6 @@ dependencies = [
     "async-property>=0.2.2",
     "pyzmq>=27.0.2",
     "textual>=6.1.0",
-    "google-genai>=1.34.0",
 ]
 
 [dependency-groups]

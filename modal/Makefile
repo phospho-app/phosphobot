@@ -2,7 +2,7 @@ install:
 	uv sync && uv run modal setup && uv run modal config set-environment test
 	
 deploy_admin:
-	cd admin && uv run modal deploy app.py
+	cd admin && uv run modal deploy -m src.app
 
 deploy_act:
 	cd act && uv run modal deploy -m src.app

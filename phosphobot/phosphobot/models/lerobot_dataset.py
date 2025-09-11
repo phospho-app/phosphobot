@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -85,7 +85,7 @@ class LeRobotDataset(BaseDataset):
         force: bool = False,
         add_metadata: Optional[Dict[str, list]] = None,
         save_cartesian: Optional[bool] = False,
-    ):
+    ) -> None:
         """Loads existing meta files or initializes new ones if they don't exist."""
         logger.debug(
             f"Initializing/loading meta models for dataset: {self.dataset_name}"
@@ -935,7 +935,7 @@ class LeRobotDataset(BaseDataset):
             video_keys_to_delete, self.meta_folder_full_path
         )
 
-    def shuffle_dataset(self, new_dataset_name) -> None:
+    def shuffle_dataset(self) -> None:
         """
         Shuffle the episodes in the dataset inplace.
         Expects a dataset in v2.1 format.
@@ -1237,7 +1237,7 @@ class LeRobotEpisode(BaseEpisode):
         all_camera_key_names: List[str],
         add_metadata: Optional[Dict[str, list]] = None,
         save_cartesian: Optional[bool] = False,
-        **kwargs,
+        **kwargs: Dict[str, Any],
     ) -> "LeRobotEpisode":
         # Ensure meta models are loaded/initialized in the dataset manager
         dataset_manager.load_meta_models(
@@ -1298,7 +1298,7 @@ class LeRobotEpisode(BaseEpisode):
         )
         return episode
 
-    async def append_step(self, step: Step, **kwargs) -> None:
+    async def append_step(self, step: Step, **kwargs: Dict[str, Any]) -> None:
         self.add_step(step)  # Appends to self.steps, manages is_first/is_last flags
 
         current_step_in_episode_index = (
@@ -1424,7 +1424,7 @@ class LeRobotEpisode(BaseEpisode):
 
         return LeRobotEpisodeModel(**episode_data_dict)
 
-    async def save(self, **kwargs) -> None:
+    async def save(self, **kwargs: Dict[str, Any]) -> None:
         if not self.steps:
             logger.warning(
                 f"LeRobotEpisode {self.episode_index} has no steps. Skipping save."
@@ -1740,7 +1740,7 @@ class LeRobotEpisodeModel(BaseModel):
     index: List[int]
 
     @model_validator(mode="before")
-    def validate_lengths(cls, values):
+    def validate_lengths(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         fields_to_check = [
             "action",
             "observation_state",
@@ -1778,7 +1778,7 @@ class LeRobotEpisodeModel(BaseModel):
             )
         return values
 
-    def to_parquet(self, filename: str):
+    def to_parquet(self, filename: str) -> None:
         """
         Save the episode to a Parquet file
         """
@@ -1874,7 +1874,7 @@ class TasksModel(BaseModel):
             )
 
     def update_for_episode_removal(
-        self, df_episode_to_delete: pd.DataFrame, data_folder_full_path=str
+        self, df_episode_to_delete: pd.DataFrame, data_folder_full_path: str
     ) -> None:
         """
         Update the tasks when removing an episode from the dataset.
@@ -1936,7 +1936,9 @@ class TasksModel(BaseModel):
 
         return old_index_to_new_index, new_number_of_tasks
 
-    def split(self, split_ratio: float, initial_episodes_model: "EpisodesModel"):
+    def split(
+        self, split_ratio: float, initial_episodes_model: "EpisodesModel"
+    ) -> Tuple["TasksModel", "TasksModel", int, int, dict[int, int]]:
         """
         Splits the tasks model into two parts.
         The first part contains the first split_ratio * len(tasks) tasks.
@@ -2006,7 +2008,7 @@ class EpisodesFeatures(BaseModel):
 
     # Import tasks as a list of str if it is a str
     @field_validator("tasks", mode="before")
-    def validate_tasks(cls, v):
+    def validate_tasks(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
             return [v]
         elif isinstance(v, list):
@@ -2252,7 +2254,7 @@ class EpisodesModel(BaseModel):
         }
 
     def merge_with(
-        self, second_episodes_model: "EpisodesModel", meta_folder_to_save_to
+        self, second_episodes_model: "EpisodesModel", meta_folder_to_save_to: str
     ) -> None:
         """
         Merge the episodes with another episodes model and save it to the new meta folder.
@@ -2316,7 +2318,7 @@ class EpisodesModel(BaseModel):
 
         return True
 
-    def split(self, split_ratio: float):
+    def split(self, split_ratio: float) -> Tuple["EpisodesModel", "EpisodesModel"]:
         """
         Split the episodes model into two parts.
         """
@@ -2364,7 +2366,7 @@ class Stats(BaseModel):
 
     @field_validator("count", mode="before")
     @classmethod
-    def validate_count(cls, value) -> int:
+    def validate_count(cls, value: Union[list, int]) -> int:
         if isinstance(value, int):
             return value
         elif isinstance(value, list) and len(value) == 1:
@@ -2415,7 +2417,7 @@ class Stats(BaseModel):
             self.square_sum = self.square_sum + value**2
             self.count += 1
 
-    def compute_from_rolling(self):
+    def compute_from_rolling(self) -> None:
         """
         Compute the mean and std from the rolling sum and square sum.
         """
@@ -2841,7 +2843,7 @@ class StatsModel(BaseModel):
 
     def _compute_count_sum_square_sum_item_from_mean_std(
         self, stats_item: "Stats", stats_key: str, meta_folder_path: str
-    ):
+    ) -> None:
         """Helper function to compute sum and square_sum from mean, std, and count
         meta_folder_path is used to compute the count from info.json
         This is the number of frames or the number of frames times the dimension of images for videos
@@ -2886,7 +2888,9 @@ class StatsModel(BaseModel):
                     f"Mean shape for {stats_key} after: {stats_item.mean.shape}"
                 )
 
-    def compute_count_square_sum_framecount_from_mean_std(self, meta_folder_path: str):
+    def compute_count_square_sum_framecount_from_mean_std(
+        self, meta_folder_path: str
+    ) -> None:
         """
         Compute the sum and square sum from the mean and std.
         This is useful when we want to update the stats after repairing a dataset.
@@ -3339,7 +3343,9 @@ class EpisodesStatsModel(BaseModel):
         # Save the merged model
         self.save(meta_folder_path)
 
-    def split(self, split_ratio: float):
+    def split(
+        self, split_ratio: float
+    ) -> tuple["EpisodesStatsModel", "EpisodesStatsModel"]:
         """
         Splits the episodes stats model into two parts.
         The first part contains the first split_ratio * len(episodes_stats) episodes.
@@ -3578,7 +3584,9 @@ class InfoModel(BaseModel):
     features: InfoFeatures
 
     @classmethod
-    def from_robots(cls, robots: List[BaseRobot], **data) -> "InfoModel":
+    def from_robots(
+        cls, robots: List[BaseRobot], **data: Dict[str, Any]
+    ) -> "InfoModel":
         """
         From a robot configuration, create the appropriate InfoModel.
         This is because it depends on the number of joints etc.
@@ -3594,12 +3602,12 @@ class InfoModel(BaseModel):
             observation_state=robot_info.observation_state,
         )
         return cls(
-            **data,
+            **data,  # type: ignore
             features=features,
             robot_type=robot_info.robot_type,
         )
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Convert the InfoModel to a dictionary. This is different from
         model_dump() as it transforms the features to the correct format.
