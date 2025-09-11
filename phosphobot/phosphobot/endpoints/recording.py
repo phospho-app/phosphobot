@@ -23,7 +23,7 @@ from phosphobot.models import (
     RecordingStopResponse,
     StatusResponse,
 )
-from phosphobot.models.lerobot_dataset import LeRobotDataset
+from phosphobot.models.lerobot_dataset import InfoFeatures, LeRobotDataset
 from phosphobot.posthog import is_github_actions
 from phosphobot.recorder import Recorder, get_recorder
 from phosphobot.robot import RobotConnectionManager, get_rcm
@@ -153,6 +153,45 @@ async def start_recording_episode(
                     f"Dataset {dataset_name} has {number_of_cameras_in_dataset} cameras but you have {number_of_connected_cameras} connected. Create a new dataset by changing the dataset name in Admin Settings."
                 )
 
+            if (
+                info_model.features.action_cartesian is None
+                or info_model.features.observation_cartesian_state is None
+            ) and query.save_cartesian:
+                raise KeyError(
+                    f"Dataset {dataset_name} does not have cartesian action or observation data but you are requesting to save it. Create a new dataset by changing the dataset name in Admin Settings."
+                )
+            if (
+                info_model.features.action_cartesian is not None
+                and info_model.features.observation_cartesian_state is not None
+            ) and not query.save_cartesian:
+                raise KeyError(
+                    f"Dataset {dataset_name} has cartesian action or observation data but you are requesting not to save it. Create a new dataset by changing the dataset name in Admin Settings."
+                )
+
+            expected_columns = set(InfoFeatures.__annotations__.keys())
+            current_features = set(info_model.features.model_dump().keys())
+            metadata_labels = current_features - expected_columns
+            requested_metadata_labels = (
+                set(query.add_metadata.keys()) if query.add_metadata else set()
+            )
+
+            if metadata_labels != requested_metadata_labels:
+                raise KeyError(
+                    f"Metadata labels {metadata_labels} do not match the passed metadata keys {requested_metadata_labels}."
+                )
+            # Also check the size of metadata fields
+            for label in metadata_labels:
+                if (
+                    getattr(info_model.features, label) is not None
+                    and query.add_metadata is not None
+                    and label in query.add_metadata
+                    and len(getattr(info_model.features, label))
+                    != len(query.add_metadata[label])
+                ):
+                    raise KeyError(
+                        f"Metadata label {label} has size {len(getattr(info_model.features, label))} in the dataset but size {len(query.add_metadata[label])} in the request."
+                    )
+
             # Get action dimensions from existing dataset
             dataset_action_dim = info_model.features.action.shape[0]
             # Calculate expected action dimensions from connected robots
@@ -178,9 +217,6 @@ async def start_recording_episode(
             pass
         except KeyError as e:
             # This means the dataset exists but the number of cameras or robots is not consistent
-            logger.warning(
-                "Number of cameras or robots is not consistent with the existing dataset. Create a new dataset by changing the dataset name in Admin Settings."
-            )
             raise HTTPException(status_code=400, detail=str(e))
 
     # Check if the recorder is not currently saving
