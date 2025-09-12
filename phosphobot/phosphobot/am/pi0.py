@@ -36,7 +36,7 @@ class InputFeatures(BaseModel):
     state_key: str
     video_keys: List[str] = []
     # Currently all supported robots have 6 joints (5 joints + 1 gripper).
-    action_size: int = 6
+    action_dim: int = 6
     features: Dict[str, InputFeature]
 
     @property
@@ -453,6 +453,7 @@ class Pi0(ActionModel):
         """
         nb_iter = 0
         config = model_spawn_config.hf_model_config
+        action_dim = config.input_features.action_dim
 
         signal_marked_as_started = False
         actions_queue: deque = deque([])
@@ -546,7 +547,7 @@ class Pi0(ActionModel):
 
                 for robot_index in range(len(robots)):
                     robots[robot_index].write_joint_positions(
-                        angles=action_list[robot_index * 6: robot_index * 6 + 6],
+                        angles=action_list[robot_index * action_dim: robot_index * action_dim + action_dim],
                         unit=unit,
                         min_value=min_angle,
                         max_value=max_angle,
