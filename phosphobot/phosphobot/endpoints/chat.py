@@ -61,9 +61,8 @@ async def log_chat(
                 {
                     "chat_id": chat.chat_id,
                     "user_id": session.user.id,
-                    "images": chat.images,
+                    "images": str(chat.images),
                     "prompt": chat.prompt,
-                    "created_at": datetime.now().isoformat(),
                 }
             )
             .execute()

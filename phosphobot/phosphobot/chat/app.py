@@ -137,7 +137,7 @@ Enter a prompt in the box below or press Ctrl+P for commands.
             # Show command layout
             self._show_manual_controls()
             # Remove focus from input so keys work
-            self.focus()
+            # self.focus()
         elif running:
             self.app.sub_title = "Agent is running..."
             input_widget.disabled = running

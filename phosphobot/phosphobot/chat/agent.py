@@ -120,7 +120,7 @@ class PhosphobotClient:
         Log the chat request to the server.
         """
         response = await self.client.post(
-            "/ai-control/log",
+            "/ai-control/chat/log",
             json=chat_request.model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -130,7 +130,7 @@ class PhosphobotClient:
         Start recording a dataset with the specified name.
         """
         response = await self.client.post(
-            "/recording/start",
+            "/recording/start", json={"dataset_name": "chat_dataset"}
         )
         response.raise_for_status()
 
