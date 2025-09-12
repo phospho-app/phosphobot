@@ -3,9 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from supabase_auth.types import Session as SupabaseSession
 
+from datetime import datetime
 from phosphobot.models import ChatRequest, ChatResponse
 from phosphobot.supabase import user_is_logged_in
 from phosphobot.utils import get_tokens
+from phosphobot.supabase import get_client
 
 router = APIRouter(tags=["chat"])
 
@@ -40,3 +42,31 @@ async def ai_control_chat(
             raise HTTPException(status_code=e.response.status_code, detail=str(e))
 
     return ChatResponse.model_validate(response.json())
+
+
+@router.post("/ai-control/chat/log")
+async def log_chat(
+    chat: ChatRequest,
+    session: SupabaseSession = Depends(user_is_logged_in),
+) -> None:
+    """
+    Log the first chat request to the database.
+    """
+    # Store to supabase
+    supabase_client = await get_client()
+    try:
+        await (
+            supabase_client.table("chat_logs")
+            .insert(
+                {
+                    "chat_id": chat.chat_id,
+                    "user_id": session.user.id,
+                    "images": chat.images,
+                    "prompt": chat.prompt,
+                    "created_at": datetime.now().isoformat(),
+                }
+            )
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log chat: {str(e)}")

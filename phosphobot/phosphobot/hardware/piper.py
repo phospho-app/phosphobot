@@ -36,7 +36,7 @@ class PiperHardware(BaseManipulator):
     is_moving = False
     robot_connected = False
 
-    GRIPPER_MAX_ANGLE = 90  # In degree
+    GRIPPER_MAX_ANGLE = 100  # In degree
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 

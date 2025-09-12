@@ -115,6 +115,32 @@ class PhosphobotClient:
         response.raise_for_status()
         return ChatResponse.model_validate(response.json())
 
+    async def log_chat(self, chat_request: ChatRequest) -> None:
+        """
+        Log the chat request to the server.
+        """
+        response = await self.client.post(
+            "/ai-control/log",
+            json=chat_request.model_dump(mode="json"),
+        )
+        response.raise_for_status()
+
+    async def start_recording(self) -> None:
+        """
+        Start recording a dataset with the specified name.
+        """
+        response = await self.client.post(
+            "/recording/start",
+        )
+        response.raise_for_status()
+
+    async def stop_recording(self) -> None:
+        """
+        Stop the current recording session.
+        """
+        response = await self.client.post("/recording/stop")
+        response.raise_for_status()
+
 
 class RoboticAgent:
     def __init__(
@@ -228,8 +254,13 @@ class RoboticAgent:
             yield "start_step", {"desc": "Manual control mode enabled."}
             yield "step_done", {"success": True}
 
+        # Start recording
+        yield "start_step", {"desc": "🔴 Starting recording."}
+        await self.phosphobot_client.start_recording()
+
         step_count = 0
         max_steps = 50
+        chat_logged = False
 
         while step_count < max_steps:
             current_mode = "manual" if self.manual_control else "AI"
@@ -283,6 +314,10 @@ class RoboticAgent:
                     images=list(images.values()),
                     command_history=self.command_history,
                 )
+                if not chat_logged:
+                    # Log the initial chat request
+                    await self.phosphobot_client.log_chat(chat_request=chat_request)
+                    chat_logged = True
                 chat_response = await self.phosphobot_client.chat(
                     chat_request=chat_request
                 )
@@ -295,6 +330,10 @@ class RoboticAgent:
                 )
                 # Execute the command
                 await self.execute_command(chat_response=chat_response)
+
+        # Stop recording
+        yield "start_step", {"desc": "🔴 Recording stopped."}
+        await self.phosphobot_client.stop_recording()
 
         yield "step_done", {"success": True}
         control_mode = "manual" if self.manual_control else "AI"
