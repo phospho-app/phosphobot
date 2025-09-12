@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand

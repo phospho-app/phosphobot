@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import httpx
 from loguru import logger
@@ -128,6 +128,8 @@ class RoboticAgent:
         self.task_description = task_description
         self.manual_control = manual_control
         self.manual_command: Optional[str] = None
+        self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
+        self.command_history: List[str] = []
 
     def set_manual_command(self, command: str) -> None:
         """
@@ -160,6 +162,9 @@ class RoboticAgent:
         if chat_response is None:
             logger.warning("No chat response received. Skipping execution.")
             return None
+
+        if chat_response.command is not None:
+            self.command_history.append(chat_response.command)
 
         if chat_response.endpoint == "move_relative":
             if not chat_response.endpoint_params:
@@ -200,6 +205,14 @@ class RoboticAgent:
         await self.phosphobot_client.move_relative(**next_robot_move)
         return next_robot_move
 
+    def add_to_chat_history(
+        self, chat_request: ChatRequest, chat_response: ChatResponse
+    ) -> None:
+        """
+        Add the chat request and response to the chat history.
+        """
+        self.chat_history.extend([chat_request, chat_response])
+
     async def run(self) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
         """
         An async generator that yields events for the UI to handle.
@@ -213,12 +226,6 @@ class RoboticAgent:
         # Manual control setup
         if self.manual_control:
             yield "start_step", {"desc": "Manual control mode enabled."}
-            yield (
-                "step_output",
-                {
-                    "desc": "Manual control active. Use set_manual_command() to control the robot."
-                },
-            )
             yield "step_done", {"success": True}
 
         step_count = 0
@@ -270,16 +277,21 @@ class RoboticAgent:
                     )
                     continue  # Skip this step if no images
 
+                chat_request = ChatRequest(
+                    prompt=self.task_description,
+                    # Convert dict to list of base64 strings
+                    images=list(images.values()),
+                    command_history=self.command_history,
+                )
                 chat_response = await self.phosphobot_client.chat(
-                    chat_request=ChatRequest(
-                        prompt=self.task_description,
-                        # Convert dict to list of base64 strings
-                        images=list(images.values()),
-                    )
+                    chat_request=chat_request
                 )
                 yield (
                     "step_output",
                     {"output": f"AI command: {chat_response.model_dump()}"},
+                )
+                self.add_to_chat_history(
+                    chat_request=chat_request, chat_response=chat_response
                 )
                 # Execute the command
                 await self.execute_command(chat_response=chat_response)
