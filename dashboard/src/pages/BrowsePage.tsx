@@ -50,9 +50,10 @@ import { fetchWithBaseUrl, fetcher } from "@/lib/utils";
 import { DatasetInfoResponse, ServerStatus } from "@/types";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowUpFromLine,
   ChevronRight,
-  //Columns3,
+  Columns3,
   Download,
   ExternalLink,
   Eye,
@@ -320,6 +321,10 @@ export function BrowsePage() {
   // Shuffle modal
   const [openShuffleModal, setOpenShuffleModal] = useState(false);
 
+  // Column deletion modal
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [openDeleteColumnModal, setOpenDeleteColumnModal] = useState(false);
+
   // Split modal
   const [openSplitModel, setOpenSplitModel] = useState(false);
   const [selectedSplitRatio, setSelectedSplitRatio] = useState(0.8);
@@ -462,13 +467,13 @@ export function BrowsePage() {
     setOpenSplitModel(true);
   };
 
-  // const handleColumnCheck = async () => {
-  //   if (selectedItems.length !== 1) {
-  //     toast.error("Please select exactly 1 dataset to check columns");
-  //     return;
-  //   }
-  //   setOpenDeleteModal(true);
-  // };
+  const handleColumnToggle = (columnName: string, checked: boolean) => {
+    setSelectedColumns((prev) =>
+      checked
+        ? [...prev, columnName]
+        : prev.filter((col) => col !== columnName),
+    );
+  };
 
   const mergeMultipleDatasets = async (
     newDatasetName: string,
@@ -823,53 +828,49 @@ export function BrowsePage() {
       )}
       {selectedItems.length > 0 &&
         (path.endsWith("lerobot_v2") || path.endsWith("lerobot_v2.1")) && (
-          <div className="flex flex-col md:flex-row md:space-x-2 mt-6">
-            {path.endsWith("lerobot_v2.1") && (
-              <>
-                <Button
-                  className="mb-4"
-                  variant="outline"
-                  onClick={() => handleMergeCheck()}
-                >
-                  <Repeat className="mr-2 h-4 w-3" />
-                  Merge Selected Datasets
-                </Button>
-                <Button
-                  className="mb-4"
-                  variant="outline"
-                  onClick={() => handleSplitCheck()}
-                >
-                  <Split className="mr-2 h-4 w-3" />
-                  Split Selected Datasets
-                </Button>
-                {/* <Button
-                  className="mb-4"
-                  variant="outline"
-                  onClick={() => handleColumnCheck()}
-                >
-                  <Columns3 className="mr-2 h-4 w-3" />
-                  Check Selected Columns
-                </Button> */}
-                <Button
-                  className="mb-4"
-                  variant="outline"
-                  onClick={() => setOpenShuffleModal(true)}
-                >
-                  <Shuffle className="mr-2 h-4 w-3" />
-                  Shuffle Selected Datasets
-                </Button>
-              </>
-            )}
+          <div className="flex flex-col md:flex-row md:flex-wrap md:gap-2 mt-6">
             <Button
-              className="mb-4"
               variant="outline"
               onClick={() => setConfirmRepairOpen(true)}
             >
               <Wrench className="mr-2 h-4 w-3" />
               Repair Selected Datasets
             </Button>
+            {path.endsWith("lerobot_v2.1") && (
+              <>
+                <Button variant="outline" onClick={() => handleMergeCheck()}>
+                  <Repeat className="mr-2 h-4 w-3" />
+                  Merge Selected Datasets
+                </Button>
+                <Button variant="outline" onClick={() => handleSplitCheck()}>
+                  <Split className="mr-2 h-4 w-3" />
+                  Split Selected Datasets
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setOpenShuffleModal(true)}
+                >
+                  <Shuffle className="mr-2 h-4 w-3" />
+                  Shuffle Selected Datasets
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (selectedItems.length !== 1) {
+                      toast.error(
+                        "Please select exactly 1 dataset to delete columns from",
+                      );
+                      return;
+                    }
+                    setOpenDeleteColumnModal(true);
+                  }}
+                >
+                  <Columns3 className="mr-2 h-4 w-3" />
+                  Delete Dataset Columns
+                </Button>
+              </>
+            )}
             <Button
-              className="mb-4"
               variant="destructive"
               onClick={() => setConfirmDeleteOpen(true)}
             >
@@ -925,6 +926,128 @@ export function BrowsePage() {
           redirect(path);
         }}
       />
+      {/* Delete Columns modal */}
+      <Modal
+        open={openDeleteColumnModal}
+        onOpenChange={setOpenDeleteColumnModal}
+        title="Delete Columns"
+        description="This will permanently delete the selected columns from the dataset. Please ensure you have a backup before proceeding."
+        confirmLabel={
+          loading
+            ? "Deleting..."
+            : `Delete ${selectedColumns.length} Column${selectedColumns.length !== 1 ? "s" : ""}`
+        }
+        confirmVariant="destructive"
+        isLoading={loading}
+        maxWidth="sm:max-w-xl"
+        onConfirm={async () => {
+          if (selectedItems.length !== 1) {
+            toast.error(
+              "Please select exactly 1 dataset to delete columns from",
+            );
+            return;
+          }
+
+          if (selectedColumns.length === 0) {
+            toast.error("No columns selected for deletion");
+            return;
+          }
+
+          setLoading(true);
+          try {
+            const resp = await fetchWithBaseUrl(
+              `/dataset/delete_columns`,
+              "POST",
+              {
+                dataset_path: selectedItems[0],
+                columns: selectedColumns,
+              },
+            );
+
+            if (resp.status === "ok") {
+              toast.success(
+                `Successfully deleted ${selectedColumns.length} column${selectedColumns.length !== 1 ? "s" : ""}`,
+              );
+              setOpenDeleteColumnModal(false);
+              mutate();
+              redirect(path);
+            } else {
+              toast.error("Failed to delete columns: " + resp.message);
+            }
+          } catch (error) {
+            toast.error("Error deleting columns: " + (error as Error).message);
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        <div className="space-y-4">
+          {(() => {
+            const columns = datasetInfos[selectedItems[0]]?.features || [];
+
+            return (
+              <>
+                <div className="pb-2 border-b">
+                  <Label className="text-sm font-medium text-foreground">
+                    Select columns to delete
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {selectedColumns.length} of {columns.length} columns
+                    selected
+                  </p>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto border rounded-md p-3 bg-muted/30">
+                  <div className="space-y-3">
+                    {columns.map((column) => (
+                      <div
+                        key={column}
+                        className="flex items-center space-x-3 p-2 rounded-sm hover:bg-accent/50 transition-colors"
+                      >
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={selectedColumns.includes(column)}
+                          onCheckedChange={(checked) =>
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label
+                          htmlFor={`column-${column}`}
+                          className="text-sm cursor-pointer flex-1 select-none font-mono"
+                        >
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedColumns.length > 0 && (
+                  <Alert
+                    variant="destructive"
+                    className="border-destructive/20"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Warning</AlertTitle>
+                    <AlertDescription>
+                      Deleting {selectedColumns.length} column
+                      {selectedColumns.length !== 1 ? "s" : ""} is irreversible.
+                      Make sure you have a backup of your data.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {columns.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Columns3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No columns available to delete</p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      </Modal>
       {/* Split modal */}
       <Modal
         open={openSplitModel}

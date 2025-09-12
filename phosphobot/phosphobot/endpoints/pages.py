@@ -20,6 +20,7 @@ from phosphobot.models import (
     BaseDataset,
     BrowseFilesResponse,
     BrowserFilesRequest,
+    ColumnShuffleRequest,
     DatasetListResponse,
     DatasetRepairRequest,
     DatasetShuffleRequest,
@@ -406,6 +407,14 @@ async def delete_dataset(request: Request, path: str) -> StatusResponse:
     return StatusResponse(status="ok")
 
 
+@router.post("/dataset/delete_columns", response_model=StatusResponse)
+async def delete_columns(request: ColumnShuffleRequest) -> StatusResponse:
+    logger.debug(
+        f"Deleting columns {request.columns} from dataset {request.dataset_path}"
+    )
+    return StatusResponse(status="ok")
+
+
 @router.post("/dataset/info")
 async def get_dataset_info(path: str) -> InfoResponse:
     """
@@ -472,6 +481,9 @@ async def get_dataset_info(path: str) -> InfoResponse:
         number_of_episodes=info.total_episodes,
         image_keys=list(info.features.observation_images.keys()),
         image_frames=image_frames,
+        features=list(
+            info.features.model_dump(exclude_unset=True, exclude_none=True).keys()
+        ),
     )
 
 

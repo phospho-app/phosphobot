@@ -32,6 +32,7 @@ export type DatasetInfoResponse = {
   number_of_episodes?: number;
   image_keys?: string[];
   image_frames?: Record<string, string>;
+  features?: string[];
 };
 
 export type AllCamerasStatus = {

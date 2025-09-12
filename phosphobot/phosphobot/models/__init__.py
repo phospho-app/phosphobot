@@ -412,6 +412,7 @@ class InfoResponse(BaseModel):
     number_of_episodes: Optional[int] = None
     image_keys: Optional[List[str]] = None
     image_frames: Optional[Dict[str, str]] = None
+    features: Optional[List[str]] = None
 
 
 class StatusResponse(BaseModel):
@@ -772,6 +773,11 @@ class ModelConfigurationResponse(BaseModel):
         description="List of available checkpoints for the model.",
         examples=[["100", "500"]],
     )
+
+
+class ColumnShuffleRequest(BaseModel):
+    columns: list[str]
+    dataset_path: str
 
 
 class AdminSettingsRequest(BaseModel):
