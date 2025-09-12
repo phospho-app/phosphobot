@@ -291,6 +291,12 @@ class AgentApp(App):
                 self.post_message(self.AgentUpdate(event_type, payload))
         except asyncio.CancelledError:
             self.post_message(self.AgentUpdate("log", {"text": "Agent stopped."}))
+            # Call stop recording
+            await agent.phosphobot_client.stop_recording()
+            self.post_message(
+                self.AgentUpdate("log", {"text": "🔴 Recording stopped."})
+            )
+
         finally:
             self.is_agent_running = False
             self.current_agent = None

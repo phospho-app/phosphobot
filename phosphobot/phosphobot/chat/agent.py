@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
-
+from textual.worker import Worker, WorkerState
 import httpx
 from loguru import logger
 
@@ -138,7 +138,7 @@ class PhosphobotClient:
         """
         Stop the current recording session.
         """
-        response = await self.client.post("/recording/stop")
+        response = await self.client.post("/recording/stop", json={"save": True})
         response.raise_for_status()
 
 
