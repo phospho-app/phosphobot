@@ -164,8 +164,6 @@ Use the image to localize the end effector, understand the task, and give the co
         raw = response.text
         command: Optional[GeminiAgentResponse] = response.parsed  # type: ignore
 
-        # Convert the
-
         return ChatResponse(
             endpoint="move_relative",
             endpoint_params=self._get_movement_parameters(command),
