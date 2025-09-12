@@ -43,20 +43,19 @@ class GeminiAgent:
         self.thinking_budget = thinking_budget
         self.model_id = model_id
 
-    @property
-    def prompt(self) -> str:
+    def get_prompt(self, command_history: Optional[List[str]]) -> str:
         prompt = f"""You control a green robot arm from an ego-centric 3D point of view. You must guide the robot arm using \
-step by step instructions to complete the task: "{self.task_description}"
+step by step commands to complete the task: "{self.task_description}"
 You control the robot arm in 3D space by moving the end effector. The end effector of the robot arm has a gripper that you can open and close. \
 The end effector is your main tool to interact with the environment.
 In the chat, the image provided is from a camera recording of the current position of the robot arm and its surroundings. \
-Use the image to localize the end effector, understand the task, and give the instruction for the next step.
+Use the image to localize the end effector, understand the task, and give the command for the next step.
 """
 
-        # if len(self.previous_commands) > 0:
-        #     prompt += (
-        #         "\n Your previous commands: " + "\n".join(self.previous_commands) + "\n"
-        #     )
+        if command_history and len(command_history) > 0:
+            prompt += (
+                "\n Your previous commands were: " + "\n".join(command_history) + "\n"
+            )
         return prompt
 
     @property
@@ -83,7 +82,9 @@ Use the image to localize the end effector, understand the task, and give the in
             images = []
 
         # Build the content list with prompt and images
-        contents: List[Union[genai.types.Part, str]] = [self.prompt]
+        contents: List[Union[genai.types.Part, str]] = [
+            self.get_prompt(command_history=chat_request.command_history)
+        ]
         # Images are base64 encoded strings
         contents.extend([genai.types.Part.from_text(text=image) for image in images])
 
@@ -150,7 +151,7 @@ Use the image to localize the end effector, understand the task, and give the in
 
         if response is None:
             logger.error("Failed to get response after all retry attempts.")
-            return ChatResponse(endpoint=None, endpoint_params=None)
+            return ChatResponse(command=None, endpoint=None, endpoint_params=None)
 
         # # Add to chat history (Gemini format)
         # self.chat_history.append(
@@ -168,6 +169,7 @@ Use the image to localize the end effector, understand the task, and give the in
         return ChatResponse(
             endpoint="move_relative",
             endpoint_params=self._get_movement_parameters(command),
+            command=command.next_robot_move if command else None,
         )
 
     def _get_movement_parameters(

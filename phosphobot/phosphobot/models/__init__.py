@@ -1252,6 +1252,9 @@ class ChatRequest(BaseModel):
     images: Optional[List[str]] = Field(
         None, description="base64 encoded images to be sent with the request. "
     )
+    command_history: Optional[List[str]] = Field(
+        None, description="List of previous commands to provide context for the chat."
+    )
 
 
 class ChatResponse(BaseModel):
@@ -1259,7 +1262,11 @@ class ChatResponse(BaseModel):
     Response to the chat request.
     """
 
-    endpoint: Optional[str] = Field(None, description="The next endpoint to call.")
+    command: Optional[str] = Field(
+        ...,
+        description="The command to be executed by the robot, generated from the prompt.",
+    )
+    endpoint: Optional[str] = Field(None, description="The endpoint to call.")
     endpoint_params: Optional[Dict[str, Any]] = Field(
-        None, description="Parameters to pass to the next endpoint."
+        None, description="Parameters to pass to the endpoint."
     )
