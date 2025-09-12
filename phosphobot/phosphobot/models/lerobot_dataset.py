@@ -941,20 +941,15 @@ class LeRobotDataset(BaseDataset):
         Expects a dataset in v2.1 format.
         This will pick a random shuffle of the episodes and apply it to the videos, data and meta files.
         """
-        # if self.format_version != "lerobot_v2.1":
-        #     raise ValueError(
-        #         f"Dataset {self.dataset_name} is not in v2.1 format, cannot shuffle"
-        #     )
-        # TODO: add check on info.json
+        # Get the number of episodes from the info.json file
+        info = InfoModel.from_json(meta_folder_path=self.meta_folder_full_path)
+        if info.codebase_version != "v2.1":
+            raise ValueError(
+                f"Dataset {self.dataset_name} is not in v2.1 format, cannot shuffle"
+            )
 
         # Find the number of episodes in the dataset
         logger.info("Shuffling the dataset episodes")
-
-        # Get the number of episodes from the info.json file
-        info = InfoModel.from_json(
-            meta_folder_path=self.meta_folder_full_path,
-            format="lerobot_v2.1",
-        )
 
         episodes_model = EpisodesModel.from_jsonl(
             meta_folder_path=self.meta_folder_full_path,
@@ -963,6 +958,7 @@ class LeRobotDataset(BaseDataset):
 
         number_of_episodes = info.total_episodes
         shuffle = np.random.permutation(number_of_episodes)
+        logger.debug(f"Shuffle permutation: {shuffle}")
         # Generate a mapping of type Dict[int, int] that maps the old episode index to the new episode index
         # This will be used to reindex the episodes.jsonl file
         old_index_to_new_index = {k: int(v) for k, v in enumerate(shuffle)}
@@ -970,6 +966,7 @@ class LeRobotDataset(BaseDataset):
         # Reindex the data folder
         old_index_to_new_index = self.reindex_episodes(
             folder_path=self.data_folder_full_path,
+            old_index_to_new_index=old_index_to_new_index,
         )
         # Reindex the episode videos
         for camera_folder_full_path in self.get_camera_folders_full_paths():
@@ -977,14 +974,6 @@ class LeRobotDataset(BaseDataset):
                 folder_path=camera_folder_full_path,
                 old_index_to_new_index=old_index_to_new_index,  # type: ignore
             )
-
-        episodes_model.update_for_episode_removal(
-            -1,
-            old_index_to_new_index=old_index_to_new_index,
-        )
-        episodes_model.save(
-            meta_folder_path=self.meta_folder_full_path, save_mode="overwrite"
-        )
         ### Meta files ###
 
         #### TASKS
@@ -1087,7 +1076,7 @@ class LeRobotDataset(BaseDataset):
                     new_index = current_new_index_max
                     current_new_index_max += 1
 
-                new_filename = f"episode_{new_index:06d}.{file_extension}"
+                new_filename = f"temp_episode_{new_index:06d}.{file_extension}"
                 os.rename(
                     os.path.join(folder_path, filename),
                     os.path.join(folder_path, new_filename),
@@ -1121,6 +1110,14 @@ class LeRobotDataset(BaseDataset):
                         old_index_to_new_index
                     )
                     df.to_json(os.path.join(folder_path, new_filename))
+
+        # Only keep the temp files and remove the original files
+        for filename in os.listdir(folder_path):
+            if filename.startswith("temp_"):
+                os.rename(
+                    os.path.join(folder_path, filename),
+                    os.path.join(folder_path, filename.replace("temp_", "")),
+                )
 
         return old_index_to_new_index
 
@@ -3372,7 +3369,16 @@ class EpisodesStatsModel(BaseModel):
         if len(permutation) != len(self.episodes_stats):
             raise ValueError("Permutation length must match the number of episodes.")
 
-        self.episodes_stats = [self.episodes_stats[i] for i in permutation]
+        temp: list[EpisodesStatsFeatures | None] = [None] * len(self.episodes_stats)
+
+        for original_index, new_index in enumerate(permutation):
+            temp[new_index] = self.episodes_stats[original_index]
+
+        if None in temp:
+            raise ValueError("Permutation is invalid, some indices are missing.")
+
+        self.episodes_stats = cast(list[EpisodesStatsFeatures], temp)
+
         # Update episode_index
         for new_index, episode_stats in enumerate(self.episodes_stats):
             episode_stats.episode_index = new_index

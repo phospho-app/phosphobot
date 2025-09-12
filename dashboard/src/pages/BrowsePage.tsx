@@ -52,6 +52,7 @@ import {
   AlertCircle,
   ArrowUpFromLine,
   ChevronRight,
+  //Columns3,
   Download,
   ExternalLink,
   Eye,
@@ -61,7 +62,7 @@ import {
   MoreVertical,
   Plus,
   Repeat,
-  // Shuffle,
+  Shuffle,
   Split,
   Trash2,
   Wrench,
@@ -461,6 +462,14 @@ export function BrowsePage() {
     setOpenSplitModel(true);
   };
 
+  // const handleColumnCheck = async () => {
+  //   if (selectedItems.length !== 1) {
+  //     toast.error("Please select exactly 1 dataset to check columns");
+  //     return;
+  //   }
+  //   setOpenDeleteModal(true);
+  // };
+
   const mergeMultipleDatasets = async (
     newDatasetName: string,
     imageKeyMappings?: Record<string, string>,
@@ -836,11 +845,19 @@ export function BrowsePage() {
                 {/* <Button
                   className="mb-4"
                   variant="outline"
+                  onClick={() => handleColumnCheck()}
+                >
+                  <Columns3 className="mr-2 h-4 w-3" />
+                  Check Selected Columns
+                </Button> */}
+                <Button
+                  className="mb-4"
+                  variant="outline"
                   onClick={() => setOpenShuffleModal(true)}
                 >
                   <Shuffle className="mr-2 h-4 w-3" />
                   Shuffle Selected Datasets
-                </Button> */}
+                </Button>
               </>
             )}
             <Button
