@@ -137,7 +137,7 @@ Enter a prompt in the box below or press Ctrl+P for commands.
             # Show command layout
             self._show_manual_controls()
             # Remove focus from input so keys work
-            self.focus()
+            # self.focus()
         elif running:
             self.app.sub_title = "Agent is running..."
             input_widget.disabled = running
@@ -291,6 +291,12 @@ class AgentApp(App):
                 self.post_message(self.AgentUpdate(event_type, payload))
         except asyncio.CancelledError:
             self.post_message(self.AgentUpdate("log", {"text": "Agent stopped."}))
+            # Call stop recording
+            await agent.phosphobot_client.stop_recording()
+            self.post_message(
+                self.AgentUpdate("log", {"text": "🔴 Recording stopped."})
+            )
+
         finally:
             self.is_agent_running = False
             self.current_agent = None

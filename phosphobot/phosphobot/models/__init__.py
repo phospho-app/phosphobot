@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -1254,6 +1255,10 @@ class ChatRequest(BaseModel):
     Control the robot with a natural language prompt.
     """
 
+    chat_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Unique identifier for the chat session. If not provided, a new UUID will be generated.",
+    )
     prompt: str = Field(
         ...,
         description="The task to be performed by the robot, described in natural language.",
