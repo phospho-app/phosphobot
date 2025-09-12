@@ -84,7 +84,7 @@ class LeRobotDataset(BaseDataset):
         all_camera_key_names: Optional[List[str]] = None,
         force: bool = False,
         add_metadata: Optional[Dict[str, list]] = None,
-        save_cartesian: Optional[bool] = False,
+        save_cartesian: bool = False,
     ) -> None:
         """Loads existing meta files or initializes new ones if they don't exist."""
         logger.debug(
@@ -1236,7 +1236,7 @@ class LeRobotEpisode(BaseEpisode):
         instruction: Optional[str],
         all_camera_key_names: List[str],
         add_metadata: Optional[Dict[str, list]] = None,
-        save_cartesian: Optional[bool] = False,
+        save_cartesian: bool = False,
         **kwargs: Dict[str, Any],
     ) -> "LeRobotEpisode":
         # Ensure meta models are loaded/initialized in the dataset manager
@@ -1293,7 +1293,7 @@ class LeRobotEpisode(BaseEpisode):
             freq=freq,
             codec=codec,
             target_size=target_size,
-            is_cartesian=save_cartesian if save_cartesian else False,
+            is_cartesian=save_cartesian,
             add_metadata=add_metadata,
         )
         return episode
@@ -1346,8 +1346,8 @@ class LeRobotEpisode(BaseEpisode):
             "index": [],
         }
         if self.is_cartesian:
-            episode_data_dict["action_cartesian"] = []
-            episode_data_dict["observation_cartesian_state"] = []
+            episode_data_dict["action.cartesian"] = []
+            episode_data_dict["observation.cartesian.state"] = []
         if self.add_metadata:
             for key in self.add_metadata.keys():
                 episode_data_dict[key] = []
@@ -1373,11 +1373,11 @@ class LeRobotEpisode(BaseEpisode):
             episode_data_dict["task_index"].append(self.metadata["task_index"])
             # If cartesian, add those fields too
             if self.is_cartesian:
-                episode_data_dict["observation_cartesian_state"].append(
+                episode_data_dict["observation.cartesian.state"].append(
                     step_item.observation.state.astype(np.float32)
                 )
                 if step_item.action_cartesian is not None:
-                    episode_data_dict["action_cartesian"].append(
+                    episode_data_dict["action.cartesian"].append(
                         step_item.action_cartesian.astype(np.float32)
                     )
 
@@ -2547,16 +2547,19 @@ class StatsModel(BaseModel):
     )
     observation_cartesian_state: Optional[Stats] = Field(
         default_factory=Stats,
-        serialization_alias="observation_cartesian.state",
+        serialization_alias="observation.cartesian.state",
         validation_alias=AliasChoices(
-            "observation_cartesian.state", "observation_cartesian_state"
+            "observation.cartesian.state",
+            "observation.cartesian_state",
+            "observation_cartesian_state",
+            "observation_cartesian_state",
         ),
     )
     action: Stats = Field(default_factory=Stats)
     action_cartesian: Optional[Stats] = Field(
         default_factory=Stats,
-        serialization_alias="action_cartesian",
-        validation_alias=AliasChoices("action_cartesian", "action.cartesian"),
+        serialization_alias="action.cartesian",
+        validation_alias=AliasChoices("action.cartesian", "action_cartesian"),
     )
     timestamp: Stats = Field(default_factory=Stats)
     frame_index: Stats = Field(default_factory=Stats)
@@ -2589,7 +2592,7 @@ class StatsModel(BaseModel):
         cls,
         meta_folder_path: str,
         add_metadata: Optional[Dict[str, list]] = None,
-        save_cartesian: Optional[bool] = False,
+        save_cartesian: bool = False,
     ) -> "StatsModel":
         """
         Read the stats.json file in the meta folder path.
@@ -2601,7 +2604,7 @@ class StatsModel(BaseModel):
         ):
             stats = cls(
                 add_metadata=add_metadata,
-                save_cartesian=save_cartesian if save_cartesian is not None else False,
+                save_cartesian=save_cartesian,
             )
             return stats
 
@@ -2621,13 +2624,13 @@ class StatsModel(BaseModel):
         # Pass observation_images into the model constructor
         stats = cls(**stats_dict, observation_images=observation_images)
         stats.add_metadata = add_metadata
-        stats.save_cartesian = save_cartesian if save_cartesian is not None else False
+        stats.save_cartesian = save_cartesian
         if stats.save_cartesian:
             stats.action_cartesian = Stats.model_validate(
-                stats_dict["action_cartesian"]
+                stats_dict["action.cartesian"]
             )
             stats.observation_cartesian_state = Stats.model_validate(
-                stats_dict["observation_cartesian.state"]
+                stats_dict["observation.cartesian.state"]
             )
         return stats
 
@@ -2645,8 +2648,8 @@ class StatsModel(BaseModel):
         model_dict.pop("add_metadata")
 
         if not self.save_cartesian:
-            model_dict.pop("action_cartesian", None)
-            model_dict.pop("observation_cartesian.state", None)
+            model_dict.pop("action.cartesian", None)
+            model_dict.pop("observation.cartesian.state", None)
 
         with open(
             f"{meta_folder_path}/stats.json", "w", encoding=DEFAULT_FILE_ENCODING
@@ -3203,7 +3206,7 @@ class EpisodesStatsModel(BaseModel):
         cls,
         meta_folder_path: str,
         add_metadata: Optional[dict[str, list]] = None,
-        save_cartesian: Optional[bool] = False,
+        save_cartesian: bool = False,
     ) -> "EpisodesStatsModel":
         """
         Read the episodes_stats.jsonl file in the meta folder path.
@@ -3215,9 +3218,7 @@ class EpisodesStatsModel(BaseModel):
         ):
             episode_stats = EpisodesStatsModel()
             episode_stats.add_metadata = add_metadata
-            episode_stats.save_cartesian = (
-                save_cartesian if save_cartesian is not None else False
-            )
+            episode_stats.save_cartesian = save_cartesian
             return episode_stats
 
         with open(
@@ -3253,9 +3254,7 @@ class EpisodesStatsModel(BaseModel):
             episodes_stats=list(_episodes_stats_dict.values())
         )
         episodes_stats_model.add_metadata = add_metadata
-        episodes_stats_model.save_cartesian = (
-            save_cartesian if save_cartesian is not None else False
-        )
+        episodes_stats_model.save_cartesian = save_cartesian
 
         return episodes_stats_model
 
@@ -3423,7 +3422,7 @@ class InfoFeatures(BaseModel):
     action: FeatureDetails
     action_cartesian: Optional[FeatureDetails] = Field(
         default=None,
-        serialization_alias="action_cartesian",
+        serialization_alias="action.cartesian",
         validation_alias=AliasChoices(
             "action_cartesian",
             "action.cartesian",
@@ -3438,6 +3437,8 @@ class InfoFeatures(BaseModel):
         default=None,
         serialization_alias="observation_cartesian.state",
         validation_alias=AliasChoices(
+            "observation.cartesian.state",
+            "observation.cartesian_state",
             "observation_cartesian.state",
             "observation_cartesian_state",
         ),

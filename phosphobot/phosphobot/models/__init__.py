@@ -575,7 +575,7 @@ class RecordingStartRequest(BaseModel):
         description="Serial numbers of the leader arms used during the recording",
         examples=[["/dev/ttyUSB0"]],
     )
-    save_cartesian: Optional[bool] = Field(
+    save_cartesian: bool = Field(
         False,
         description="Record cartesian positions of the robots as well, this will make your dataset incompatible with lerobot and it only works for robots with simulators. Defaults to False.",
     )
