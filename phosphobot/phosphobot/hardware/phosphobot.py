@@ -93,7 +93,7 @@ class RemotePhosphobot(BaseRobot):
             raise Exception(f"Disconnection failed: {e}")
 
     def get_observation(
-        self, source: Literal["sim", "robot"]
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.

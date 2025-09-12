@@ -1,15 +1,15 @@
 import asyncio
-from concurrent.futures import Future
+import concurrent
 import datetime
 import json
 import os
 import shutil
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, cast
 
-import concurrent
 import numpy as np
 from huggingface_hub import (
     CommitInfo,
@@ -63,6 +63,7 @@ class Step(BaseModel):
     observation: Observation  # Current observation, most informations are stored here
     # Robot action as outputed by OpenVLA (size 7 array) based on the CURRENT observation
     action: Optional[np.ndarray] = None
+    action_cartesian: Optional[np.ndarray] = None  # Full state when action was taken
     # if this is the first step of an episode that contains the initial state.
     is_first: Optional[bool] = None
     # True if this is a terminal step, meaning the episode isn' over after this step but the robot is in a terminal state

@@ -1,8 +1,8 @@
 import os
-from pathlib import Path
 import platform
 import uuid
 from functools import wraps
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from posthog import Posthog
