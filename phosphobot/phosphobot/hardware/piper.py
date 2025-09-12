@@ -47,6 +47,8 @@ class PiperHardware(BaseManipulator):
     GRIPPER_EFFORT = 300
 
     calibration_max_steps: int = 2
+
+    # Reference: https://github.com/agilexrobotics/piper_sdk/blob/master/asserts/V2/INTERFACE_V2.MD#jointctrl
     #  |joint_name|     limit(rad)     |    limit(angle)    |
     # |----------|     ----------     |     ----------     |
     # |joint1    |   [-2.618, 2.618]  |    [-150.0, 150.0] |
