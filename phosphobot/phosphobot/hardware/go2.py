@@ -254,7 +254,7 @@ class UnitreeGo2(BaseMobileRobot):
             self._connection_loop = None
 
     def get_observation(
-        self, source: Literal["sim", "robot"]
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.

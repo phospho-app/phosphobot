@@ -25,13 +25,13 @@ from phosphobot.configs import config
 from phosphobot.endpoints import (
     auth_router,
     camera_router,
+    chat_router,
     control_router,
     networking_router,
     pages_router,
     recording_router,
     training_router,
     update_router,
-    chat_router,
 )
 from phosphobot.hardware import get_sim
 from phosphobot.models import ServerStatus

@@ -1,13 +1,12 @@
 import asyncio
-
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import httpx
 from loguru import logger
 
 from phosphobot.configs import config
-from phosphobot.utils import get_local_ip
 from phosphobot.models import ChatRequest, ChatResponse
+from phosphobot.utils import get_local_ip
 
 
 class PhosphobotClient:

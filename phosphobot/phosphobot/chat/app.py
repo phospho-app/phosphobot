@@ -5,17 +5,17 @@ from typing import Iterable, Optional
 
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand
+from textual.events import Key
 from textual.message import Message
 from textual.reactive import var
 from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog
 from textual.worker import Worker
-from textual.events import Key
 
+from phosphobot import __version__
 from phosphobot.chat.agent import RoboticAgent
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
-from phosphobot import __version__
 
 
 def ascii_test_tube() -> str:

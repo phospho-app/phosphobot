@@ -1128,10 +1128,16 @@ class BaseManipulator(BaseRobot):
             effector_position, effector_orientation_euler_rad = (
                 self.forward_kinematics()
             )
-            state = np.concatenate((effector_position, effector_orientation_euler_rad))
+            state = np.concatenate(
+                (
+                    effector_position,
+                    effector_orientation_euler_rad,
+                    [joints_position[-1]],
+                )
+            )
         else:
             # Skip forward kinematics and return nan values
-            state = np.full(6, np.nan)
+            state = np.full(7, np.nan)
 
         return state, joints_position
 

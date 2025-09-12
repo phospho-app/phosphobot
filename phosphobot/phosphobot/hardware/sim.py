@@ -11,10 +11,10 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from phosphobot.types import SimulationMode
-
 import pybullet as p
 from loguru import logger
+
+from phosphobot.types import SimulationMode
 
 sim = None
 

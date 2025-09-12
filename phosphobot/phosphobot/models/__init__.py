@@ -575,6 +575,15 @@ class RecordingStartRequest(BaseModel):
         description="Serial numbers of the leader arms used during the recording",
         examples=[["/dev/ttyUSB0"]],
     )
+    save_cartesian: bool = Field(
+        False,
+        description="Record cartesian positions of the robots as well, this will make your dataset incompatible with lerobot and it only works for robots with simulators. Defaults to False.",
+    )
+    add_metadata: Optional[Dict[str, list]] = Field(
+        None,
+        description="Passing a dictionnary will store the value in each row of the recorded dataset. The key is the name of the column, and the value is a list. If set to None, no additional metadata is saved.",
+        examples=[{"bbox_position": [0.5, 1.0, 0.0, 0.5]}],
+    )
 
 
 class RecordingStopRequest(BaseModel):
