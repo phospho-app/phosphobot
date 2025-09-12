@@ -100,9 +100,7 @@ class Recorder:
         # Stored for push_to_hub if initiated from here
         branch_path: Optional[str] = None,
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
-        save_cartesian: Optional[
-            bool
-        ] = False,  # Saves cartesian positions if True (only for robots with simulators)
+        save_cartesian: bool = False,  # Saves cartesian positions if True (only for robots with simulators)
         add_metadata: Optional[
             dict[str, list]
         ] = None,  # Additional metadata to save with each step
