@@ -180,6 +180,8 @@ class PiperHardware(BaseManipulator):
             servos_offsets=[0] * len(self.SERVO_IDS),
             servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
             servos_offsets_signs=[1] * len(self.SERVO_IDS),
+            gripping_threshold=4500,
+            non_gripping_threshold=500,
         )
 
     def disconnect(self) -> None:
