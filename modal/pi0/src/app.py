@@ -1,20 +1,16 @@
 import os
 from pathlib import Path
 import asyncio
-
 import sentry_sdk
 from loguru import logger
-from typing import Optional
-
+from typing import Optional, Any
+import cv2
+from pydantic import BaseModel
+from supabase import Client
+from datetime import datetime, timezone
+from huggingface_hub import HfApi, snapshot_download
 import modal
-import sys
-# TODO: remove this
-sys.path.insert(0, "/Users/ashish/git-repos/phosphobot/phosphobot")
-
-from phosphobot.models import InfoModel
-from phosphobot.am.pi0 import Pi0SpawnConfig, Pi0, RetryError
-from phosphobot.am.base import TrainingParamsPi0
-from ..utils import _update_server_status, get_model_path, _upload_partial_checkpoint, InferenceRequest
+from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig, RetryError
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -28,23 +24,17 @@ phosphobot_dir = (
 )
 pi0_image = (
     modal.Image.from_dockerfile("policy_server.Dockerfile")
-    # .env({"PATH": "/.venv/bin:$PATH"})  # Use the virtual environment's Python
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
     .pip_install(
         "sentry-sdk",
         "loguru>=0.7.3",
-        "pydantic>=2.10.5",
-        # "pydandtic==2.10.6",
-        # "numpydantic==1.6.7",
         "numpy==1.26.4",
-        # "numpy<2",
         "supabase",
         "huggingface_hub[hf_transfer]",
         "hf_xet",
         "wandb",
-        # "accelerate",
         "httpx>=0.28.1",
         "fastparquet>=2024.11.0",
         "opencv-python-headless>=4.0",
@@ -54,7 +44,8 @@ pi0_image = (
         "fastapi>=0.115.11",
         "zmq>=0.0.0",
         "av>=14.2.1",
-        # "openpi_client @ git+https://github.com/phospho-app/openpi.git",
+        "uvicorn>=0.32.1",
+        "pytest>=8.3.4",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
@@ -67,7 +58,7 @@ MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 FUNCTION_IMAGE = pi0_image
 FUNCTION_TIMEOUT_TRAINING = 12 * HOURS
-FUNCTION_TIMEOUT_INFERENCE = 60 * 5  # 5 minutes
+FUNCTION_TIMEOUT_INFERENCE = 60 * 10  # 10 minutes (includes downloading and loading policy model)
 FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
@@ -105,16 +96,197 @@ async def serve(
         q: Modal queue to pass tunnel info back to caller (since the function is running in a different process)
     """
     import time
+    import traceback
+    from typing_extensions import override
     import json_numpy
     import uvicorn
+    import dataclasses
     from fastapi import FastAPI, HTTPException, Response
-    from pydantic import BaseModel
     import numpy as np
 
-    from phosphobot.am.pi0 import create_policy, format_observations_for_policy
+    from openpi.training import config as _config
+    from openpi.training import weight_loaders
     from openpi.policies import policy as _policy
+    from openpi.policies import policy_config as _policy_config
+    from openpi.models import model as _model
+    from openpi.models import pi0_config, pi0_fast
+    from openpi import transforms as _transforms
+    from openpi_client import base_policy
 
-    # from huggingface_hub import snapshot_download  # type: ignore
+    @dataclasses.dataclass(frozen=True)
+    class Pi0DataConfigFactory(_config.DataConfigFactory):
+        """Factory class for creating Pi0 data configurations.
+
+        This class creates data configurations for inference with Pi0 models.
+        """
+        model_specifics: Pi0SpawnConfig | None = None
+
+        @override
+        def create(self, assets_dirs: Path, model_config: _model.BaseModelConfig) -> _config.DataConfig:
+            """Create a data config for inference with Pi0 models.
+
+            Args:
+                assets_dirs: Path to assets directory.
+                model_config: Model configuration object.
+
+            Returns:
+                A DataConfig instance.
+            """
+            if self.model_specifics is None:
+                raise ValueError("model_specifics must be provided")
+
+            # Create delta action mask
+            # Here, it is assumed that the gripper is the last dimension in the action space
+            state_dim = self.model_specifics.state_size[0]
+            action_dim = self.model_specifics.hf_model_config.input_features.action_dim
+            assert state_dim % action_dim == 0, \
+                f"State dimension {state_dim} is not a multiple of action dimension {action_dim}"
+
+            # convert absolute actions to delta actions for joints (excluding gripper)
+            delta_mask_idxs = []
+            for _ in range(0, state_dim, action_dim):
+                delta_mask_idxs.append(action_dim - 1)  # joints
+                delta_mask_idxs.append(-1)  # gripper
+            delta_mask = _transforms.make_bool_mask(*delta_mask_idxs)
+
+            # Prepare data for policy training
+            data_transforms = _transforms.Group(
+                inputs=[_transforms.DeltaActions(delta_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_mask)],
+            )
+
+            # Model transforms include things like tokenizing the prompt and action targets
+            model_transforms = _config.ModelTransformFactory()(model_config)
+
+            return dataclasses.replace(
+                self.create_base_config(assets_dirs, model_config),
+                data_transforms=data_transforms,
+                model_transforms=model_transforms,
+            )
+
+    def create_data_config(
+        model_specifics: Pi0SpawnConfig,
+        asset_id: str = "trossen"   # use default
+    ) -> _config.DataConfigFactory:
+        """Create a data config factory for inference with Pi0 models.
+
+        Args:
+            model_specifics: Pi0SpawnConfig instance containing model-specific configuration.
+        Returns:
+            A DataConfigFactory instance.
+        """
+        return Pi0DataConfigFactory(
+            model_specifics=model_specifics,
+            assets=_config.AssetsConfig(asset_id=asset_id)
+        )
+
+    def create_policy_config(
+        model_specifics: Pi0SpawnConfig,
+        data_config: _config.DataConfig,
+        model_config: _model.BaseModelConfig,
+        model_path: str | None = None,
+    ) -> _config.TrainConfig:
+        """Create a policy config for inference with Pi0 models.
+
+        Args:
+            model_specifics: Pi0SpawnConfig instance containing model-specific configuration.
+            data_config: Data configuration object.
+            model_config: Model configuration object.
+            model_path: Path to the model weights.
+
+        Returns:
+            A TrainConfig instance for inference.
+        """
+        train_config = _config.TrainConfig(
+            name=f"{model_specifics.type.lower()}_inference",
+            model=model_config,
+            data=data_config,
+            weight_loader=weight_loaders.CheckpointWeightLoader(model_path),
+            exp_name=f"{model_specifics.type.lower()}_inference",
+            # Robot-specific metadata (can be used to reset robot pose)
+            policy_metadata={},
+            # batch_size for inference
+            batch_size=1,
+        )
+
+        return train_config
+
+    def create_policy(
+        policy_config: _config.TrainConfig,
+        model_path: str
+    ) -> _policy.Policy:
+        """Create a policy from a config"""
+        return _policy_config.create_trained_policy(
+            policy_config,
+            model_path,
+            default_prompt=None
+        )
+
+    def process_image(
+        policy: base_policy.BasePolicy,
+        model_specifics: Pi0SpawnConfig,
+        current_qpos: list[float],
+        images: list[np.ndarray],
+        image_names: list[str],
+        target_size: tuple[int, int],
+        prompt: Optional[str],
+    ) -> np.ndarray:
+        """
+        Process images and perform inference using the policy.
+        """
+        assert (
+            len(current_qpos) == model_specifics.state_size[0]
+        ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+        assert (
+            len(images) <= len(model_specifics.video_keys)
+        ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+        if len(images) > 0:
+            assert (
+                len(images[0].shape) == 3
+            ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+            assert (
+                len(images[0].shape) == 3 and images[0].shape[2] == 3
+            ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+
+        batch: dict[str, Any] = {
+            "state": current_qpos,
+            "image": {}
+        }
+
+        for i, image in enumerate(images):
+            if image_names[i] not in model_specifics.camera_mappings:
+                logger.info(f"Skipping camera image: {image_names[i]}, Pi0 supports only {Pi0.REQUIRED_CAMERA_KEYS}")
+                continue
+            # Double check if image.shape[:2] is (H, W) or (W, H)
+            if image.shape[:2] != target_size:
+                logger.info(
+                    f"Resizing image {image_names[i]} from {image.shape[:2]} to {target_size}"
+                )
+                image = cv2.resize(src=image, dsize=target_size)
+
+            batch["image"][model_specifics.camera_mappings[image_names[i]]] = image
+
+        # set image masks
+        batch["image_mask"] = {
+            image_key: np.True_
+            for image_key in Pi0.REQUIRED_CAMERA_KEYS
+        }
+
+        if prompt is None:
+            raise ValueError("'prompt' not found in input payload, prompt is required for Pi0 inference")
+
+        batch["prompt"] = prompt
+
+        try:
+            outputs = policy.infer(batch)
+            action_chunk = outputs["actions"]
+            logger.debug(f"Got actions: {action_chunk.shape}")
+            logger.info(f"Model inference time: {outputs['policy_timing']['infer_ms'] / 1000.:.2f} s.")
+            return action_chunk
+        except Exception as e:
+            logger.error(f"Error during policy inference: {e}\nTraceback: {traceback.format_exc()}")
+            raise
+
     # from supabase import Client, create_client
 
     # SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -130,11 +302,43 @@ async def serve(
     server_port = 80
 
     with modal.forward(server_port, unencrypted=True) as tunnel:
-        model_path = get_model_path(model_id=model_id, checkpoint=checkpoint)
-
         try:
+            # TODO: revert back to using model_path
+            # model_path = get_model_path(model_id=model_id, checkpoint=checkpoint)
+            # test with default model path
+            if model_specifics.type == "pi0":
+                model_path = "gs://openpi-assets/checkpoints/pi0_base"
+            elif model_specifics.type == "pi0_fast":
+                model_path = "gs://openpi-assets/checkpoints/pi0_fast_base"
+            elif model_specifics.type == "pi05":
+                model_path = "gs://openpi-assets/checkpoints/pi05_base"
+            else:
+                model_path = "gs://openpi-assets/checkpoints/pi0_base"
+
             # TODO: Add model weights caching (in modal)
-            policy = create_policy(model_path)
+            model_config = None
+            match model_specifics.type:
+                case "pi0":
+                    # use default action dim for Pi0 model (action_dim=32)
+                    model_config = pi0_config.Pi0Config()
+                case "pi0_fast":
+                    # set action dim for FAST model
+                    model_config = pi0_fast.Pi0FastConfig(
+                        action_dim=model_specifics.hf_model_config.input_features.action_dim
+                    )
+                case "pi05":
+                    model_config = pi0_config.Pi0Config(pi05=True)
+
+            data_config = create_data_config(
+                model_specifics=model_specifics,
+            )
+            policy_config = create_policy_config(
+                model_specifics=model_specifics,
+                data_config=data_config,
+                model_config=model_config,
+                model_path=model_path + "/params",
+            )
+            policy = create_policy(policy_config, model_path)
             policy_metadata = policy.metadata
 
             logger.info(f"Pi0 policy loaded successfully for {model_id}")
@@ -152,6 +356,10 @@ async def serve(
                 input_features[video_key] = {"shape": model_specifics.video_size}
 
             logger.info(f"Input features: {input_features}")
+
+            @app.get("/health")
+            async def health_check():
+                return {"status": "ok"}
 
             @app.post("/get_action")
             async def inference(request: InferenceRequest):
@@ -202,7 +410,7 @@ async def serve(
 
                     # Infer actions
                     try:
-                        actions = Pi0.process_image(
+                        actions = process_image(
                             policy=policy,
                             model_specifics=model_specifics,
                             current_qpos=payload[model_specifics.state_key],
@@ -213,11 +421,18 @@ async def serve(
                             ],
                             image_names=image_names,
                             target_size=target_size,
+                            prompt=payload.get("prompt"),
                         )
                     except RetryError as e:
                         return Response(
                             status_code=202,
                             content=str(e),
+                        )
+                    except Exception as e:
+                        logger.error(f"Error during image processing: {e}\nTraceback: {traceback.format_exc()}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Error during image processing: {e}",
                         )
 
                     # Encode response using json_numpy
@@ -254,15 +469,27 @@ async def serve(
             inference_fastapi_server = uvicorn.Server(config)
 
             # Run the server until timeout or interruption
+            server_start_time = time.time()
+
+            # Calculate remaining time after setup
+            setup_time = server_start_time - start_time
+            remaining_time = max(timeout - setup_time - 10, 60)  # Ensure at least 60s
+
+            logger.info(f"Setup took {setup_time:.2f}s. Server will run for up to {remaining_time:.2f}s")
+
             try:
                 logger.info(f"Starting Inference FastAPI server on port {server_port}")
-                # Shutdown the server 10 seconds before the timeout to allow for cleanup
+                # Use the remaining time for the server
                 await asyncio.wait_for(
-                    inference_fastapi_server.serve(), timeout=timeout - 10
+                    inference_fastapi_server.serve(), timeout=remaining_time
                 )
             except asyncio.TimeoutError:
+                server_runtime = time.time() - server_start_time
+                total_runtime = time.time() - start_time
                 logger.info(
-                    "Timeout reached for Inference FastAPI server. Shutting down."
+                    f"Setup time: {setup_time:.2f}s, "
+                    f"Server runtime: {server_runtime:.2f}s, "
+                    f"Total runtime: {total_runtime:.2f}s. Shutting down."
                 )
                 # _update_server_status(supabase_client, server_id, "stopped")
             except Exception as e:
@@ -368,3 +595,158 @@ async def serve(
 #             logger.error(f"Failed to update training status: {db_e}")
 
 #         raise e
+
+
+class InferenceRequest(BaseModel):
+    encoded: str  # Will contain json_numpy encoded payload with image
+
+
+def _update_server_status(
+    supabase_client: Client,
+    server_id: int,
+    status: str,
+):
+    logger.info(f"Updating server status to {status} for server_id {server_id}")
+    if status == "failed":
+        server_payload = {
+            "status": status,
+            "terminated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
+        # Update also the AI control session
+        ai_control_payload = {
+            "status": "stopped",
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+            "server_id", server_id
+        ).execute()
+    elif status == "stopped":
+        server_payload = {
+            "status": status,
+            "terminated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
+        # Update also the AI control session
+        ai_control_payload = {
+            "status": "stopped",
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+            "server_id", server_id
+        ).execute()
+    else:
+        raise NotImplementedError(
+            f"Status '{status}' not implemented for server update"
+        )
+
+
+def find_model_path(model_id: str, local_base_dir: str = "/data", checkpoint: int | None = None) -> str | None:
+    """
+    Find the path to the model stored locally
+
+    Args:
+        model_id: The model identifier from HuggingFace or local path
+        local_base_dir: local base directory where the model is saved
+        checkpoint: model checkpoint to load
+
+    Returns:
+        model path if saved checkpoint is found, None otherwise.
+    """
+    model_path = Path(f"{local_base_dir}/{model_id}")
+    if checkpoint is not None:
+        # format the checkpoint to be 6 digits long
+        model_path = model_path / "checkpoints" / str(checkpoint) / "pretrained_model"
+        if model_path.exists():
+            return str(model_path.resolve())
+
+    # get the latest checkpoint
+    model_path = model_path / "checkpoints" / "last" / "pretrained_model"
+    if model_path.exists():
+        return str(model_path.resolve())
+
+    return None  # no checkpoints found
+
+
+def _upload_partial_checkpoint(output_dir: Path, model_name: str, hf_token: str):
+    """
+    Upload whatever is already in output_dir/checkpoints/last/pretrained_model
+    to the HF model repo, so we don't lose everything if we time out.
+    """
+    api = HfApi(token=hf_token)
+    checkpoint_dir = output_dir / "checkpoints" / "last" / "pretrained_model"
+    if not checkpoint_dir.exists():
+        logger.error(f"No partial checkpoint found at {checkpoint_dir}")
+        return
+    for item in checkpoint_dir.glob("**/*"):
+        if item.is_file():
+            relpath = item.relative_to(checkpoint_dir)
+            logger.info(f"Uploading partial checkpoint {relpath}")
+            api.upload_file(
+                repo_type="model",
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=str(relpath),
+                repo_id=model_name,
+                token=hf_token,
+            )
+
+
+def get_model_path(
+    model_id: str,
+    checkpoint: int | None = None,
+    local_base_dir: str = "/data",
+    token: str | None = None,
+) -> str:
+    """
+    Downloads a model from HuggingFace if not already present in the local directory.
+
+    Args:
+        model_id: The HuggingFace model ID to download
+        checkpoint: [Optional] specific checkpoint/revision to download
+        local_base_dir: Base directory to store downloaded models
+        token: [Optional] HuggingFace token for accessing private models
+
+    Returns:
+        The local path to the downloaded model
+
+    Raises:
+        Exception: If the download fails
+    """
+    model_path = find_model_path(model_id=model_id, checkpoint=checkpoint)
+
+    # Check if model is already available locally
+    if model_path is not None:
+        logger.info(
+            f"🤗 Model {model_id} found in Modal volume. Will be used for inference."
+        )
+        return model_path
+    else:
+        logger.warning(
+            f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
+        )
+        try:
+            if checkpoint:
+                model_path = snapshot_download(
+                    repo_id=model_id,
+                    repo_type="model",
+                    revision=str(checkpoint),
+                    local_dir=f"{local_base_dir}/{model_id}/checkpoints/{str(checkpoint)}/pretrained_model",
+                    token=token or os.getenv("HF_TOKEN"),
+                )
+            else:
+                model_path = snapshot_download(
+                    repo_id=model_id,
+                    repo_type="model",
+                    revision="main",
+                    local_dir=f"{local_base_dir}/{model_id}/checkpoints/last/pretrained_model",
+                    ignore_patterns=["checkpoint-*"],
+                    token=token or os.getenv("HF_TOKEN"),
+                )
+            return model_path
+        except Exception as e:
+            logger.error(f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}")
+            raise e
