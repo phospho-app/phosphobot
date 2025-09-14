@@ -38,7 +38,7 @@ ENV UV_PROJECT_ENVIRONMENT=/.venv
 
 # Install the project's dependencies using the lockfile and settings
 RUN uv venv --python 3.11.9 $UV_PROJECT_ENVIRONMENT
-RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/Physical-Intelligence/openpi.git@342342140953b362a8d7a32982475299aceeb083
+RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/Physical-Intelligence/openpi.git@5bff19b0c0c447c7a7eaaaccf03f36d50998ec9d
 RUN uv pip install colorama==0.4.6
 
 # Install pip in the uv environment for Modal compatibility
