@@ -158,11 +158,11 @@ class Pi0SpawnConfig(BaseModel):
     # Ref: https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models/model.py
     camera_mappings: Dict[str, str] = Field(
         default_factory=lambda: {
-            "observation.images.main.left": "image.base_0_rgb",
-            "observation.images.secondary_0": "image.left_wrist_0_rgb",
-            "observation.images.secondary_1": "image.right_wrist_0_rgb",
+            "observation.images.main.left": "base_0_rgb",
+            "observation.images.secondary_0": "left_wrist_0_rgb",
+            "observation.images.secondary_1": "right_wrist_0_rgb",
         },
-        description="Mapping from model video keys to camera names.",
+        description="Mapping from camera names to model image keys.",
     )
     hf_model_config: HuggingFaceAugmentedValidator
 
@@ -207,6 +207,10 @@ class RetryError(Exception):
 
 
 class Pi0(ActionModel):
+    """Client for Pi0 model inference server."""
+
+    REQUIRED_CAMERA_KEYS = ["base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"]
+
     def __init__(
         self,
         server_url: str = "http://localhost",
