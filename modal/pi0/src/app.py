@@ -10,6 +10,7 @@ from supabase import Client
 from datetime import datetime, timezone
 from huggingface_hub import HfApi, snapshot_download
 import modal
+from google.cloud.storage import Client as GCSClient
 from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig, RetryError
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
@@ -43,7 +44,7 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0-server")
-pi0_volume = modal.Volume.from_name("pi0-volume", create_if_missing=True)
+pi0_volume = modal.Volume.from_name("pi0", create_if_missing=True)
 
 
 @app.function(
@@ -282,20 +283,16 @@ async def serve(
     server_port = 80
 
     with modal.forward(server_port, unencrypted=True) as tunnel:
+        use_base_model = model_specifics.hf_model_config.use_base_weights if \
+            hasattr(model_specifics.hf_model_config, "use_base_weights") else False
         try:
-            # TODO: revert back to using model_path
-            # model_path = get_model_path(model_id=model_id, checkpoint=checkpoint)
-            # test with default model path
-            if model_specifics.type == "pi0":
-                model_path = "gs://openpi-assets/checkpoints/pi0_base"
-            elif model_specifics.type == "pi0_fast":
-                model_path = "gs://openpi-assets/checkpoints/pi0_fast_base"
-            elif model_specifics.type == "pi05":
-                model_path = "gs://openpi-assets/checkpoints/pi05_base"
-            else:
-                model_path = "gs://openpi-assets/checkpoints/pi0_base"
+            model_path = get_model_path(
+                model_id=model_id,
+                checkpoint=checkpoint,
+                use_base_model=use_base_model,
+                model_type=model_specifics.type
+            )
 
-            # TODO: Add model weights caching (in modal)
             model_config = None
             match model_specifics.type:
                 case "pi0":
@@ -680,6 +677,8 @@ def get_model_path(
     checkpoint: int | None = None,
     local_base_dir: str = "/data",
     token: str | None = None,
+    use_base_model: bool = False,
+    model_type: str | None = None,
 ) -> str:
     """
     Downloads a model from HuggingFace if not already present in the local directory.
@@ -689,6 +688,8 @@ def get_model_path(
         checkpoint: [Optional] specific checkpoint/revision to download
         local_base_dir: Base directory to store downloaded models
         token: [Optional] HuggingFace token for accessing private models
+        use_base_model: Whether to use base model weights (if applicable)
+        model_type: [Optional] Type of the model (e.g., "pi0", "pi0_fast", "pi05")
 
     Returns:
         The local path to the downloaded model
@@ -696,6 +697,40 @@ def get_model_path(
     Raises:
         Exception: If the download fails
     """
+
+    if use_base_model:
+        assert use_base_model is True and model_type is not None, \
+            "use_base_model must be True and model_type must be specified to use base model weights"
+
+        match model_type:
+            case "pi0":
+                gcs_path = "gs://openpi-assets/checkpoints/pi0_base"
+            case "pi0_fast":
+                gcs_path = "gs://openpi-assets/checkpoints/pi0_fast_base"
+            case "pi05":
+                gcs_path = "gs://openpi-assets/checkpoints/pi05_base"
+            case _:
+                raise ValueError(f"Unknown model_type: {model_type}")
+
+        local_path = Path(local_base_dir) / Path(gcs_path.replace("gs://", "").split("/")[-1])
+
+        # check if local path exists and is not empty
+        if local_path.exists() and any(local_path.iterdir()):
+            logger.info(f"Weights found in modal volume, loading weights from: {local_path}")
+        else:
+            logger.info(f"Downloading official model weights from {gcs_path}")
+            try:
+                local_path.mkdir(parents=True, exist_ok=True)
+                download_from_gcs(gcs_path, local_path)
+                logger.info(f"Successfully downloaded model weights from {gcs_path} to {local_path}")
+                return str(local_path)
+            except Exception as e:
+                logger.error(f"Failed to download model weights from GCS ({gcs_path}): {e}")
+                raise Exception(f"Failed to download model weights from GCS ({gcs_path}): {e}")
+
+        return str(local_path)
+
+    # If not using base model weights, proceed with the usual model path finding/downloading
     model_path = find_model_path(model_id=model_id, checkpoint=checkpoint)
 
     # Check if model is already available locally
@@ -730,3 +765,52 @@ def get_model_path(
         except Exception as e:
             logger.error(f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}")
             raise e
+
+
+def download_from_gcs(gcs_path: str, local_path: Path):
+    """
+    Downloads files from a Google Cloud Storage (GCS) bucket to a local directory using gsutil.
+
+    Args:
+        gcs_path: The GCS path to download from (e.g., "gs://bucket_name/path/to/files")
+        local_path: The local directory path to save the downloaded files
+    """
+    assert gcs_path.startswith("gs://"), "gcs_path must start with 'gs://'"
+
+    path_parts = gcs_path.replace("gs://", "").split("/", 1)
+    bucket_name = path_parts[0]
+    prefix = path_parts[1] if len(path_parts) > 1 else ""
+
+    # Create the local directory
+    local_dir = Path(local_path)
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a client with anonymous credentials (for public buckets)
+    client = GCSClient.create_anonymous_client()
+
+    # Get the bucket
+    bucket = client.bucket(bucket_name)
+
+    # List and download all blobs with the given prefix
+    blobs = list(bucket.list_blobs(prefix=prefix))
+
+    if blobs is None or len(blobs) == 0:
+        logger.warning(f"No files found in {gcs_path}")
+        return local_path
+
+    # Download each blob
+    for blob in blobs:
+        # Remove the prefix to get the relative path
+        if prefix:
+            relative_path = blob.name[len(prefix):].lstrip('/')
+        else:
+            relative_path = blob.name
+
+        # Skip empty paths (the directory itself)
+        if not relative_path:
+            continue
+
+        # Create subdirectories if needed
+        file_path = os.path.join(local_path, relative_path)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        blob.download_to_filename(file_path)
