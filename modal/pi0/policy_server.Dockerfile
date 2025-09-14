@@ -39,7 +39,22 @@ ENV UV_PROJECT_ENVIRONMENT=/.venv
 # Install the project's dependencies using the lockfile and settings
 RUN uv venv --python 3.11.9 $UV_PROJECT_ENVIRONMENT
 RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/Physical-Intelligence/openpi.git@5bff19b0c0c447c7a7eaaaccf03f36d50998ec9d
-RUN uv pip install colorama==0.4.6
+
+# Install dependencies for serving the policy on Modal
+RUN uv pip install \
+    sentry-sdk \
+    loguru>=0.7.3 \
+    supabase \
+    huggingface_hub[hf_transfer] \
+    hf_xet \
+    wandb \
+    httpx>=0.28.1 \
+    fastparquet>=2024.11.0 \
+    opencv-python-headless>=4.0 \
+    json-numpy>=2.1.0 \
+    fastapi>=0.115.11 \
+    uvicorn>=0.32.1 \
+    pytest>=8.3.4
 
 # Install pip in the uv environment for Modal compatibility
 RUN uv pip install pip

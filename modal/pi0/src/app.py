@@ -27,26 +27,6 @@ pi0_image = (
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
-    .pip_install(
-        "sentry-sdk",
-        "loguru>=0.7.3",
-        "numpy==1.26.4",
-        "supabase",
-        "huggingface_hub[hf_transfer]",
-        "hf_xet",
-        "wandb",
-        "httpx>=0.28.1",
-        "fastparquet>=2024.11.0",
-        "opencv-python-headless>=4.0",
-        "rich>=13.9.4",
-        "pandas-stubs>=2.2.2.240807",
-        "json-numpy>=2.1.0",
-        "fastapi>=0.115.11",
-        "zmq>=0.0.0",
-        "av>=14.2.1",
-        "uvicorn>=0.32.1",
-        "pytest>=8.3.4",
-    )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_python_source("phosphobot")
