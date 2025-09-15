@@ -1,21 +1,126 @@
 import asyncio
 import datetime
 import logging
-from typing import Iterable, Optional
+import re
+from typing import Iterable, Optional, List, Tuple
 
+from difflib import get_close_matches
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand
 from textual.events import Key
 from textual.message import Message
 from textual.reactive import var
 from textual.screen import Screen
-from textual.widgets import Footer, Input, RichLog
+from textual.widgets import Footer, Input, RichLog, Static
 from textual.worker import Worker
 
 from phosphobot.chat.agent import RoboticAgent
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
 from phosphobot.chat.utils import ascii_test_tube, KEYBOARD_CONTROl_TEXT
+
+
+# ---- Command definitions (single source of truth) ----
+COMMANDS = [
+    {"cmd": "/help", "desc": "Show help", "usage": "/help"},
+    {"cmd": "/init", "desc": "Move robot to initial position", "usage": "/init"},
+    {"cmd": "/stop", "desc": "Stop the agent", "usage": "/stop"},
+    {
+        "cmd": "/dataset",
+        "desc": "Set dataset name for the agent (usage: /dataset <name>)",
+        "usage": "/dataset <name>",
+    },
+    {"cmd": "/quit", "desc": "Quit the application", "usage": "/quit"},
+]
+
+
+class SuggestionBox(Static):
+    """
+    Simplified suggestion box that displays command suggestions.
+    """
+
+    def __init__(
+        self, id: Optional[str] = None, max_suggestions: int = 5
+    ) -> None:  # Default to 5
+        super().__init__("", id=id)
+        self.suggestions: List[Tuple[str, str]] = []
+        self.selected: int = 0
+        self.max_suggestions = max_suggestions  # Store the max suggestions
+        self.styles.display = "none"  # Start hidden
+
+    def _build_markup(self) -> str:
+        """Return the markup string for current suggestions & selected index."""
+        lines: List[str] = []
+        for i, (cmd, desc) in enumerate(self.suggestions):
+            marker = "→" if i == self.selected else "  "
+            if i == self.selected:
+                lines.append(f"{marker} [bold]{cmd}[/bold] [dim]{desc}[/dim]")
+            else:
+                lines.append(f"{marker} {cmd} [dim]{desc}[/dim]")
+        return "\n".join(lines)
+
+    def update_suggestions(self, suggestions: List[Tuple[str, str]]) -> None:
+        """Update suggestions and show/hide the box accordingly."""
+        self.suggestions = suggestions[
+            : self.max_suggestions
+        ]  # Use the max_suggestions parameter
+        self.selected = 0
+
+        if not self.suggestions:
+            self.styles.display = "none"
+            self.update("")
+            return
+
+        self.styles.display = "block"
+        markup = self._build_markup()
+        self.update(Text.from_markup(markup))
+
+    # ... rest of the class remains the same
+
+    def cycle(self, delta: int) -> None:
+        """Move selection up or down."""
+        if not self.suggestions:
+            return
+        self.selected = (self.selected + delta) % len(self.suggestions)
+        markup = self._build_markup()
+        self.update(Text.from_markup(markup))
+
+    def get_selected(self) -> Optional[Tuple[str, str]]:
+        """Get the currently selected suggestion."""
+        if not self.suggestions:
+            return None
+        return self.suggestions[self.selected]
+
+
+class CustomInput(Input):
+    """Custom Input widget that coordinates with suggestion box for tab completion."""
+
+    async def key_tab(self, event: Key) -> None:
+        # Get the suggestion box from the screen
+        screen = self.app.screen
+        if not isinstance(screen, AgentScreen):
+            return
+        suggestion_box = screen.query_one("#suggest-box")
+        if not isinstance(suggestion_box, SuggestionBox):
+            return
+        if suggestion_box.suggestions:
+            # Prevent default tab behavior (focus cycling)
+            event.prevent_default()
+            # Get the selected suggestion
+            selected = suggestion_box.get_selected()
+            if selected:
+                completion = selected[0]
+                self.value = completion + " "
+                # Move cursor to the end
+                self.cursor_position = len(self.value)
+            return
+        # Default behavior if no suggestions
+        # await self.action_focus_next()
+
+    async def key_ctrl_c(self, event: Key) -> None:
+        # Let the Ctrl+C event bubble up to the app level
+        # Don't prevent default or stop propagation
+        pass
 
 
 class AgentScreen(Screen):
@@ -27,16 +132,18 @@ class AgentScreen(Screen):
     def compose(self) -> ComposeResult:
         """Create the UI layout and widgets."""
         yield RichLog(id="chat-log", wrap=True, highlight=True)
-        yield Input(
+        # Suggestion box: sits above the input
+        yield SuggestionBox(id="suggest-box")
+        yield CustomInput(
             placeholder="Click here, type a prompt and press Enter to send",
             id="chat-input",
         )
         yield Footer()
 
     def on_key(self, event: Key) -> None:
-        """Handle key presses at screen level to bypass input focus for keyboard control."""
+        """Handle key presses at screen level for both robot keyboard control and suggestion cycling."""
         app = self.app
-        if not isinstance(app, AgentApp) or not app.current_agent:
+        if not isinstance(app, AgentApp):
             return
 
         # Keyboard control keys should work regardless of focus
@@ -45,30 +152,60 @@ class AgentScreen(Screen):
             if event.key == "up":
                 app.action_keyboard_forward()
                 event.prevent_default()
+                return
             elif event.key == "down":
                 app.action_keyboard_backward()
                 event.prevent_default()
+                return
             elif event.key == "left":
                 app.action_keyboard_left()
                 event.prevent_default()
+                return
             elif event.key == "right":
                 app.action_keyboard_right()
                 event.prevent_default()
+                return
             elif event.key == "d":
                 app.action_keyboard_up()
                 event.prevent_default()
+                return
             elif event.key == "c":
                 app.action_keyboard_down()
                 event.prevent_default()
+                return
             # Gripper toggle
             elif event.key == "space":
                 app.action_keyboard_gripper()
                 event.prevent_default()
+                return
 
         # Toggle key always works
         if event.key == "ctrl+t":
             app.action_toggle_control_mode()
             event.prevent_default()
+            return
+
+        # Handle suggestion navigation and tab completion when input is focused
+        input_widget = self.query_one(Input)
+        focused = self.app.focused is input_widget
+        suggestion_box = self.query_one(SuggestionBox)
+
+        if focused:
+            # Up/Down: cycle suggestions if present
+            if event.key == "up":
+                if suggestion_box.suggestions:
+                    suggestion_box.cycle(-1)
+                    event.prevent_default()
+                    return
+            elif event.key == "down":
+                if suggestion_box.suggestions:
+                    suggestion_box.cycle(1)
+                    event.prevent_default()
+                    return
+            elif event.key == "tab" and suggestion_box.suggestions:
+                # Let the CustomInput handle the tab completion
+                event.prevent_default()
+                event.stop()
 
     def _write_welcome_message(self) -> None:
         self._write_to_log(
@@ -109,8 +246,6 @@ class AgentScreen(Screen):
             input_widget.placeholder = "Keyboard control active - keys control robot"
             # Show command layout
             self._write_to_log(KEYBOARD_CONTROl_TEXT.strip(), "system")
-            # Remove focus from input so keys work
-            # self.focus()
         elif running:
             self.app.sub_title = "Agent is running..."
             input_widget.disabled = running
@@ -133,6 +268,30 @@ class AgentScreen(Screen):
         elif who == "system":
             style, prefix = "italic green", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
+
+    # Input changed -> update suggestion box
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """
+        Called every time the input changes. We'll compute the top 3 suggestions
+        based on the first token (the command prefix).
+        """
+        text = event.value or ""
+        suggestion_box = self.query_one(SuggestionBox)
+
+        # If the first token starts with "/", attempt to suggest commands
+        first_token = text.split(" ", 1)[0]
+        if first_token.startswith("/"):
+            q = first_token
+            # delegate ranking to App helper
+            app = self.app
+            if isinstance(app, AgentApp):
+                suggestions = app.find_command_suggestions(q)
+                suggestion_box.update_suggestions(suggestions)
+            else:
+                suggestion_box.update_suggestions([])
+        else:
+            # not a command prefix => clear suggestions
+            suggestion_box.update_suggestions([])
 
 
 class RichLogHandler(logging.Handler):
@@ -168,10 +327,14 @@ class AgentApp(App):
         border: round $accent;
         margin: 1 2;
     }
+    SuggestionBox {
+        height: auto;
+        max-height: 12;
+    }
     #chat-input {
         dock: bottom;
-        height: 8;
-        margin: 0 2 1 2;
+        height: 5;
+        margin: 0 2 1 2; 
     }
     """
 
@@ -220,20 +383,80 @@ class AgentApp(App):
             return None
 
         screen.query_one(Input).clear()
+        # clear suggestions when submitting
+        screen.query_one(SuggestionBox).update_suggestions([])
         self._handle_prompt(prompt, screen)
 
     def _handle_prompt(self, prompt: str, screen: AgentScreen) -> None:
+        """
+        Handles submitted input. Supports direct command forms like:
+          /dataset my_dataset
+          /init
+          /stop
+          etc.
+        If the prompt isn't a recognized command, it will be treated as a
+        task description for the agent.
+        """
         if self.is_agent_running:
             screen._write_to_log("An agent is already running.", "system")
             return None
+
         screen._write_to_log(prompt, "user")
 
-        if prompt.strip() == "/init":
+        # Simple command parsing
+        # /dataset <name>
+        m = re.match(r"^/dataset(?:\s+(.+))?$", prompt, flags=re.IGNORECASE)
+        if m:
+            name = m.group(1)
+            if name:
+                # call the action with the provided name
+                self.action_change_dataset_name(name)
+            else:
+                # no name provided: instruct the user to type /dataset <name>
+                screen._write_to_log(
+                    "Usage: /dataset <name> — type the command and the dataset name in the input field.",
+                    "system",
+                )
+            return None
+
+        # /init command
+        if prompt.strip().lower() == "/init":
             screen._write_to_log("Moving robot to initial position", "system")
             asyncio.create_task(self.current_agent.phosphobot_client.move_init())
             return None
 
-        # Edit prompt of the agent
+        # /stop command
+        if prompt.strip().lower() == "/stop":
+            self.action_stop_agent()
+            return None
+
+        # /help command
+        if prompt.strip().lower() == "/help":
+            # Show help message with available commands
+            help_text = "\n".join(
+                f"{cmd['cmd']}: {cmd['desc']} (Usage: {cmd['usage']})"
+                for cmd in COMMANDS
+            )
+            screen._write_to_log(
+                f"[bold green]Available Commands:[/bold green]\n{help_text}", "system"
+            )
+            return None
+
+        # /quit command
+        if prompt.strip().lower() == "/quit":
+            screen._write_to_log("Quitting the application...", "system")
+            self.exit()
+            return None
+
+        # If it starts with a slash but isn't a recognized command, log an error
+        if prompt.startswith("/"):
+            screen._write_to_log(
+                f"Unknown command: {prompt}. Type /help for available commands.",
+                "system",
+            )
+            return None
+
+        # Otherwise, treat input as a task for the agent
         self.current_agent.task_description = prompt
         self.worker = self.run_worker(
             self._run_agent(self.current_agent), exclusive=True
@@ -287,6 +510,7 @@ class AgentApp(App):
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         """
         Generate system commands for the command palette (Ctrl+P menu).
+        Note: we still provide the palette; inline autocomplete is the primary flow.
         """
         for function in [
             self.action_new_chat,
@@ -330,7 +554,6 @@ class AgentApp(App):
         if self.is_agent_running and self.worker:
             self.worker.cancel()
             screen._write_to_log("Interrupt requested. Stopping agent...", "system")
-            # screen.set_running_state(False)
         else:
             screen._write_to_log("No agent is currently running.", "system")
 
@@ -345,8 +568,24 @@ class AgentApp(App):
         screen.query_one(RichLog).clear()
         screen._write_welcome_message()
 
-    def action_change_dataset_name(self) -> None:
+    def action_change_dataset_name(self, name: Optional[str] = None) -> None:
         """Change the dataset name in which the agent will save its data."""
+        screen = self._get_main_screen()
+        if not screen:
+            return
+
+        if not name:
+            screen._write_to_log("No dataset name provided.", "system")
+            return
+
+        # set the attribute (RoboticAgent may store it differently)
+        try:
+            setattr(self.current_agent, "dataset_name", name)
+        except Exception:
+            # best-effort
+            pass
+
+        screen._write_to_log(f"Dataset name set to: [bold]{name}[/]", "system")
 
     def action_toggle_control_mode(self) -> None:
         """Toggle between AI control and keyboard control mode."""
@@ -398,6 +637,25 @@ class AgentApp(App):
 
         self.current_agent.add_action(action=command)
         screen._write_to_log(f"Command: {command}", "system")
+
+    def find_command_suggestions(self, prefix: str) -> List[Tuple[str, str]]:
+        """
+        Return suggestions as (cmd, desc) given a prefix like '/data'.
+        """
+        prefix_l = prefix.lower()
+        starts = []
+        contains = []
+        for c in COMMANDS:
+            cmd_l = c["cmd"].lower()
+            if cmd_l.startswith(prefix_l):
+                starts.append((c["cmd"], c["desc"]))
+            elif prefix_l in cmd_l:
+                contains.append((c["cmd"], c["desc"]))
+
+        # Combine and return all matches (the SuggestionBox will handle limiting)
+        results = starts + contains
+
+        return results
 
 
 if __name__ == "__main__":
