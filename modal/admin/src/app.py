@@ -66,7 +66,7 @@ serve_pi0 = modal.Function.from_name("pi0-server", "serve")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
 train_act = modal.Function.from_name("act-server", "train")
-train_pi0 = modal.Function.from_name("pi0-server", "train")
+train_pi0_5 = modal.Function.from_name("pi0-server", "train")
 # Paligemma warmup function
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 
@@ -916,7 +916,7 @@ def fastapi_app():
             "gr00t": train_gr00t,
             "ACT": train_act,
             "ACT_BBOX": train_act,
-            "pi0": train_pi0,
+            "pi0.5": train_pi0_5,
         }
 
         logger.info(f"Starting training for {request.model_type}")

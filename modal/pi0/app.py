@@ -1,4 +1,6 @@
 import os
+import wandb
+from subprocess import run
 from pathlib import Path
 import asyncio
 import sentry_sdk
@@ -37,6 +39,7 @@ pi0_image = (
         "opencv-python-headless",
         "json-numpy",
         "fastapi",
+        "wandb",
         "uvicorn",
         "pytest",
     )
@@ -535,7 +538,7 @@ async def serve(
     ],
     volumes={"/data": pi0_volume},
 )
-def train(
+async def train(
     training_id: int,
     dataset_name: str,
     wandb_api_key: str | None,
@@ -567,7 +570,7 @@ def train(
         )
 
     logger.info(
-        f"🚀 Training Pi0.5 on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
+        f"🚀 Training pi0.5 on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
 
     try:
@@ -579,14 +582,104 @@ def train(
             }
         ).eq("id", training_id).execute()
 
-        # Pi0 training logic would go here
-        # For now, this is a placeholder that simulates training
-        logger.info("Pi0 training is not yet implemented - this is a placeholder")
+        wandb_enabled = wandb_api_key is not None
 
-        # Simulate some training time
-        import time
+        if wandb_enabled:
+            try:
+                wandb.login(key=wandb_api_key, verify=True)
+            except Exception as e:
+                logger.info(
+                    f"Failed to login to Weights & Biases: {e}. Disabling Weights & Biases."
+                )
+                wandb_enabled = False
 
-        time.sleep(10)
+        # Start by computing normalization stats
+
+        norm_cmd = [
+            "uv",
+            "run",
+            "scripts/compute_norm_stats.py",
+            "--repo-id",
+            str(dataset_name),
+            "--num-train-steps",
+            str(training_params.num_train_steps),
+            "--batch-size",
+            str(training_params.batch_size),
+            "--action-horizon",
+            str(training_params.action_horizon),
+            "--action-dim",
+            str(training_params.action_dim),
+        ]
+
+        # Run the command
+        logger.info(f"Computing normalization stats with command: {' '.join(norm_cmd)}")
+
+        run(norm_cmd, check=True)
+        logger.info("Normalization stats computed successfully")
+        # Then run the training
+
+        train_cmd = [
+            "uv",
+            "run",
+            "scripts/train.py",
+            "train-custom",
+            "--repo-id",
+            str(dataset_name),
+            "--num-train-steps",
+            str(training_params.num_train_steps),
+            "--batch-size",
+            str(training_params.batch_size),
+            "--action-horizon",
+            str(training_params.action_horizon),
+            "--action-dim",
+            str(training_params.action_dim),
+            "--wandb-enabled",
+            str(wandb_enabled),
+        ]
+
+        # Add any other training parameters that are not None
+        training_params_dict = training_params.model_dump(
+            by_alias=True,
+            exclude_none=True,
+            exclude={
+                "target_detection_instruction": True,
+                "image_key": True,
+                "image_keys_to_keep": True,
+            },
+        )
+        for key, value in training_params_dict.items():
+            train_cmd.append(f"--{key}={value}")
+
+        logger.info(f"Starting training with command: {' '.join(train_cmd)}")
+
+        output_lines = []
+
+        process = await asyncio.create_subprocess_exec(
+            *train_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            # 512 KB buffer size, default is 64 KB but is too small for large trainings, will make the training crash
+            limit=512 * 1024,
+        )
+
+        async def read_output():
+            assert process.stdout is not None
+            async for line in process.stdout:
+                stripped_line = line.decode().strip()
+                if wandb_enabled and "wandb: Run" in stripped_line:
+                    wandb_run_url = stripped_line.split(" ")[-1]
+                    logger.info(f"WandB run URL: {wandb_run_url}")
+                logger.debug(stripped_line)
+                output_lines.append(stripped_line)
+
+        try:
+            await asyncio.wait_for(read_output(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            raise TimeoutError(
+                f"Training process exceeded timeout of {timeout_seconds} seconds. We have uploaded the last checkpoint. Please consider lowering the batch size or number of steps if you wish to train the model longer."
+            )
 
         # Update training status to completed
         supabase_client.table("trainings").update(

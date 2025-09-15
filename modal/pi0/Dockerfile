@@ -37,7 +37,7 @@ RUN uv pip install pip
 RUN echo "v1"
 
 # Install into the virtual environment (no --system flag needed)
-RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/phospho-app/openpi.git
+RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/phospho-app/openpi.git@fred-update
 
 # Verify we're using the correct Python version
 RUN python --version

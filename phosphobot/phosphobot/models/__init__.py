@@ -434,7 +434,7 @@ class TrainingInfoRequest(BaseModel):
     model_id: Optional[str] = Field(
         None, description="Hugging Face model id to get training info"
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "custom"]
+    model_type: Literal["pi0.5", "gr00t", "ACT", "ACT_BBOX", "custom"]
 
 
 class TrainingInfoResponse(BaseModel):

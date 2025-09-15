@@ -153,7 +153,7 @@ class HuggingFaceAugmentedValidator(HuggingFaceModelValidator):
 
 
 class Pi0SpawnConfig(BaseModel):
-    type: Literal["pi0", "pi0_fast", "pi0.5"] = "pi0"
+    type: Literal["pi0", "pi0_fast", "pi0.5"] = "pi0.5"
     state_key: str
     state_size: list[int]
     video_keys: list[str]

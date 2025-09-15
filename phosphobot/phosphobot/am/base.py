@@ -160,28 +160,25 @@ class TrainingParamsPi0(BaseModel):
     class Config:
         extra = "allow"
 
-    batch_size: int | None = Field(
-        default=None,
+    batch_size: int = Field(
+        default=64,
         description="Batch size for training, leave it to None to auto-detect based on your dataset",
         gt=0,
         le=128,
     )
-    exp_name: str | None = Field(
-        default=None,
-    )
-    num_train_steps: int | None = Field(
-        default=None,
+    num_train_steps: int = Field(
+        default=30_000,
         description="Number of training steps.",
         gt=0,
         le=100_000,
     )
-    action_dim: int | None = Field(
-        default=None, description="Dimension of the action space.", gt=0
+    action_dim: int = Field(
+        default=6, description="Dimension of the action space.", gt=0
     )
-    action_horizon: int | None = Field(
-        default=None,
+    action_horizon: int = Field(
+        default=10,
         description="Number of actions to predict in one forward pass.",
-        gt=1,
+        gt=0,
     )
 
 
@@ -235,9 +232,9 @@ class TrainingParamsGr00T(BaseModel):
 
 
 class BaseTrainerConfig(BaseModel):
-    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0", "custom"] = Field(
+    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "custom"] = Field(
         ...,
-        description="Type of model to train, supports 'ACT', 'gr00t', and 'pi0'",
+        description="Type of model to train, supports 'ACT', 'gr00t', and 'pi0.5'",
     )
     dataset_name: str = Field(
         ...,
@@ -293,7 +290,7 @@ class TrainingRequest(BaseTrainerConfig):
             "ACT": TrainingParamsAct,
             "ACT_BBOX": TrainingParamsActWithBbox,
             "gr00t": TrainingParamsGr00T,
-            "pi0": TrainingParamsPi0,
+            "pi0.5": TrainingParamsPi0,
         }
         model_type = data.get("model_type")
         if not model_type:
