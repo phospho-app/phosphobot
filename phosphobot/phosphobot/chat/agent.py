@@ -1,6 +1,18 @@
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
-from textual.worker import Worker, WorkerState
+import contextlib
+from collections import deque
+from typing import (
+    Any,
+    AsyncGenerator,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    Callable,
+)
+
 import httpx
 from loguru import logger
 
@@ -9,25 +21,62 @@ from phosphobot.models import ChatRequest, ChatResponse
 from phosphobot.utils import get_local_ip
 
 
+import httpx
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+
+from phosphobot.configs import config
+from phosphobot.models import ChatRequest, ChatResponse
+from phosphobot.utils import get_local_ip
+
+
 class PhosphobotClient:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        write_to_log: Optional[Callable[[str, str], None]] = None,
+        log_to_ui: bool = True,
+    ) -> None:
+        """
+        :param write_to_log: Callback like screen._write_to_log(content, who).
+        :param log_to_ui: Enable/disable logging to UI.
+        """
         self.server_url = f"http://{get_local_ip()}:{config.PORT}"
         self.client = httpx.AsyncClient(base_url=self.server_url, timeout=5.0)
 
-    async def status(self) -> Dict[str, str]:
-        """
-        Get the status of the robot.
-        """
-        response = await self.client.get("/status", timeout=10.0)
-        response.raise_for_status()
-        return response.json()
+        self._write_to_log = write_to_log
+        self._log_to_ui = log_to_ui
+
+    def _log(self, message: str, who: str = "system") -> None:
+        """Internal logging helper."""
+        if self._log_to_ui and self._write_to_log:
+            self._write_to_log(message, who)
+
+    async def _safe_request(
+        self, method: str, url: str, **kwargs: Any
+    ) -> Optional[httpx.Response]:
+        """Wrapper around httpx requests with error handling + logging."""
+        try:
+            response = await self.client.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as e:
+            msg = f"API error {e.response.status_code} on {url}: {e.response.text}"
+            self._log(f"[bold red]Error:[/bold red] [red]{msg}[/red]")
+            return None
+        except httpx.RequestError as e:
+            msg = f"Request error calling {url}: {e}"
+            self._log(f"[bold red]Error:[/bold red] [red]{msg}[/red]")
+            return None
+
+    # -----------------------
+    # Public API methods
+    # -----------------------
+
+    async def status(self) -> Optional[Dict[str, Any]]:
+        response = await self._safe_request("GET", "/status", timeout=10.0)
+        return response.json() if response else None
 
     async def move_joints(self, joints: List[float]) -> None:
-        """
-        Move the robot joints to the specified angles.
-        """
-        response = await self.client.post("/joints/write", json={"joints": joints})
-        response.raise_for_status()
+        await self._safe_request("POST", "/joints/write", json={"joints": joints})
 
     async def move_relative(
         self,
@@ -39,149 +88,226 @@ class PhosphobotClient:
         rz: float = 0.0,
         open: Optional[float] = None,
     ) -> None:
-        response = await self.client.post(
+        await self._safe_request(
+            "POST",
             "/move/relative",
-            json={
-                "x": x,
-                "y": y,
-                "z": z,
-                "rx": rx,
-                "ry": ry,
-                "rz": rz,
-                "open": open,
-            },
+            json={"x": x, "y": y, "z": z, "rx": rx, "ry": ry, "rz": rz, "open": open},
         )
-        response.raise_for_status()
 
     async def get_camera_image(
         self,
         camera_ids: Optional[List[int]] = None,
         resize: Optional[Tuple[int, int]] = None,
-    ) -> Dict[int, str]:
-        """
-        Get an image from the specified camera.
-        """
+    ) -> Optional[Dict[int, str]]:
         params = {}
-        if resize is not None:
-            params["resize_x"] = resize[0]
-            params["resize_y"] = resize[1]
+        if resize:
+            params["resize_x"], params["resize_y"] = resize
 
-        response = await self.client.get(
-            "/frames",
-            params=params,
-            timeout=3.0,
+        response = await self._safe_request(
+            "GET", "/frames", params=params, timeout=3.0
         )
-        response.raise_for_status()
-        reponse_json = response.json()
+        if response is None:
+            return None
 
+        reponse_json = response.json()
         output: Dict[int, str] = {}
+
         for camera_id in camera_ids or reponse_json.keys():
-            if not isinstance(camera_id, int):
-                try:
-                    camera_id = int(camera_id)
-                except ValueError:
-                    logger.error(
-                        f"Invalid camera ID: {camera_id}. Must be an integer. Ignoring."
-                    )
-                    continue
+            try:
+                camera_id = int(camera_id)
+            except ValueError:
+                self._log(f"Invalid camera ID: {camera_id}. Skipping.")
+                continue
 
             if str(camera_id) in reponse_json:
-                image_b64 = reponse_json[str(camera_id)]
-                output[camera_id] = image_b64
+                output[camera_id] = reponse_json[str(camera_id)]
             else:
-                logger.warning(f"Camera {camera_id} not found in response.")
+                self._log(f"Camera {camera_id} not found in response.")
 
         return output
 
     async def move_init(self) -> None:
-        """
-        Initialize the robot's position.
-        """
-        response = await self.client.post("/move/init")
-        response.raise_for_status()
+        await self._safe_request("POST", "/move/init")
 
-    async def chat(self, chat_request: ChatRequest) -> ChatResponse:
-        """
-        Send a chat request to the AI model.
-
-        :param prompt: The text prompt to send.
-        :param images: List of base64 encoded images to include in the request.
-        """
-
-        response = await self.client.post(
+    async def chat(self, chat_request: ChatRequest) -> Optional[ChatResponse]:
+        response = await self._safe_request(
+            "POST",
             "/ai-control/chat",
             json=chat_request.model_dump(mode="json"),
         )
-        response.raise_for_status()
+        if response is None:
+            return None
         return ChatResponse.model_validate(response.json())
 
     async def log_chat(self, chat_request: ChatRequest) -> None:
-        """
-        Log the chat request to the server.
-        """
-        response = await self.client.post(
+        await self._safe_request(
+            "POST",
             "/ai-control/chat/log",
             json=chat_request.model_dump(mode="json"),
         )
-        response.raise_for_status()
 
-    async def start_recording(self) -> None:
-        """
-        Start recording a dataset with the specified name.
-        """
-        response = await self.client.post(
-            "/recording/start", json={"dataset_name": "chat_dataset"}
+    async def start_recording(self, dataset_name: str, instruction: str) -> None:
+        await self._safe_request(
+            "POST",
+            "/recording/start",
+            json={
+                "dataset_name": dataset_name,
+                "instruction": instruction,
+                "save_cartesian": True,
+            },
         )
-        response.raise_for_status()
 
     async def stop_recording(self) -> None:
-        """
-        Stop the current recording session.
-        """
-        response = await self.client.post("/recording/stop", json={"save": True})
-        response.raise_for_status()
+        await self._safe_request("POST", "/recording/stop", json={"save": True})
 
 
 class RoboticAgent:
     def __init__(
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
-        task_description: str = "Pick up white foam",
-        manual_control: bool = False,
+        write_to_log: Optional[Callable[[str, str], None]] = None,
     ):
         self.resize = images_sizes
-        self.phosphobot_client = PhosphobotClient()
-        self.task_description = task_description
-        self.manual_control = manual_control
-        self.manual_command: Optional[str] = None
+
+        self.task_description: Optional[str] = None
+        self.dataset_name: str = "chat_dataset"
+
+        self.phosphobot_client = PhosphobotClient(write_to_log=write_to_log)
+        self.control_mode: Literal["ai", "keyboard"] = "ai"
+        self.action_queue: deque = deque(maxlen=100)
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
         self.command_history: List[str] = []
 
-    def set_manual_command(self, command: str) -> None:
-        """
-        Set a manual command for the robot.
-        """
-        self.manual_command = command
+        # For managing AI API call cancellation
+        self._current_ai_task: Optional[asyncio.Task] = None
+        self._ai_cancellation_event = asyncio.Event()
 
-    def get_manual_command(self) -> Optional[str]:
+    def add_action(self, action: Union[ChatResponse, str]) -> None:
         """
-        Get the current manual command and clear it.
+        Add an action to the queue to be executed.
         """
-        command = self.manual_command
-        self.manual_command = None
-        return command
+        self.action_queue.append(action)
 
     def toggle_control_mode(self) -> str:
         """
-        Toggle between AI and manual control modes.
+        Toggle between AI and keyboard control modes.
         Returns the new mode.
         """
-        self.manual_control = not self.manual_control
-        mode = "manual" if self.manual_control else "AI"
-        logger.info(f"Switched to {mode} control mode")
-        return mode
+        old_mode = self.control_mode
+        self.control_mode = "keyboard" if self.control_mode == "ai" else "ai"
+        logger.info(f"Switched to {self.control_mode} control mode")
 
-    async def execute_command(self, chat_response: Optional[ChatResponse]) -> None:
+        # If switching from AI to keyboard, cancel any ongoing AI API call
+        if old_mode == "ai" and self.control_mode == "keyboard":
+            self._cancel_ai_task()
+
+        return self.control_mode
+
+    def set_control_mode(self, mode: Literal["ai", "keyboard"]) -> None:
+        """
+        Set the control mode directly.
+        """
+        old_mode = self.control_mode
+        self.control_mode = mode
+        logger.info(f"Set control mode to {self.control_mode}")
+
+        # If switching from AI to keyboard, cancel any ongoing AI API call
+        if old_mode == "ai" and self.control_mode == "keyboard":
+            self._cancel_ai_task()
+
+    def _cancel_ai_task(self) -> None:
+        """
+        Cancel the current AI API call if it's running.
+        We set the cancellation event first (so _get_ai_response can notice it),
+        then cancel the task as a fallback.
+        """
+        # Signal cancellation to any waiter
+        self._ai_cancellation_event.set()
+
+        # If there's a running task, cancel it (the _get_ai_response handler will await it and swallow CancelledError)
+        if self._current_ai_task and not self._current_ai_task.done():
+            try:
+                self._current_ai_task.cancel()
+            except Exception:
+                # be defensive: log and ignore any unexpected cancellation errors
+                logger.exception("Failed to cancel current AI task")
+        logger.info("Signalled cancellation for ongoing AI API call")
+
+    async def _get_ai_response(
+        self, chat_request: ChatRequest
+    ) -> Optional[ChatResponse]:
+        """
+        Get AI response with cancellation support.
+
+        Ensures that cancellation of the AI *API* call is handled locally and
+        does not raise CancelledError out of this function.
+        """
+        # Reset cancellation event
+        self._ai_cancellation_event.clear()
+
+        # Create task for the API call that can be cancelled
+        self._current_ai_task = asyncio.create_task(
+            self.phosphobot_client.chat(chat_request=chat_request)
+        )
+
+        # Create a task for the cancellation event (avoid passing a bare coroutine to asyncio.wait)
+        cancel_wait_task = asyncio.create_task(self._ai_cancellation_event.wait())
+
+        try:
+            done, pending = await asyncio.wait(
+                [self._current_ai_task, cancel_wait_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # If cancellation event finished first -> cancel API task and return None
+            if cancel_wait_task in done:
+                if not self._current_ai_task.done():
+                    self._current_ai_task.cancel()
+                    try:
+                        await self._current_ai_task
+                    except asyncio.CancelledError:
+                        logger.info("AI API call was cancelled by user")
+                    except Exception:
+                        logger.exception("AI API call raised while cancelling")
+                else:
+                    # if api task already done but cancel event raced in, be safe:
+                    if self._current_ai_task.cancelled():
+                        logger.info("AI API task was cancelled")
+                    else:
+                        # If the API task already finished (rare race), try to get result safely
+                        try:
+                            return self._current_ai_task.result()
+                        except Exception:
+                            logger.exception(
+                                "Error getting AI API call result after cancellation"
+                            )
+                return None
+
+            # If API call completed first
+            if self._current_ai_task in done:
+                # If the task was cancelled, return None
+                if self._current_ai_task.cancelled():
+                    logger.info("AI API task ended up cancelled")
+                    return None
+                # Otherwise return the result, catching exceptions so they don't propagate CancelledError upward
+                try:
+                    return self._current_ai_task.result()
+                except Exception:
+                    logger.exception("AI API call raised an exception")
+                    return None
+
+            # Fallback: no result
+            return None
+        finally:
+            # Cleanup the cancellation waiter task if it's still pending
+            if not cancel_wait_task.done():
+                cancel_wait_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await cancel_wait_task
+
+    async def execute_chat_response(
+        self, chat_response: Optional[ChatResponse]
+    ) -> None:
         """
         Execute the AI command by moving the robot.
         """
@@ -205,7 +331,7 @@ class RoboticAgent:
 
         return None
 
-    async def execute_manual_command(self, command: str) -> Optional[Dict[str, float]]:
+    async def execute_command(self, command: str) -> Optional[Dict[str, float]]:
         """
         Execute a manual command by moving the robot.
         """
@@ -239,62 +365,74 @@ class RoboticAgent:
         """
         self.chat_history.extend([chat_request, chat_response])
 
+    async def process_action_queue(self) -> bool:
+        """
+        Process one action from the queue if available.
+        Returns True if an action was processed, False otherwise.
+        """
+        if not self.action_queue:
+            return False
+
+        action = self.action_queue.popleft()
+
+        if isinstance(action, str):  # Manual command
+            await self.execute_command(action)
+        elif isinstance(action, ChatResponse):  # AI command
+            await self.execute_chat_response(action)
+
+        return True
+
     async def run(self) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
         """
         An async generator that yields events for the UI to handle.
         Events are tuples of (event_type: str, payload: dict).
         """
+        if not self.task_description:
+            yield (
+                "log",
+                {
+                    "text": "No task description provided. Please set a task description."
+                },
+            )
+            return
+
         yield "start_step", {"desc": "Checking robot status."}
         self.robot_status = await self.phosphobot_client.status()
         yield "step_output", {"desc": f"Robot status: {self.robot_status}"}
         yield "step_done", {"success": True}
 
-        # Manual control setup
-        if self.manual_control:
-            yield "start_step", {"desc": "Manual control mode enabled."}
-            yield "step_done", {"success": True}
+        # Control mode setup
+        yield (
+            "start_step",
+            {"desc": f"{self.control_mode.upper()} control mode enabled."},
+        )
+        yield "step_done", {"success": True}
 
         # Start recording
         yield "start_step", {"desc": "🔴 Starting recording."}
-        await self.phosphobot_client.start_recording()
+        await self.phosphobot_client.start_recording(
+            dataset_name=self.dataset_name, instruction=self.task_description
+        )
 
         step_count = 0
         max_steps = 50
         chat_logged = False
 
         while step_count < max_steps:
-            current_mode = "manual" if self.manual_control else "AI"
+            # Process any available actions from the queue
+            action_processed = await self.process_action_queue()
 
-            if self.manual_control:
-                # MANUAL MODE: Wait for manual commands without consuming steps
-                manual_command = self.get_manual_command()
-                if manual_command:
-                    step_count += 1
-                    yield (
-                        "log",
-                        {
-                            "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
-                        },
-                    )
-                    yield "step_output", {"output": f"Manual command: {manual_command}"}
-                    execution_result = await self.execute_manual_command(
-                        command=manual_command
-                    )
-                    yield (
-                        "step_output",
-                        {"output": f"Execution result: {execution_result}"},
-                    )
-                else:
-                    # Wait for user input without consuming a step
-                    await asyncio.sleep(0.1)
-                    continue  # Don't increment step_count, just wait
-            else:
-                # AI MODE: Only run AI processing
+            if action_processed is True:
+                continue  # Skip to the next iteration if an action was processed
+
+            # Queue is empty: Add a new action based on the current mode
+            if self.control_mode == "ai":
+                # AI MODE: Generate new action if queue is empty
                 step_count += 1
                 yield (
                     "log",
                     {
-                        "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
+                        "text": f"Step {step_count}/{max_steps} - AI mode - Generating command..."
                     },
                 )
                 # Run the agent
@@ -308,6 +446,10 @@ class RoboticAgent:
                     )
                     continue  # Skip this step if no images
 
+                # Check again if we've been switched to keyboard mode
+                if self.control_mode == "keyboard":
+                    continue
+
                 chat_request = ChatRequest(
                     prompt=self.task_description,
                     # Convert dict to list of base64 strings
@@ -318,9 +460,14 @@ class RoboticAgent:
                     # Log the initial chat request
                     await self.phosphobot_client.log_chat(chat_request=chat_request)
                     chat_logged = True
-                chat_response = await self.phosphobot_client.chat(
-                    chat_request=chat_request
-                )
+
+                # Get AI response with cancellation support
+                chat_response = await self._get_ai_response(chat_request)
+
+                # Check if we've been switched to keyboard mode during the API call
+                if self.control_mode == "keyboard" or chat_response is None:
+                    continue
+
                 yield (
                     "step_output",
                     {"output": f"AI command: {chat_response.model_dump()}"},
@@ -328,13 +475,18 @@ class RoboticAgent:
                 self.add_to_chat_history(
                     chat_request=chat_request, chat_response=chat_response
                 )
-                # Execute the command
-                await self.execute_command(chat_response=chat_response)
+                # Add the AI command to the queue for execution
+                self.add_action(chat_response)
+            else:
+                # KEYBOARD MODE: Wait for user input without consuming a step
+                await asyncio.sleep(0.1)
 
         # Stop recording
         yield "start_step", {"desc": "🔴 Recording stopped."}
         await self.phosphobot_client.stop_recording()
 
         yield "step_done", {"success": True}
-        control_mode = "manual" if self.manual_control else "AI"
-        yield "log", {"text": f"Robotic agent run completed in {control_mode} mode."}
+        yield (
+            "log",
+            {"text": f"Robotic agent run completed in {self.control_mode} mode."},
+        )

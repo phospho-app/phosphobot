@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Annotated, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
 import av
-import cv2
 import netifaces
 import numpy as np
 import pandas as pd
@@ -619,6 +618,8 @@ def compute_sum_squaresum_framecount_from_video(
     Returns a list of np.ndarray corresponding respectively to the sum of RGB values, sum of squares of RGB values and nb_pixel.
     We divide by 255.0 RGB values to normalize the values to the range [0, 1].
     """
+    import cv2
+
     # Open the video file
     cap = cv2.VideoCapture(video_path)
 
