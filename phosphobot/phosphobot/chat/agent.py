@@ -1,6 +1,7 @@
 import asyncio
+import contextlib
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Tuple, Union
 
 import httpx
 from loguru import logger
@@ -153,10 +154,14 @@ class RoboticAgent:
         self.task_description = task_description
 
         self.phosphobot_client = PhosphobotClient()
-        self.keyboard_control = False
+        self.control_mode: Literal["ai", "keyboard"] = "ai"
         self.action_queue: deque = deque(maxlen=100)
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
         self.command_history: List[str] = []
+
+        # For managing AI API call cancellation
+        self._current_ai_task: Optional[asyncio.Task] = None
+        self._ai_cancellation_event = asyncio.Event()
 
     def add_action(self, action: Union[ChatResponse, str]) -> None:
         """
@@ -166,13 +171,120 @@ class RoboticAgent:
 
     def toggle_control_mode(self) -> str:
         """
-        Toggle between AI and manual control modes.
+        Toggle between AI and keyboard control modes.
         Returns the new mode.
         """
-        self.keyboard_control = not self.keyboard_control
-        mode = "manual" if self.keyboard_control else "AI"
-        logger.info(f"Switched to {mode} control mode")
-        return mode
+        old_mode = self.control_mode
+        self.control_mode = "keyboard" if self.control_mode == "ai" else "ai"
+        logger.info(f"Switched to {self.control_mode} control mode")
+
+        # If switching from AI to keyboard, cancel any ongoing AI API call
+        if old_mode == "ai" and self.control_mode == "keyboard":
+            self._cancel_ai_task()
+
+        return self.control_mode
+
+    def set_control_mode(self, mode: Literal["ai", "keyboard"]) -> None:
+        """
+        Set the control mode directly.
+        """
+        old_mode = self.control_mode
+        self.control_mode = mode
+        logger.info(f"Set control mode to {self.control_mode}")
+
+        # If switching from AI to keyboard, cancel any ongoing AI API call
+        if old_mode == "ai" and self.control_mode == "keyboard":
+            self._cancel_ai_task()
+
+    def _cancel_ai_task(self) -> None:
+        """
+        Cancel the current AI API call if it's running.
+        We set the cancellation event first (so _get_ai_response can notice it),
+        then cancel the task as a fallback.
+        """
+        # Signal cancellation to any waiter
+        self._ai_cancellation_event.set()
+
+        # If there's a running task, cancel it (the _get_ai_response handler will await it and swallow CancelledError)
+        if self._current_ai_task and not self._current_ai_task.done():
+            try:
+                self._current_ai_task.cancel()
+            except Exception:
+                # be defensive: log and ignore any unexpected cancellation errors
+                logger.exception("Failed to cancel current AI task")
+        logger.info("Signalled cancellation for ongoing AI API call")
+
+    async def _get_ai_response(
+        self, chat_request: ChatRequest
+    ) -> Optional[ChatResponse]:
+        """
+        Get AI response with cancellation support.
+
+        Ensures that cancellation of the AI *API* call is handled locally and
+        does not raise CancelledError out of this function.
+        """
+        # Reset cancellation event
+        self._ai_cancellation_event.clear()
+
+        # Create task for the API call that can be cancelled
+        self._current_ai_task = asyncio.create_task(
+            self.phosphobot_client.chat(chat_request=chat_request)
+        )
+
+        # Create a task for the cancellation event (avoid passing a bare coroutine to asyncio.wait)
+        cancel_wait_task = asyncio.create_task(self._ai_cancellation_event.wait())
+
+        try:
+            done, pending = await asyncio.wait(
+                [self._current_ai_task, cancel_wait_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # If cancellation event finished first -> cancel API task and return None
+            if cancel_wait_task in done:
+                if not self._current_ai_task.done():
+                    self._current_ai_task.cancel()
+                    try:
+                        await self._current_ai_task
+                    except asyncio.CancelledError:
+                        logger.info("AI API call was cancelled by user")
+                    except Exception:
+                        logger.exception("AI API call raised while cancelling")
+                else:
+                    # if api task already done but cancel event raced in, be safe:
+                    if self._current_ai_task.cancelled():
+                        logger.info("AI API task was cancelled")
+                    else:
+                        # If the API task already finished (rare race), try to get result safely
+                        try:
+                            return self._current_ai_task.result()
+                        except Exception:
+                            logger.exception(
+                                "Error getting AI API call result after cancellation"
+                            )
+                return None
+
+            # If API call completed first
+            if self._current_ai_task in done:
+                # If the task was cancelled, return None
+                if self._current_ai_task.cancelled():
+                    logger.info("AI API task ended up cancelled")
+                    return None
+                # Otherwise return the result, catching exceptions so they don't propagate CancelledError upward
+                try:
+                    return self._current_ai_task.result()
+                except Exception:
+                    logger.exception("AI API call raised an exception")
+                    return None
+
+            # Fallback: no result
+            return None
+        finally:
+            # Cleanup the cancellation waiter task if it's still pending
+            if not cancel_wait_task.done():
+                cancel_wait_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await cancel_wait_task
 
     async def execute_chat_response(
         self, chat_response: Optional[ChatResponse]
@@ -261,10 +373,12 @@ class RoboticAgent:
         yield "step_output", {"desc": f"Robot status: {self.robot_status}"}
         yield "step_done", {"success": True}
 
-        # Manual control setup
-        if self.keyboard_control:
-            yield "start_step", {"desc": "Manual control mode enabled."}
-            yield "step_done", {"success": True}
+        # Control mode setup
+        yield (
+            "start_step",
+            {"desc": f"{self.control_mode.upper()} control mode enabled."},
+        )
+        yield "step_done", {"success": True}
 
         # Start recording
         yield "start_step", {"desc": "🔴 Starting recording."}
@@ -275,29 +389,23 @@ class RoboticAgent:
         chat_logged = False
 
         while step_count < max_steps:
-            current_mode = "manual" if self.keyboard_control else "AI"
-
             # Process any available actions from the queue
             action_processed = await self.process_action_queue()
 
-            if action_processed:
-                # Action was processed, continue to next iteration
-                yield (
-                    "log",
-                    {
-                        "text": f"Step {step_count} of {max_steps} - Mode: {current_mode} - Action processed."
-                    },
-                )
-            elif not self.keyboard_control:
+            if action_processed is True:
+                yield "step_done", {"success": True}
+                continue  # Skip to the next iteration if an action was processed
+
+            # Queue is empty: Add a new action based on the current mode
+            if self.control_mode == "ai":
                 # AI MODE: Generate new action if queue is empty
                 step_count += 1
                 yield (
                     "log",
                     {
-                        "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
+                        "text": f"Step {step_count}/{max_steps} - AI mode - Generating command..."
                     },
                 )
-
                 # Run the agent
                 images = await self.phosphobot_client.get_camera_image(
                     resize=self.resize
@@ -309,6 +417,10 @@ class RoboticAgent:
                     )
                     continue  # Skip this step if no images
 
+                # Check again if we've been switched to keyboard mode
+                if self.control_mode == "keyboard":
+                    continue
+
                 chat_request = ChatRequest(
                     prompt=self.task_description,
                     # Convert dict to list of base64 strings
@@ -319,9 +431,14 @@ class RoboticAgent:
                     # Log the initial chat request
                     await self.phosphobot_client.log_chat(chat_request=chat_request)
                     chat_logged = True
-                chat_response = await self.phosphobot_client.chat(
-                    chat_request=chat_request
-                )
+
+                # Get AI response with cancellation support
+                chat_response = await self._get_ai_response(chat_request)
+
+                # Check if we've been switched to keyboard mode during the API call
+                if self.control_mode == "keyboard" or chat_response is None:
+                    continue
+
                 yield (
                     "step_output",
                     {"output": f"AI command: {chat_response.model_dump()}"},
@@ -332,7 +449,7 @@ class RoboticAgent:
                 # Add the AI command to the queue for execution
                 self.add_action(chat_response)
             else:
-                # MANUAL MODE: Wait for user input without consuming a step
+                # KEYBOARD MODE: Wait for user input without consuming a step
                 await asyncio.sleep(0.1)
 
         # Stop recording
@@ -340,5 +457,7 @@ class RoboticAgent:
         await self.phosphobot_client.stop_recording()
 
         yield "step_done", {"success": True}
-        control_mode = "keyboard" if self.keyboard_control else "AI"
-        yield "log", {"text": f"Robotic agent run completed in {control_mode} mode."}
+        yield (
+            "log",
+            {"text": f"Robotic agent run completed in {self.control_mode} mode."},
+        )

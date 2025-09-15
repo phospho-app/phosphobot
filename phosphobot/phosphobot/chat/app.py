@@ -40,7 +40,7 @@ class AgentScreen(Screen):
             return
 
         # Keyboard control keys should work regardless of focus
-        if app.current_agent.keyboard_control:
+        if app.current_agent.control_mode == "keyboard":
             # Movement keys
             if event.key == "up":
                 app.action_keyboard_forward()
@@ -97,18 +97,18 @@ class AgentScreen(Screen):
         app = self.app
 
         # Check if we're in keyboard control mode
-        manual_mode = (
+        keyboard_control_mode = (
             isinstance(app, AgentApp)
             and app.current_agent
-            and app.current_agent.keyboard_control
+            and app.current_agent.control_mode == "keyboard"
         )
 
-        if manual_mode:
+        if keyboard_control_mode:
             self.app.sub_title = "Keyboard Control Active - See command layout below"
             input_widget.disabled = True
             input_widget.placeholder = "Keyboard control active - keys control robot"
             # Show command layout
-            self._show_keyboard_controls()
+            self._write_to_log(KEYBOARD_CONTROl_TEXT.strip(), "system")
             # Remove focus from input so keys work
             # self.focus()
         elif running:
@@ -133,10 +133,6 @@ class AgentScreen(Screen):
         elif who == "system":
             style, prefix = "italic green", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
-
-    def _show_keyboard_controls(self) -> None:
-        """Display the keyboard control layout."""
-        self._write_to_log(KEYBOARD_CONTROl_TEXT.strip(), "system")
 
 
 class RichLogHandler(logging.Handler):
@@ -247,7 +243,11 @@ class AgentApp(App):
             async for event_type, payload in agent.run():
                 self.post_message(self.AgentUpdate(event_type, payload))
         except asyncio.CancelledError:
-            self.post_message(self.AgentUpdate("log", {"text": "Agent stopped."}))
+            self.post_message(
+                self.AgentUpdate(
+                    "log", {"text": "asyncio.CancelledError: Agent stopped."}
+                )
+            )
             # Call stop recording
             await agent.phosphobot_client.stop_recording()
             self.post_message(
@@ -311,14 +311,7 @@ class AgentApp(App):
         if self.is_agent_running and self.worker:
             self.worker.cancel()
             screen._write_to_log("Interrupt requested. Stopping agent...", "system")
-            # If we were in manual mode, switch back to AI mode and update UI
-            if self.current_agent and self.current_agent.keyboard_control:
-                self.current_agent.keyboard_control = False
-                screen._write_to_log(
-                    "Keyboard control disabled - agent stopped.", "system"
-                )
-                # Update UI to show normal state
-                screen.set_running_state(False)
+            # screen.set_running_state(False)
         else:
             screen._write_to_log("No agent is currently running.", "system")
 
@@ -385,14 +378,8 @@ class AgentApp(App):
         if not screen or not self.current_agent:
             return
 
-        if not self.current_agent.keyboard_control:
-            screen._write_to_log(
-                "Keyboard control not active. Press 'ctrl+T' to toggle.", "system"
-            )
-            return
-
         self.current_agent.add_action(action=command)
-        screen._write_to_log(f"Keyboard command: {command}", "system")
+        screen._write_to_log(f"Command: {command}", "system")
 
 
 if __name__ == "__main__":
