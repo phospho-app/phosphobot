@@ -2,9 +2,9 @@ import asyncio
 import datetime
 import logging
 import re
-from typing import Iterable, Optional, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
-from difflib import get_close_matches
+from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult, SystemCommand
 from textual.events import Key
@@ -15,10 +15,9 @@ from textual.widgets import Footer, Input, RichLog, Static
 from textual.worker import Worker
 
 from phosphobot.chat.agent import RoboticAgent
+from phosphobot.chat.utils import KEYBOARD_CONTROl_TEXT, ascii_test_tube
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
-from phosphobot.chat.utils import ascii_test_tube, KEYBOARD_CONTROl_TEXT
-
 
 # ---- Command definitions (single source of truth) ----
 COMMANDS = [
@@ -27,7 +26,7 @@ COMMANDS = [
     {"cmd": "/stop", "desc": "Stop the agent", "usage": "/stop"},
     {
         "cmd": "/dataset",
-        "desc": "Set dataset name for the agent (usage: /dataset <name>)",
+        "desc": "Set dataset name for recording the agent's actions",
         "usage": "/dataset <name>",
     },
     {"cmd": "/quit", "desc": "Quit the application", "usage": "/quit"},
@@ -399,14 +398,19 @@ class AgentApp(App):
 
         # /help command
         if prompt.strip().lower() == "/help":
-            # Show help message with available commands
-            help_text = "\n".join(
-                f"{cmd['cmd']}: {cmd['desc']} (Usage: {cmd['usage']})"
-                for cmd in COMMANDS
-            )
+            table = Table(show_header=True, header_style="dim")
+            table.add_column("Command", style="green", no_wrap=True)
+            table.add_column("Description", style="green")
+            table.add_column("Usage", style="dim")
+
+            for cmd in COMMANDS:
+                table.add_row(cmd["cmd"], cmd["desc"], cmd["usage"])
+
             screen._write_to_log(
-                f"[bold green]Available Commands:[/bold green]\n{help_text}", "system"
+                "[bold green]Available Commands:[/bold green]", "system"
             )
+            log = screen.query_one(RichLog)
+            log.write(table)
             return None
 
         # /quit command
