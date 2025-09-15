@@ -236,7 +236,7 @@ async def serve(
 
         for i, image in enumerate(images):
             if image_names[i] not in model_specifics.camera_mappings:
-                logger.info(f"Skipping camera image: {image_names[i]}, Pi0 supports only {Pi0.REQUIRED_CAMERA_KEYS}")
+                logger.info(f"Skipping camera image: {image_names[i]}, Pi0 supports only {list(model_specifics.camera_mappings.keys())}")
                 continue
             # Double check if image.shape[:2] is (H, W) or (W, H)
             if image.shape[:2] != target_size:
@@ -247,9 +247,9 @@ async def serve(
 
             batch["image"][model_specifics.camera_mappings[image_names[i]]] = image
 
-        # set image masks
+        # set image masks - set to True if image is provided, False otherwise
         batch["image_mask"] = {
-            image_key: np.True_
+            image_key: np.True_ if image_key in batch["image"] else np.False_
             for image_key in Pi0.REQUIRED_CAMERA_KEYS
         }
 
