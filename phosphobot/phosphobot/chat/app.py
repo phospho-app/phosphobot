@@ -12,35 +12,10 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, RichLog
 from textual.worker import Worker
 
-from phosphobot import __version__
 from phosphobot.chat.agent import RoboticAgent
 from phosphobot.configs import config
 from phosphobot.utils import get_local_ip
-
-
-def ascii_test_tube() -> str:
-    return f"""
-                                                  
-                                 [grey46](((((%%(([/grey46]        
-                               [grey46](((((((([/grey46][white]&&&&[/white][grey46](([/grey46]     
-                            [grey46](((((([/grey46][white]&&&[/white][grey46](((([/grey46][white]&&&&&[/white][grey46](*[/grey46]  
-                          [grey46](((((([/grey46][white]&&&&&&&[/white][grey46]((((([/grey46][white]&&&&[/white][grey46]([/grey46] 
-                       [grey46](((((([/grey46][white]&&&&&&&&&&&&[/white][grey46]((((((((([/grey46]
-                     [grey46](((((([/grey46][white]&&&&&&&&&&&&&&&&&[/white][grey46](((((([/grey46]
-                  [grey46](((((([/grey46][bright_green]###(////////////[/bright_green][white]%&[/white][grey46](((((([/grey46]  
-                [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]     
-             [grey46](((((([/grey46][bright_green]##################[/bright_green][grey46](((((([/grey46]       
-           [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]          
-        [grey46](((((([/grey46][bright_green]#####(///###///###[/bright_green][grey46](((((([/grey46]      [green]phosphobot chat[/green]
-      [grey46](((((([/grey46][bright_green]#################[/bright_green][grey46](((((([/grey46]         [green]{__version__}[/green]
-   [grey46](((((([/grey46][bright_green]#####/############[/bright_green][grey46](((((([/grey46]           [green]Copyright (c) 2025 phospho[/green]
-  [grey46]((((([/grey46][bright_green]##########////###[/bright_green][grey46](((((([/grey46]              [green]https://phospho.ai[/green]
- [grey46](((([/grey46][bright_green]#####(/##########[/bright_green][grey46](((((([/grey46]                      
- [grey46](((([/grey46][bright_green]####(///######[/bright_green][grey46](((((([/grey46]                         
- [grey46]((((([/grey46][bright_green]###########[/bright_green][grey46](((((([/grey46]                           
-  [grey46](((((([/grey46][bright_green]######[/bright_green][grey46](((((([/grey46]                              
-    [grey46](((((((((((((([/grey46]                                
-    """
+from phosphobot.chat.utils import ascii_test_tube, KEYBOARD_CONTROl_TEXT
 
 
 class AgentScreen(Screen):
@@ -161,23 +136,7 @@ class AgentScreen(Screen):
 
     def _show_keyboard_controls(self) -> None:
         """Display the keyboard control layout."""
-        controls_text = """
-[bold green]🎮 Keyboard Control Commands:[/bold green]
-
-Movement:
-  ↑ ↓ ← →  Move Forward/Back/Left/Right
-  D C      Move Up/Down
-
-Gripper:
-  Space    Toggle Open/Close
-
-Mode:
-  Ctrl+T   Toggle AI/Keyboard control  
-  Ctrl+S   Stop Agent
-
-[dim]Press keys to control the robot immediately[/dim]
-        """
-        self._write_to_log(controls_text.strip(), "system")
+        self._write_to_log(KEYBOARD_CONTROl_TEXT.strip(), "system")
 
 
 class RichLogHandler(logging.Handler):
@@ -249,7 +208,7 @@ class AgentApp(App):
         """Called when the app is mounted."""
         self.push_screen("main")
 
-    def watch_is_running(self, running: bool) -> None:
+    def watch_is_agent_running(self, running: bool) -> None:
         """Update the main screen's UI based on the running state."""
         screen = self._get_main_screen()
         if screen and screen.is_mounted:
@@ -432,7 +391,7 @@ class AgentApp(App):
             )
             return
 
-        self.current_agent.next_command = command
+        self.current_agent.add_action(action=command)
         screen._write_to_log(f"Keyboard command: {command}", "system")
 
 

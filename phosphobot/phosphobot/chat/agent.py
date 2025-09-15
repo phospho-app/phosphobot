@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import httpx
@@ -153,25 +154,15 @@ class RoboticAgent:
 
         self.phosphobot_client = PhosphobotClient()
         self.keyboard_control = False
-        self._next_command: Optional[str] = None
+        self.action_queue: deque = deque(maxlen=100)
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
         self.command_history: List[str] = []
 
-    @property
-    def next_command(self) -> Optional[str]:
+    def add_action(self, action: Union[ChatResponse, str]) -> None:
         """
-        Get the current manual command and clear it.
+        Add an action to the queue to be executed.
         """
-        command = self._next_command
-        self._next_command = None
-        return command
-
-    @next_command.setter
-    def next_command(self, command: str) -> None:
-        """
-        Set a manual command for the robot.
-        """
-        self._next_command = command
+        self.action_queue.append(action)
 
     def toggle_control_mode(self) -> str:
         """
@@ -183,7 +174,9 @@ class RoboticAgent:
         logger.info(f"Switched to {mode} control mode")
         return mode
 
-    async def execute_command(self, chat_response: Optional[ChatResponse]) -> None:
+    async def execute_chat_response(
+        self, chat_response: Optional[ChatResponse]
+    ) -> None:
         """
         Execute the AI command by moving the robot.
         """
@@ -207,7 +200,7 @@ class RoboticAgent:
 
         return None
 
-    async def execute_manual_command(self, command: str) -> Optional[Dict[str, float]]:
+    async def execute_command(self, command: str) -> Optional[Dict[str, float]]:
         """
         Execute a manual command by moving the robot.
         """
@@ -241,6 +234,23 @@ class RoboticAgent:
         """
         self.chat_history.extend([chat_request, chat_response])
 
+    async def process_action_queue(self) -> bool:
+        """
+        Process one action from the queue if available.
+        Returns True if an action was processed, False otherwise.
+        """
+        if not self.action_queue:
+            return False
+
+        action = self.action_queue.popleft()
+
+        if isinstance(action, str):  # Manual command
+            await self.execute_command(action)
+        elif isinstance(action, ChatResponse):  # AI command
+            await self.execute_chat_response(action)
+
+        return True
+
     async def run(self) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
         """
         An async generator that yields events for the UI to handle.
@@ -267,31 +277,19 @@ class RoboticAgent:
         while step_count < max_steps:
             current_mode = "manual" if self.keyboard_control else "AI"
 
-            if self.keyboard_control:
-                # MANUAL MODE: Wait for keyboard commands without consuming steps
-                manual_command = self.next_command
-                if manual_command:
-                    step_count += 1
-                    yield (
-                        "log",
-                        {
-                            "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
-                        },
-                    )
-                    yield "step_output", {"output": f"Manual command: {manual_command}"}
-                    execution_result = await self.execute_manual_command(
-                        command=manual_command
-                    )
-                    yield (
-                        "step_output",
-                        {"output": f"Execution result: {execution_result}"},
-                    )
-                else:
-                    # Wait for user input without consuming a step
-                    await asyncio.sleep(0.1)
-                    continue  # Don't increment step_count, just wait
-            else:
-                # AI MODE: Only run AI processing
+            # Process any available actions from the queue
+            action_processed = await self.process_action_queue()
+
+            if action_processed:
+                # Action was processed, continue to next iteration
+                yield (
+                    "log",
+                    {
+                        "text": f"Step {step_count} of {max_steps} - Mode: {current_mode} - Action processed."
+                    },
+                )
+            elif not self.keyboard_control:
+                # AI MODE: Generate new action if queue is empty
                 step_count += 1
                 yield (
                     "log",
@@ -299,6 +297,7 @@ class RoboticAgent:
                         "text": f"Step {step_count} of {max_steps} - Mode: {current_mode}"
                     },
                 )
+
                 # Run the agent
                 images = await self.phosphobot_client.get_camera_image(
                     resize=self.resize
@@ -330,8 +329,11 @@ class RoboticAgent:
                 self.add_to_chat_history(
                     chat_request=chat_request, chat_response=chat_response
                 )
-                # Execute the command
-                await self.execute_command(chat_response=chat_response)
+                # Add the AI command to the queue for execution
+                self.add_action(chat_response)
+            else:
+                # MANUAL MODE: Wait for user input without consuming a step
+                await asyncio.sleep(0.1)
 
         # Stop recording
         yield "start_step", {"desc": "🔴 Recording stopped."}
