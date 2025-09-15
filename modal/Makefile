@@ -14,7 +14,7 @@ deploy_gr00t:
 	cd gr00t && uv run modal deploy -m src.app
 
 deploy_pi0:
-	cd pi0 && uv run modal deploy -m src.app
+	cd pi0 && uv run modal deploy app.py
 
 deploy_vllm:
 	cd vllm && uv run modal deploy app.py

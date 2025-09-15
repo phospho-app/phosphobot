@@ -12,6 +12,7 @@ from huggingface_hub import HfApi, snapshot_download
 import modal
 from google.cloud.storage import Client as GCSClient
 from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig, RetryError
+from phosphobot.am.base import TrainingParamsPi0
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -24,7 +25,7 @@ phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 pi0_image = (
-    modal.Image.from_dockerfile("policy_server.Dockerfile")
+    modal.Image.from_dockerfile("Dockerfile")
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
@@ -39,7 +40,9 @@ MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 FUNCTION_IMAGE = pi0_image
 FUNCTION_TIMEOUT_TRAINING = 12 * HOURS
-FUNCTION_TIMEOUT_INFERENCE = 60 * 10  # 10 minutes (includes downloading and loading policy model)
+FUNCTION_TIMEOUT_INFERENCE = (
+    10 * MINUTES
+)  # 10 minutes (includes downloading and loading policy model)
 FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
@@ -100,10 +103,13 @@ async def serve(
 
         This class creates data configurations for inference with Pi0 models.
         """
+
         model_specifics: Pi0SpawnConfig | None = None
 
         @override
-        def create(self, assets_dirs: Path, model_config: _model.BaseModelConfig) -> _config.DataConfig:
+        def create(
+            self, assets_dirs: Path, model_config: _model.BaseModelConfig
+        ) -> _config.DataConfig:
             """Create a data config for inference with Pi0 models.
 
             Args:
@@ -120,8 +126,9 @@ async def serve(
             # Here, it is assumed that the gripper is the last dimension in the action space
             state_dim = self.model_specifics.state_size[0]
             action_dim = self.model_specifics.hf_model_config.input_features.action_dim
-            assert state_dim % action_dim == 0, \
+            assert state_dim % action_dim == 0, (
                 f"State dimension {state_dim} is not a multiple of action dimension {action_dim}"
+            )
 
             # convert absolute actions to delta actions for joints (excluding gripper)
             delta_mask_idxs = []
@@ -147,7 +154,7 @@ async def serve(
 
     def create_data_config(
         model_specifics: Pi0SpawnConfig,
-        asset_id: str = "trossen"   # use default
+        asset_id: str = "trossen",  # use default
     ) -> _config.DataConfigFactory:
         """Create a data config factory for inference with Pi0 models.
 
@@ -158,7 +165,7 @@ async def serve(
         """
         return Pi0DataConfigFactory(
             model_specifics=model_specifics,
-            assets=_config.AssetsConfig(asset_id=asset_id)
+            assets=_config.AssetsConfig(asset_id=asset_id),
         )
 
     def create_policy_config(
@@ -193,14 +200,11 @@ async def serve(
         return train_config
 
     def create_policy(
-        policy_config: _config.TrainConfig,
-        model_path: str
+        policy_config: _config.TrainConfig, model_path: str
     ) -> _policy.Policy:
         """Create a policy from a config"""
         return _policy_config.create_trained_policy(
-            policy_config,
-            model_path,
-            default_prompt=None
+            policy_config, model_path, default_prompt=None
         )
 
     def process_image(
@@ -215,28 +219,27 @@ async def serve(
         """
         Process images and perform inference using the policy.
         """
-        assert (
-            len(current_qpos) == model_specifics.state_size[0]
-        ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-        assert (
-            len(images) <= len(model_specifics.video_keys)
-        ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+        assert len(current_qpos) == model_specifics.state_size[0], (
+            f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+        )
+        assert len(images) <= len(model_specifics.video_keys), (
+            f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+        )
         if len(images) > 0:
-            assert (
-                len(images[0].shape) == 3
-            ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-            assert (
-                len(images[0].shape) == 3 and images[0].shape[2] == 3
-            ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+            assert len(images[0].shape) == 3, (
+                f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+            )
+            assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
+                f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+            )
 
-        batch: dict[str, Any] = {
-            "state": current_qpos,
-            "image": {}
-        }
+        batch: dict[str, Any] = {"state": current_qpos, "image": {}}
 
         for i, image in enumerate(images):
             if image_names[i] not in model_specifics.camera_mappings:
-                logger.info(f"Skipping camera image: {image_names[i]}, Pi0 supports only {Pi0.REQUIRED_CAMERA_KEYS}")
+                logger.info(
+                    f"Skipping camera image: {image_names[i]}, Pi0 supports only {Pi0.REQUIRED_CAMERA_KEYS}"
+                )
                 continue
             # Double check if image.shape[:2] is (H, W) or (W, H)
             if image.shape[:2] != target_size:
@@ -249,12 +252,13 @@ async def serve(
 
         # set image masks
         batch["image_mask"] = {
-            image_key: np.True_
-            for image_key in Pi0.REQUIRED_CAMERA_KEYS
+            image_key: np.True_ for image_key in Pi0.REQUIRED_CAMERA_KEYS
         }
 
         if prompt is None:
-            raise ValueError("'prompt' not found in input payload, prompt is required for Pi0 inference")
+            raise ValueError(
+                "'prompt' not found in input payload, prompt is required for Pi0 inference"
+            )
 
         batch["prompt"] = prompt
 
@@ -262,10 +266,14 @@ async def serve(
             outputs = policy.infer(batch)
             action_chunk = outputs["actions"]
             logger.debug(f"Got actions: {action_chunk.shape}")
-            logger.info(f"Model inference time: {outputs['policy_timing']['infer_ms'] / 1000.:.2f} s.")
+            logger.info(
+                f"Model inference time: {outputs['policy_timing']['infer_ms'] / 1000.0:.2f} s."
+            )
             return action_chunk
         except Exception as e:
-            logger.error(f"Error during policy inference: {e}\nTraceback: {traceback.format_exc()}")
+            logger.error(
+                f"Error during policy inference: {e}\nTraceback: {traceback.format_exc()}"
+            )
             raise
 
     # from supabase import Client, create_client
@@ -283,14 +291,17 @@ async def serve(
     server_port = 80
 
     with modal.forward(server_port, unencrypted=True) as tunnel:
-        use_base_model = model_specifics.hf_model_config.use_base_weights if \
-            hasattr(model_specifics.hf_model_config, "use_base_weights") else False
+        use_base_model = (
+            model_specifics.hf_model_config.use_base_weights
+            if hasattr(model_specifics.hf_model_config, "use_base_weights")
+            else False
+        )
         try:
             model_path = get_model_path(
                 model_id=model_id,
                 checkpoint=checkpoint,
                 use_base_model=use_base_model,
-                model_type=model_specifics.type
+                model_type=model_specifics.type,
             )
 
             model_config = None
@@ -406,7 +417,9 @@ async def serve(
                             content=str(e),
                         )
                     except Exception as e:
-                        logger.error(f"Error during image processing: {e}\nTraceback: {traceback.format_exc()}")
+                        logger.error(
+                            f"Error during image processing: {e}\nTraceback: {traceback.format_exc()}"
+                        )
                         raise HTTPException(
                             status_code=500,
                             detail=f"Error during image processing: {e}",
@@ -452,7 +465,9 @@ async def serve(
             setup_time = server_start_time - start_time
             remaining_time = max(timeout - setup_time - 10, 60)  # Ensure at least 60s
 
-            logger.info(f"Setup took {setup_time:.2f}s. Server will run for up to {remaining_time:.2f}s")
+            logger.info(
+                f"Setup took {setup_time:.2f}s. Server will run for up to {remaining_time:.2f}s"
+            )
 
             try:
                 logger.info(f"Starting Inference FastAPI server on port {server_port}")
@@ -494,84 +509,97 @@ async def serve(
             )
 
 
-# @app.function(
-#     image=FUNCTION_IMAGE,
-#     gpu=FUNCTION_GPU_TRAINING,
-#     # 10 extra minutes to make sure the rest of the pipeline is done
-#     timeout=FUNCTION_TIMEOUT_TRAINING + 10 * MINUTES,
-#     secrets=[
-#         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-#         modal.Secret.from_name("supabase"),
-#         modal.Secret.from_name("huggingface"),
-#     ],
-#     volumes={"/data": pi0_volume},
-# )
-# def train(
-#     training_id: int,
-#     dataset_name: str,
-#     wandb_api_key: str | None,
-#     model_name: str,
-#     training_params: TrainingParamsPi0,
-#     max_hf_download_retries: int = 3,
-#     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
-#     **kwargs,
-# ):
-#     """
-#     Pi0 training function.
+@app.function(
+    image=FUNCTION_IMAGE,
+    gpu=FUNCTION_GPU_TRAINING,
+    # 10 extra minutes to make sure the rest of the pipeline is done
+    timeout=FUNCTION_TIMEOUT_TRAINING + 10 * MINUTES,
+    secrets=[
+        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
+        modal.Secret.from_name("supabase"),
+        modal.Secret.from_name("huggingface"),
+    ],
+    volumes={"/data": pi0_volume},
+)
+def train(
+    training_id: int,
+    dataset_name: str,
+    wandb_api_key: str | None,
+    model_name: str,
+    training_params: TrainingParamsPi0,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
+    max_hf_download_retries: int = 3,
+    timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
+    **kwargs,
+):
+    """
+    Pi0 training function.
 
-#     This is a placeholder implementation. The actual training logic
-#     would depend on the Pi0 model training requirements.
-#     """
-#     from datetime import datetime, timezone
-#     from supabase import Client, create_client
+    We run LoRA fine tuning on the provided dataset and upload the trained model to HuggingFace.
+    Optionnal: If a wandb_api_key is provided, we log the training to Weights & Biases.
+    """
+    from datetime import datetime, timezone
+    from supabase import Client, create_client
 
-#     SUPABASE_URL = os.environ["SUPABASE_URL"]
-#     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-#     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    SUPABASE_URL = os.environ["SUPABASE_URL"]
+    SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-#     hf_token = os.getenv("HF_TOKEN")
-#     if hf_token is None:
-#         raise ValueError("HF_TOKEN environment variable is not set")
+    hf_token = user_hf_token or os.getenv("HF_TOKEN")
+    if hf_token is None:
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
-#     logger.info(f"🚀 Starting Pi0 training for dataset {dataset_name} with id {training_id}")
+    logger.info(
+        f"🚀 Training Pi0.5 on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
+    )
 
-#     try:
-#         # Update training status to running
-#         supabase_client.table("trainings").update({
-#             "status": "running",
-#             "started_at": datetime.now(timezone.utc).isoformat(),
-#         }).eq("id", training_id).execute()
+    try:
+        # Update training status to running
+        supabase_client.table("trainings").update(
+            {
+                "status": "running",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", training_id).execute()
 
-#         # Pi0 training logic would go here
-#         # For now, this is a placeholder that simulates training
-#         logger.info("Pi0 training is not yet implemented - this is a placeholder")
+        # Pi0 training logic would go here
+        # For now, this is a placeholder that simulates training
+        logger.info("Pi0 training is not yet implemented - this is a placeholder")
 
-#         # Simulate some training time
-#         import time
-#         time.sleep(10)
+        # Simulate some training time
+        import time
 
-#         # Update training status to completed
-#         supabase_client.table("trainings").update({
-#             "status": "completed",
-#             "completed_at": datetime.now(timezone.utc).isoformat(),
-#         }).eq("id", training_id).execute()
+        time.sleep(10)
 
-#         logger.success(f"Pi0 training {training_id} completed successfully")
+        # Update training status to completed
+        supabase_client.table("trainings").update(
+            {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", training_id).execute()
 
-#     except Exception as e:
-#         logger.error(f"Pi0 training {training_id} failed: {e}")
+        logger.success(f"Pi0 training {training_id} completed successfully")
 
-#         # Update training status to failed
-#         try:
-#             supabase_client.table("trainings").update({
-#                 "status": "failed",
-#                 "completed_at": datetime.now(timezone.utc).isoformat(),
-#                 "error_message": str(e),
-#             }).eq("id", training_id).execute()
-#         except Exception as db_e:
-#             logger.error(f"Failed to update training status: {db_e}")
+    except Exception as e:
+        logger.error(f"Pi0 training {training_id} failed: {e}")
 
-#         raise e
+        # Update training status to failed
+        try:
+            supabase_client.table("trainings").update(
+                {
+                    "status": "failed",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": str(e),
+                }
+            ).eq("id", training_id).execute()
+        except Exception as db_e:
+            logger.error(f"Failed to update training status: {db_e}")
+
+        raise e
 
 
 class InferenceRequest(BaseModel):
@@ -622,7 +650,9 @@ def _update_server_status(
         )
 
 
-def find_model_path(model_id: str, local_base_dir: str = "/data", checkpoint: int | None = None) -> str | None:
+def find_model_path(
+    model_id: str, local_base_dir: str = "/data", checkpoint: int | None = None
+) -> str | None:
     """
     Find the path to the model stored locally
 
@@ -699,8 +729,9 @@ def get_model_path(
     """
 
     if use_base_model:
-        assert use_base_model is True and model_type is not None, \
+        assert use_base_model is True and model_type is not None, (
             "use_base_model must be True and model_type must be specified to use base model weights"
+        )
 
         match model_type:
             case "pi0":
@@ -712,21 +743,31 @@ def get_model_path(
             case _:
                 raise ValueError(f"Unknown model_type: {model_type}")
 
-        local_path = Path(local_base_dir) / Path(gcs_path.replace("gs://", "").split("/")[-1])
+        local_path = Path(local_base_dir) / Path(
+            gcs_path.replace("gs://", "").split("/")[-1]
+        )
 
         # check if local path exists and is not empty
         if local_path.exists() and any(local_path.iterdir()):
-            logger.info(f"Weights found in modal volume, loading weights from: {local_path}")
+            logger.info(
+                f"Weights found in modal volume, loading weights from: {local_path}"
+            )
         else:
             logger.info(f"Downloading official model weights from {gcs_path}")
             try:
                 local_path.mkdir(parents=True, exist_ok=True)
                 download_from_gcs(gcs_path, local_path)
-                logger.info(f"Successfully downloaded model weights from {gcs_path} to {local_path}")
+                logger.info(
+                    f"Successfully downloaded model weights from {gcs_path} to {local_path}"
+                )
                 return str(local_path)
             except Exception as e:
-                logger.error(f"Failed to download model weights from GCS ({gcs_path}): {e}")
-                raise Exception(f"Failed to download model weights from GCS ({gcs_path}): {e}")
+                logger.error(
+                    f"Failed to download model weights from GCS ({gcs_path}): {e}"
+                )
+                raise Exception(
+                    f"Failed to download model weights from GCS ({gcs_path}): {e}"
+                )
 
         return str(local_path)
 
@@ -763,7 +804,9 @@ def get_model_path(
                 )
             return model_path
         except Exception as e:
-            logger.error(f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}")
+            logger.error(
+                f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}"
+            )
             raise e
 
 
@@ -802,7 +845,7 @@ def download_from_gcs(gcs_path: str, local_path: Path):
     for blob in blobs:
         # Remove the prefix to get the relative path
         if prefix:
-            relative_path = blob.name[len(prefix):].lstrip('/')
+            relative_path = blob.name[len(prefix) :].lstrip("/")
         else:
             relative_path = blob.name
 

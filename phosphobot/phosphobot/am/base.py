@@ -156,16 +156,9 @@ class TrainingParamsPi0(BaseModel):
     """
     Training parameters for Pi0 model
     """
-    train_test_split: float = Field(
-        default=1.0,
-        description="Train test split ratio, default is 1.0 (no split), should be between 0 and 1",
-        gt=0,
-        le=1,
-    )
-    validation_dataset_name: str | None = Field(
-        default=None,
-        description="Optional dataset repository ID on Hugging Face to use for validation",
-    )
+
+    class Config:
+        extra = "allow"
 
     batch_size: int | None = Field(
         default=None,
@@ -173,32 +166,23 @@ class TrainingParamsPi0(BaseModel):
         gt=0,
         le=128,
     )
-    epochs: int = Field(
-        default=10,
-        description="Number of epochs to train for, default is 10",
+    exp_name: str | None = Field(
+        default=None,
+    )
+    num_train_steps: int | None = Field(
+        default=None,
+        description="Number of training steps.",
         gt=0,
-        le=50,
+        le=100_000,
     )
-    learning_rate: float = Field(
-        default=0.0001,
-        description="Learning rate for training, default is 0.0001",
-        gt=0,
-        le=1,
+    action_dim: int | None = Field(
+        default=None, description="Dimension of the action space.", gt=0
     )
-    data_dir: str = Field(
-        default="data/", description="The directory to save the dataset to"
+    action_horizon: int | None = Field(
+        default=None,
+        description="Number of actions to predict in one forward pass.",
+        gt=1,
     )
-    output_dir: str = Field(
-        default="outputs/", description="The directory to save the model to"
-    )
-
-    path_to_pi0_repo: str = Field(
-        default=".",
-        description="The path to the openpi repo. If not provided, will assume we are in the repo.",
-    )
-
-    class Config:
-        extra = "forbid"
 
 
 class TrainingParamsGr00T(BaseModel):
@@ -269,7 +253,10 @@ class BaseTrainerConfig(BaseModel):
         description="WandB API key for tracking training, you can find it at https://wandb.ai/authorize",
     )
     training_params: Optional[
-        TrainingParamsAct | TrainingParamsActWithBbox | TrainingParamsGr00T | TrainingParamsPi0
+        TrainingParamsAct
+        | TrainingParamsActWithBbox
+        | TrainingParamsGr00T
+        | TrainingParamsPi0
     ] = Field(
         default=None,
         description="Training parameters for the model.",

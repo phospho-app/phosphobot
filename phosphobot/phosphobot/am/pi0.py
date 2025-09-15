@@ -1,7 +1,12 @@
 import asyncio
 import time
 from collections import deque
-from typing import Any, Dict, List, Literal
+from typing import TYPE_CHECKING, Any, Dict, List, Literal
+
+if TYPE_CHECKING:
+    # We only need BaseManipulator for type checking
+    # This prevents loading pybullet in modal
+    from phosphobot.hardware.base import BaseManipulator
 
 import cv2
 import httpx
@@ -20,7 +25,6 @@ from phosphobot.am.base import (
 )
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
-from phosphobot.hardware.base import BaseManipulator
 from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
@@ -149,7 +153,7 @@ class HuggingFaceAugmentedValidator(HuggingFaceModelValidator):
 
 
 class Pi0SpawnConfig(BaseModel):
-    type: Literal["pi0", "pi0_fast"] = "pi0"
+    type: Literal["pi0", "pi0_fast", "pi0.5"] = "pi0"
     state_key: str
     state_size: list[int]
     video_keys: list[str]
@@ -356,7 +360,7 @@ class Pi0(ActionModel):
         cls,
         model_id: str,
         all_cameras: AllCameras,
-        robots: list[BaseManipulator],
+        robots: list["BaseManipulator"],
         cameras_keys_mapping: Dict[str, int] | None = None,
         verify_cameras: bool = True,
     ) -> Pi0SpawnConfig:
@@ -440,7 +444,7 @@ class Pi0(ActionModel):
     async def control_loop(
         self,
         control_signal: AIControlSignal,
-        robots: list[BaseManipulator],
+        robots: list["BaseManipulator"],
         model_spawn_config: Pi0SpawnConfig,
         all_cameras: AllCameras,
         prompt: str,

@@ -8,7 +8,22 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    # We only need BaseManipulator for type checking
+    # This prevents loading pybullet in modal
+    from phosphobot.hardware.base import BaseManipulator
 
 import cv2
 import numpy as np
@@ -30,7 +45,6 @@ from phosphobot.am.base import (
 )
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
-from phosphobot.hardware.base import BaseManipulator
 from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
@@ -637,7 +651,7 @@ class Gr00tN1(ActionModel):
         cls,
         model_id: str,
         all_cameras: AllCameras,
-        robots: list[BaseManipulator],
+        robots: list["BaseManipulator"],
         cameras_keys_mapping: Optional[Dict[str, int]] = None,
         verify_cameras: bool = True,
     ) -> Gr00tSpawnConfig:
@@ -704,7 +718,7 @@ class Gr00tN1(ActionModel):
     async def control_loop(
         self,
         control_signal: AIControlSignal,
-        robots: List[BaseManipulator],
+        robots: List["BaseManipulator"],
         model_spawn_config: Gr00tSpawnConfig,
         all_cameras: AllCameras,
         prompt: Optional[str] = None,
