@@ -31,6 +31,7 @@ COMMANDS = [
         "usage": "/dataset <name>",
     },
     {"cmd": "/quit", "desc": "Quit the application", "usage": "/quit"},
+    {"cmd": "/new", "desc": "Start a new chat session", "usage": "/new"},
 ]
 
 
@@ -353,40 +354,6 @@ class AgentApp(App):
         super().__init__()
         self.current_agent = RoboticAgent()
 
-    def _get_main_screen(self) -> Optional[AgentScreen]:
-        """Safely gets the main screen instance, returning None if not ready."""
-        try:
-            screen = self.get_screen("main")
-            if isinstance(screen, AgentScreen):
-                return screen
-        except KeyError:
-            return None
-        return None
-
-    def on_mount(self) -> None:
-        """Called when the app is mounted."""
-        self.push_screen("main")
-
-    def watch_is_agent_running(self, running: bool) -> None:
-        """Update the main screen's UI based on the running state."""
-        screen = self._get_main_screen()
-        if screen and screen.is_mounted:
-            screen.set_running_state(running)
-
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        prompt = event.value.strip()
-        if not prompt:
-            return None
-
-        screen = self._get_main_screen()
-        if not screen:
-            return None
-
-        screen.query_one(Input).clear()
-        # clear suggestions when submitting
-        screen.query_one(SuggestionBox).update_suggestions([])
-        self._handle_prompt(prompt, screen)
-
     def _handle_prompt(self, prompt: str, screen: AgentScreen) -> None:
         """
         Handles submitted input. Supports direct command forms like:
@@ -448,6 +415,12 @@ class AgentApp(App):
             self.exit()
             return None
 
+        # /new command
+        if prompt.strip().lower() == "/new":
+            # Start a new chat session
+            self.action_new_chat()
+            return None
+
         # If it starts with a slash but isn't a recognized command, log an error
         if prompt.startswith("/"):
             screen._write_to_log(
@@ -481,6 +454,40 @@ class AgentApp(App):
 
         finally:
             self.is_agent_running = False
+
+    def _get_main_screen(self) -> Optional[AgentScreen]:
+        """Safely gets the main screen instance, returning None if not ready."""
+        try:
+            screen = self.get_screen("main")
+            if isinstance(screen, AgentScreen):
+                return screen
+        except KeyError:
+            return None
+        return None
+
+    def on_mount(self) -> None:
+        """Called when the app is mounted."""
+        self.push_screen("main")
+
+    def watch_is_agent_running(self, running: bool) -> None:
+        """Update the main screen's UI based on the running state."""
+        screen = self._get_main_screen()
+        if screen and screen.is_mounted:
+            screen.set_running_state(running)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        prompt = event.value.strip()
+        if not prompt:
+            return None
+
+        screen = self._get_main_screen()
+        if not screen:
+            return None
+
+        screen.query_one(Input).clear()
+        # clear suggestions when submitting
+        screen.query_one(SuggestionBox).update_suggestions([])
+        self._handle_prompt(prompt, screen)
 
     def on_agent_app_agent_update(self, message: AgentUpdate) -> None:
         self._handle_agent_event(message.event_type, message.payload)
