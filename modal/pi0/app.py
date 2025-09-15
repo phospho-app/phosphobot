@@ -578,7 +578,7 @@ async def train(
         supabase_client.table("trainings").update(
             {
                 "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "requested_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", training_id).execute()
 
@@ -598,7 +598,7 @@ async def train(
         norm_cmd = [
             "uv",
             "run",
-            "scripts/compute_norm_stats.py",
+            "/app/openpi-source/scripts/compute_norm_stats.py",
             "--repo-id",
             str(dataset_name),
             "--num-train-steps",
@@ -621,7 +621,7 @@ async def train(
         train_cmd = [
             "uv",
             "run",
-            "scripts/train.py",
+            "/app/openpi-source/scripts/train.py",
             "train-custom",
             "--repo-id",
             str(dataset_name),
@@ -681,15 +681,13 @@ async def train(
                 f"Training process exceeded timeout of {timeout_seconds} seconds. We have uploaded the last checkpoint. Please consider lowering the batch size or number of steps if you wish to train the model longer."
             )
 
-        # Update training status to completed
+        logger.success(f"Pi0 training {training_id} completed successfully")
         supabase_client.table("trainings").update(
             {
                 "status": "completed",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", training_id).execute()
-
-        logger.success(f"Pi0 training {training_id} completed successfully")
 
     except Exception as e:
         logger.error(f"Pi0 training {training_id} failed: {e}")
@@ -699,7 +697,7 @@ async def train(
             supabase_client.table("trainings").update(
                 {
                     "status": "failed",
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "terminated_at": datetime.now(timezone.utc).isoformat(),
                     "error_message": str(e),
                 }
             ).eq("id", training_id).execute()
