@@ -177,7 +177,7 @@ class AgentApp(App):
 
     is_agent_running: var[bool] = var(False)
     worker: Optional[Worker] = None
-    current_agent: Optional[RoboticAgent] = None
+    current_agent: RoboticAgent
     gripper_is_open: bool = True  # Track gripper state
 
     class AgentUpdate(Message):
@@ -188,6 +188,7 @@ class AgentApp(App):
 
     def __init__(self) -> None:
         super().__init__()
+        self.current_agent = RoboticAgent()
 
     def _get_main_screen(self) -> Optional[AgentScreen]:
         """Safely gets the main screen instance, returning None if not ready."""
@@ -199,7 +200,6 @@ class AgentApp(App):
             return None
         return None
 
-    # In AgentApp's on_mount
     def on_mount(self) -> None:
         """Called when the app is mounted."""
         self.push_screen("main")
@@ -227,15 +227,17 @@ class AgentApp(App):
             screen._write_to_log("An agent is already running.", "system")
             return None
         screen._write_to_log(prompt, "user")
-        agent = RoboticAgent(task_description=prompt)
-        self.current_agent = agent  # Store reference for keyboard control
 
         if prompt.strip() == "/init":
             screen._write_to_log("Moving robot to initial position", "system")
-            asyncio.create_task(agent.phosphobot_client.move_init())
+            asyncio.create_task(self.current_agent.phosphobot_client.move_init())
             return None
 
-        self.worker = self.run_worker(self._run_agent(agent), exclusive=True)
+        # Edit prompt of the agent
+        self.current_agent.task_description = prompt
+        self.worker = self.run_worker(
+            self._run_agent(self.current_agent), exclusive=True
+        )
 
     async def _run_agent(self, agent: RoboticAgent) -> None:
         self.is_agent_running = True
@@ -256,7 +258,6 @@ class AgentApp(App):
 
         finally:
             self.is_agent_running = False
-            self.current_agent = None
 
     def on_agent_app_agent_update(self, message: AgentUpdate) -> None:
         self._handle_agent_event(message.event_type, message.payload)
@@ -291,6 +292,7 @@ class AgentApp(App):
             self.action_new_chat,
             self.action_stop_agent,
             self.action_toggle_control_mode,
+            self.action_change_dataset_name,
         ]:
             command_name = function.__name__.replace("action_", "")
             command_description = function.__doc__ or "No description available."
@@ -300,7 +302,24 @@ class AgentApp(App):
                 function,
             )
 
-        yield from super().get_system_commands(screen)
+        # Base commands
+        yield SystemCommand(
+            "Quit the application",
+            "Quit the application as soon as possible",
+            self.action_quit,
+        )
+        if screen.query("HelpPanel"):
+            yield SystemCommand(
+                "Hide keys and help panel",
+                "Hide the keys and widget help panel",
+                self.action_hide_help_panel,
+            )
+        else:
+            yield SystemCommand(
+                "Show keys and help panel",
+                "Show help for the focused widget and a summary of available keys",
+                self.action_show_help_panel,
+            )
 
     def action_stop_agent(self) -> None:
         """Stop the currently running agent."""
@@ -327,8 +346,7 @@ class AgentApp(App):
         screen._write_welcome_message()
 
     def action_change_dataset_name(self) -> None:
-        """The dataset name where agent control sessions are stored."""
-        pass
+        """Change the dataset name in which the agent will save its data."""
 
     def action_toggle_control_mode(self) -> None:
         """Toggle between AI control and keyboard control mode."""

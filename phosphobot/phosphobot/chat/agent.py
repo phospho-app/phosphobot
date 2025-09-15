@@ -148,11 +148,10 @@ class RoboticAgent:
     def __init__(
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
-        task_description: str = "Pick up white foam",
     ):
         self.resize = images_sizes
-        self.task_description = task_description
 
+        self.task_description: Optional[str] = None
         self.phosphobot_client = PhosphobotClient()
         self.control_mode: Literal["ai", "keyboard"] = "ai"
         self.action_queue: deque = deque(maxlen=100)
@@ -368,6 +367,15 @@ class RoboticAgent:
         An async generator that yields events for the UI to handle.
         Events are tuples of (event_type: str, payload: dict).
         """
+        if not self.task_description:
+            yield (
+                "log",
+                {
+                    "text": "No task description provided. Please set a task description."
+                },
+            )
+            return
+
         yield "start_step", {"desc": "Checking robot status."}
         self.robot_status = await self.phosphobot_client.status()
         yield "step_output", {"desc": f"Robot status: {self.robot_status}"}
