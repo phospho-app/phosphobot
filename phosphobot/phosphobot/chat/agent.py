@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
-from textual.worker import Worker, WorkerState
+
 import httpx
 from loguru import logger
 

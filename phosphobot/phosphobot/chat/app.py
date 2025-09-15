@@ -44,7 +44,10 @@ def ascii_test_tube() -> str:
 
 
 class AgentScreen(Screen):
-    """The main screen for the agent application."""
+    """
+    The main screen for the phosphobot chat interface.
+    This screen handles user input, displays chat logs, and manages agent interactions.
+    """
 
     def compose(self) -> ComposeResult:
         """Create the UI layout and widgets."""
@@ -98,9 +101,9 @@ class AgentScreen(Screen):
 
 {ascii_test_tube()}
 
-[dim]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
+[grey46]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
 
-💡 Tip: Press Ctrl+T for keyboard control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/dim]
+💡 Tip: Press Ctrl+T for keyboard control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/grey46]
 """,
             "system",
         )
@@ -130,7 +133,7 @@ class AgentScreen(Screen):
             input_widget.disabled = True
             input_widget.placeholder = "Keyboard control active - keys control robot"
             # Show command layout
-            self._show_manual_controls()
+            self._show_keyboard_controls()
             # Remove focus from input so keys work
             # self.focus()
         elif running:
@@ -156,7 +159,7 @@ class AgentScreen(Screen):
             style, prefix = "italic green", f"[{timestamp} SYS] "
         log.write(Text(prefix, style=style) + Text.from_markup(content))
 
-    def _show_manual_controls(self) -> None:
+    def _show_keyboard_controls(self) -> None:
         """Display the keyboard control layout."""
         controls_text = """
 [bold green]🎮 Keyboard Control Commands:[/bold green]
@@ -188,13 +191,13 @@ class RichLogHandler(logging.Handler):
 
 
 class AgentApp(App):
-    """A terminal-based chat interface for an agent."""
+    """
+    The main application class for the phosphobot chat interface.
+    This app manages the agent lifecycle, user input, and UI updates.
+    """
 
-    TITLE = "Agent Terminal"
+    TITLE = "phosphobot chat"
     SUB_TITLE = "Ready"
-
-    # REMOVED: The COMMANDS class variable is gone to avoid overwriting defaults.
-    # COMMANDS = {AgentCommands}
 
     SCREENS = {"main": AgentScreen}
 
@@ -391,40 +394,34 @@ class AgentApp(App):
         screen.set_running_state(self.is_agent_running)
 
     def action_keyboard_forward(self) -> None:
-        """Send manual forward command."""
-        self._send_manual_command("move_forward")
+        self._send_command("move_forward")
 
     def action_keyboard_backward(self) -> None:
-        """Send manual backward command."""
-        self._send_manual_command("move_backward")
+        self._send_command("move_backward")
 
     def action_keyboard_left(self) -> None:
-        """Send manual left command."""
-        self._send_manual_command("move_left")
+        self._send_command("move_left")
 
     def action_keyboard_right(self) -> None:
-        """Send manual right command."""
-        self._send_manual_command("move_right")
+        self._send_command("move_right")
 
     def action_keyboard_up(self) -> None:
-        """Send manual up command."""
-        self._send_manual_command("move_up")
+        self._send_command("move_up")
 
     def action_keyboard_down(self) -> None:
-        """Send manual down command."""
-        self._send_manual_command("move_down")
+        self._send_command("move_down")
 
     def action_keyboard_gripper(self) -> None:
         """Toggle gripper between open and closed."""
         if self.gripper_is_open:
-            self._send_manual_command("close_gripper")
+            self._send_command("close_gripper")
             self.gripper_is_open = False
         else:
-            self._send_manual_command("open_gripper")
+            self._send_command("open_gripper")
             self.gripper_is_open = True
 
-    def _send_manual_command(self, command: str) -> None:
-        """Send a manual command to the current agent."""
+    def _send_command(self, command: str) -> None:
+        """Send a command to the current agent."""
         screen = self._get_main_screen()
         if not screen or not self.current_agent:
             return
@@ -436,7 +433,7 @@ class AgentApp(App):
             return
 
         self.current_agent.set_manual_command(command)
-        screen._write_to_log(f"Manual command: {command}", "system")
+        screen._write_to_log(f"Keyboard command: {command}", "system")
 
 
 if __name__ == "__main__":
