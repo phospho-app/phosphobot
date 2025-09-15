@@ -1,7 +1,17 @@
 import asyncio
 import contextlib
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    Callable,
+)
 
 import httpx
 from loguru import logger
@@ -11,25 +21,62 @@ from phosphobot.models import ChatRequest, ChatResponse
 from phosphobot.utils import get_local_ip
 
 
+import httpx
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+
+from phosphobot.configs import config
+from phosphobot.models import ChatRequest, ChatResponse
+from phosphobot.utils import get_local_ip
+
+
 class PhosphobotClient:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        write_to_log: Optional[Callable[[str, str], None]] = None,
+        log_to_ui: bool = True,
+    ) -> None:
+        """
+        :param write_to_log: Callback like screen._write_to_log(content, who).
+        :param log_to_ui: Enable/disable logging to UI.
+        """
         self.server_url = f"http://{get_local_ip()}:{config.PORT}"
         self.client = httpx.AsyncClient(base_url=self.server_url, timeout=5.0)
 
-    async def status(self) -> Dict[str, str]:
-        """
-        Get the status of the robot.
-        """
-        response = await self.client.get("/status", timeout=10.0)
-        response.raise_for_status()
-        return response.json()
+        self._write_to_log = write_to_log
+        self._log_to_ui = log_to_ui
+
+    def _log(self, message: str, who: str = "system") -> None:
+        """Internal logging helper."""
+        if self._log_to_ui and self._write_to_log:
+            self._write_to_log(message, who)
+
+    async def _safe_request(
+        self, method: str, url: str, **kwargs
+    ) -> Optional[httpx.Response]:
+        """Wrapper around httpx requests with error handling + logging."""
+        try:
+            response = await self.client.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as e:
+            msg = f"API error {e.response.status_code} on {url}: {e.response.text}"
+            self._log(f"[bold red]Error:[/bold red] [red]{msg}[/red]")
+            return None
+        except httpx.RequestError as e:
+            msg = f"Request error calling {url}: {e}"
+            self._log(f"[bold red]Error:[/bold red] [red]{msg}[/red]")
+            return None
+
+    # -----------------------
+    # Public API methods
+    # -----------------------
+
+    async def status(self) -> Optional[Dict[str, Any]]:
+        response = await self._safe_request("GET", "/status", timeout=10.0)
+        return response.json() if response else None
 
     async def move_joints(self, joints: List[float]) -> None:
-        """
-        Move the robot joints to the specified angles.
-        """
-        response = await self.client.post("/joints/write", json={"joints": joints})
-        response.raise_for_status()
+        await self._safe_request("POST", "/joints/write", json={"joints": joints})
 
     async def move_relative(
         self,
@@ -41,97 +88,67 @@ class PhosphobotClient:
         rz: float = 0.0,
         open: Optional[float] = None,
     ) -> None:
-        response = await self.client.post(
+        await self._safe_request(
+            "POST",
             "/move/relative",
-            json={
-                "x": x,
-                "y": y,
-                "z": z,
-                "rx": rx,
-                "ry": ry,
-                "rz": rz,
-                "open": open,
-            },
+            json={"x": x, "y": y, "z": z, "rx": rx, "ry": ry, "rz": rz, "open": open},
         )
-        response.raise_for_status()
 
     async def get_camera_image(
         self,
         camera_ids: Optional[List[int]] = None,
         resize: Optional[Tuple[int, int]] = None,
-    ) -> Dict[int, str]:
-        """
-        Get an image from the specified camera.
-        """
+    ) -> Optional[Dict[int, str]]:
         params = {}
-        if resize is not None:
-            params["resize_x"] = resize[0]
-            params["resize_y"] = resize[1]
+        if resize:
+            params["resize_x"], params["resize_y"] = resize
 
-        response = await self.client.get(
-            "/frames",
-            params=params,
-            timeout=3.0,
+        response = await self._safe_request(
+            "GET", "/frames", params=params, timeout=3.0
         )
-        response.raise_for_status()
-        reponse_json = response.json()
+        if response is None:
+            return None
 
+        reponse_json = response.json()
         output: Dict[int, str] = {}
+
         for camera_id in camera_ids or reponse_json.keys():
-            if not isinstance(camera_id, int):
-                try:
-                    camera_id = int(camera_id)
-                except ValueError:
-                    logger.error(
-                        f"Invalid camera ID: {camera_id}. Must be an integer. Ignoring."
-                    )
-                    continue
+            try:
+                camera_id = int(camera_id)
+            except ValueError:
+                self._log(f"Invalid camera ID: {camera_id}. Skipping.")
+                continue
 
             if str(camera_id) in reponse_json:
-                image_b64 = reponse_json[str(camera_id)]
-                output[camera_id] = image_b64
+                output[camera_id] = reponse_json[str(camera_id)]
             else:
-                logger.warning(f"Camera {camera_id} not found in response.")
+                self._log(f"Camera {camera_id} not found in response.")
 
         return output
 
     async def move_init(self) -> None:
-        """
-        Initialize the robot's position.
-        """
-        response = await self.client.post("/move/init")
-        response.raise_for_status()
+        await self._safe_request("POST", "/move/init")
 
-    async def chat(self, chat_request: ChatRequest) -> ChatResponse:
-        """
-        Send a chat request to the AI model.
-
-        :param prompt: The text prompt to send.
-        :param images: List of base64 encoded images to include in the request.
-        """
-
-        response = await self.client.post(
+    async def chat(self, chat_request: ChatRequest) -> Optional[ChatResponse]:
+        response = await self._safe_request(
+            "POST",
             "/ai-control/chat",
             json=chat_request.model_dump(mode="json"),
         )
-        response.raise_for_status()
+        if response is None:
+            return None
         return ChatResponse.model_validate(response.json())
 
     async def log_chat(self, chat_request: ChatRequest) -> None:
-        """
-        Log the chat request to the server.
-        """
-        response = await self.client.post(
+        await self._safe_request(
+            "POST",
             "/ai-control/chat/log",
             json=chat_request.model_dump(mode="json"),
         )
-        response.raise_for_status()
 
     async def start_recording(self, dataset_name: str, instruction: str) -> None:
-        """
-        Start recording a dataset with the specified name.
-        """
-        response = await self.client.post(
+        await self._safe_request(
+            "POST",
             "/recording/start",
             json={
                 "dataset_name": dataset_name,
@@ -139,27 +156,23 @@ class PhosphobotClient:
                 "save_cartesian": True,
             },
         )
-        response.raise_for_status()
 
     async def stop_recording(self) -> None:
-        """
-        Stop the current recording session.
-        """
-        response = await self.client.post("/recording/stop", json={"save": True})
-        response.raise_for_status()
+        await self._safe_request("POST", "/recording/stop", json={"save": True})
 
 
 class RoboticAgent:
     def __init__(
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
+        write_to_log: Optional[Callable[[str, str], None]] = None,
     ):
         self.resize = images_sizes
 
         self.task_description: Optional[str] = None
         self.dataset_name: str = "chat_dataset"
 
-        self.phosphobot_client = PhosphobotClient()
+        self.phosphobot_client = PhosphobotClient(write_to_log=write_to_log)
         self.control_mode: Literal["ai", "keyboard"] = "ai"
         self.action_queue: deque = deque(maxlen=100)
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []

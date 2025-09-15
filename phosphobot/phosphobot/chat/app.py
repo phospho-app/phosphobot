@@ -26,7 +26,7 @@ COMMANDS = [
     {"cmd": "/stop", "desc": "Stop the agent", "usage": "/stop"},
     {
         "cmd": "/dataset",
-        "desc": "Set dataset name for recording the agent's actions",
+        "desc": "Set dataset name for recording the agent's actions. If no name is provided, returns the current dataset name.",
         "usage": "/dataset <name>",
     },
     {"cmd": "/quit", "desc": "Quit the application", "usage": "/quit"},
@@ -215,7 +215,7 @@ class AgentScreen(Screen):
 
 [grey46]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
 
-💡 Tip: Press Ctrl+T for keyboard control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/grey46]
+💡 Tip: Type /help for commands. When the agent is running, press Ctrl+T for keyboard control and Ctrl+S to stop the agent.[/grey46]
 """,
             "system",
         )
@@ -351,7 +351,11 @@ class AgentApp(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self.current_agent = RoboticAgent()
+        self.current_agent = RoboticAgent(
+            write_to_log=self._get_main_screen()._write_to_log
+            if self._get_main_screen()
+            else None
+        )
 
     def _handle_prompt(self, prompt: str, screen: AgentScreen) -> None:
         """
@@ -515,7 +519,7 @@ class AgentApp(App):
         elif event_type == "step_error":
             error_message = payload.get("error", "An error occurred.")
             screen._write_to_log(
-                f"[bold red]Error:[/bold red] {error_message}", "agent"
+                f"[bold red]Error:[/bold red] [red]{error_message}[/red]", "system"
             )
         elif event_type == "step_done":
             log.write("")
