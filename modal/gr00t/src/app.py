@@ -15,6 +15,7 @@ import modal
 from phosphobot.am.base import TrainingParamsGr00T
 from phosphobot.am.gr00t import Gr00tSpawnConfig
 
+
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
         dsn="https://afa38885e368d772d8eced1bce325604@o4506399435325440.ingest.us.sentry.io/4509203019005952",

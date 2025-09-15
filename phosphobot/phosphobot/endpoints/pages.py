@@ -1,11 +1,11 @@
-import os
-import cv2
-import random
 import base64
+import os
+import random
 import traceback
 from pathlib import Path, PurePath
 from typing import Literal, Union, cast
 
+import cv2
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from huggingface_hub import HfApi
@@ -17,20 +17,23 @@ from phosphobot.models import (
     AdminSettingsRequest,
     AdminSettingsResponse,
     AdminSettingsTokenResponse,
+    BaseDataset,
     BrowseFilesResponse,
     BrowserFilesRequest,
-    BaseDataset,
     DatasetListResponse,
     DatasetRepairRequest,
     DatasetShuffleRequest,
     DatasetSplitRequest,
     DeleteEpisodeRequest,
+    EpisodesModel,
     HFDownloadDatasetRequest,
     HFWhoamIResponse,
     HuggingFaceTokenRequest,
+    InfoModel,
     InfoResponse,
-    MergeDatasetsRequest,
     ItemInfo,
+    LeRobotDataset,
+    MergeDatasetsRequest,
     ModelConfigurationRequest,
     ModelConfigurationResponse,
     StatusResponse,
@@ -38,13 +41,11 @@ from phosphobot.models import (
     TrainingInfoResponse,
     VizSettingsResponse,
     WandBTokenRequest,
-    InfoModel,
 )
-from phosphobot.models import EpisodesModel, LeRobotDataset
 from phosphobot.utils import (
     get_hf_token,
-    get_resources_path,
     get_home_app_path,
+    get_resources_path,
     is_running_on_pi,
     login_to_hf,
     parse_hf_username_or_orgid,
@@ -1007,29 +1008,11 @@ async def shuffle_dataset(query: DatasetShuffleRequest) -> StatusResponse:
             message="You can only shuffle datasets of type v2.1",
         )
 
-    # Shuffle the dataset
+    # Create a dataset object
     dataset = LeRobotDataset(path=dataset_path, enforce_path=True)
 
-    # Name of the new dataset after shuffling
-    new_dataset_name = f"{query.dataset_path}_shuffled"
-    while os.path.exists(os.path.join(ROOT_DIR, new_dataset_name)):
-        # Find if a int suffix is already present
-        if new_dataset_name.endswith("_shuffled"):
-            # If it ends with _shuffled, we can add a number
-            new_dataset_name += "_1"
-        else:
-            # Otherwise, parse the int and increment it
-            try:
-                suffix = int(new_dataset_name.split("_")[-1])
-                new_dataset_name = (
-                    "_".join(new_dataset_name.split("_")[:-1]) + f"_{suffix + 1}"
-                )
-            except ValueError:
-                # If the suffix is not an int, we just add _1
-                new_dataset_name += "_1"
-
     try:
-        dataset.shuffle_dataset(new_dataset_name=new_dataset_name)
+        dataset.shuffle_dataset()
     except Exception as e:
         logger.warning(f"Error shuffling dataset: {e}")
         return StatusResponse(

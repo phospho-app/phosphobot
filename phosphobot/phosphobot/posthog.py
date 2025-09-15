@@ -2,14 +2,14 @@ import os
 import platform
 import uuid
 from functools import wraps
-from typing import Optional
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 from posthog import Posthog
 
 from phosphobot import __version__
 from phosphobot.configs import config
 from phosphobot.utils import get_home_app_path, get_tokens
-
 
 tokens = get_tokens()
 posthog = Posthog(
@@ -27,9 +27,9 @@ _failure_count = 0
 _failure_threshold = 3
 
 
-def with_failure_tracking(func):
+def with_failure_tracking(func: Callable) -> Callable:
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> None:
         global _failure_count
 
         if posthog.disabled:
@@ -47,11 +47,11 @@ def with_failure_tracking(func):
     return wrapper
 
 
-def is_github_actions():
+def is_github_actions() -> bool:
     return os.getenv("GITHUB_ACTIONS") == "true"
 
 
-def get_or_create_unique_id(token_path):
+def get_or_create_unique_id(token_path: Path) -> str:
     """
     Retrieve or generate a unique ID, storing it in a token file. This is an
     anonymous identifier for the user.

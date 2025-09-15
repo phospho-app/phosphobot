@@ -5,7 +5,7 @@ from phosphobot.configs import config
 from phosphobot.utils import get_tokens
 
 
-def init_sentry():
+def init_sentry() -> None:
     if not config.CRASH_TELEMETRY:
         return
 

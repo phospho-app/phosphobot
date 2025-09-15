@@ -2,7 +2,7 @@ import json
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Deque, Optional, Tuple, Literal
+from typing import Any, Deque, Literal, Optional, Tuple
 
 import numpy as np
 import zmq
@@ -96,7 +96,7 @@ class LeKiwi(BaseMobileRobot):
             self.is_connected = False
 
     def get_observation(
-        self, source: Literal["sim", "robot"]
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.

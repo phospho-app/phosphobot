@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Literal, Optional, List, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 from fastapi import BackgroundTasks, Depends
@@ -11,19 +11,21 @@ from loguru import logger
 from phosphobot.camera import AllCameras, BaseCamera, get_all_cameras
 from phosphobot.configs import config
 from phosphobot.hardware import BaseRobot
-from phosphobot.models import BaseDataset, Observation, Step
 
 # New imports for refactored Episode structure
 from phosphobot.models import (
+    BaseDataset,
     BaseEpisode,
     JsonEpisode,
-    LeRobotEpisode,
     LeRobotDataset,
+    LeRobotEpisode,
+    Observation,
+    Step,
 )
+from phosphobot.rerun_visualizer import RerunVisualizer
 from phosphobot.robot import RobotConnectionManager, get_rcm
 from phosphobot.types import VideoCodecs
 from phosphobot.utils import background_task_log_exceptions, get_home_app_path
-from phosphobot.rerun_visualizer import RerunVisualizer
 
 recorder = None  # Global variable to store the recorder instance
 
@@ -98,6 +100,10 @@ class Recorder:
         # Stored for push_to_hub if initiated from here
         branch_path: Optional[str] = None,
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
+        save_cartesian: bool = False,  # Saves cartesian positions if True (only for robots with simulators)
+        add_metadata: Optional[
+            dict[str, list]
+        ] = None,  # Additional metadata to save with each step
     ) -> None:
         if target_size is None:
             target_size = (config.DEFAULT_VIDEO_SIZE[0], config.DEFAULT_VIDEO_SIZE[1])
@@ -155,6 +161,8 @@ class Recorder:
                 target_size=target_size,
                 instruction=instruction,
                 all_camera_key_names=self.cameras.get_all_camera_key_names(),
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian,
             )
         else:
             logger.error(f"Unknown episode format: {self.episode_format}")
@@ -173,6 +181,7 @@ class Recorder:
             target_size=target_size,
             language_instruction=instruction
             or config.DEFAULT_TASK_INSTRUCTION,  # Passed to Step
+            save_cartesian=save_cartesian,
         )
         logger.success(
             f"Recording started for {self.episode_format} dataset '{dataset_name}'. Episode index: {self.episode.episode_index if self.episode else 'N/A'}"
@@ -279,6 +288,9 @@ class Recorder:
         self,
         target_size: tuple[int, int],
         language_instruction: str,  # This is the initial instruction
+        save_cartesian: Optional[
+            bool
+        ] = False,  # Saves cartesian positions if True (only for robots with simulators)
     ) -> None:
         if not self.episode:
             logger.error(
@@ -301,7 +313,7 @@ class Recorder:
 
             # --- Optimized Image Gathering with Parallel Processing ---
             main_frames, secondary_frames = await self._gather_frames_parallel(
-                target_size
+                target_size=target_size,
             )
 
             if main_frames and len(main_frames) > 0:
@@ -313,10 +325,13 @@ class Recorder:
 
             # --- Optimized Robot Observation with Parallel Processing ---
             (
-                final_state,
-                final_joints_position,
-                action_joints_position,
-            ) = await self._gather_robot_observations_parallel()
+                final_observation_state,
+                final_observation_joints_position,
+                final_action_state,
+                final_action_joints_position,
+            ) = await self._gather_robot_observations_parallel(
+                save_cartesian=save_cartesian
+            )
 
             current_time_in_episode = loop_iteration_start_time - self.start_ts
 
@@ -332,9 +347,9 @@ class Recorder:
             observation = Observation(
                 main_image=main_frame,
                 secondary_images=secondary_frames,
-                state=final_state,  # Robot's end-effector state(s)
+                state=final_observation_state,  # Robot's end-effector state(s)
                 language_instruction=current_instruction,
-                joints_position=final_joints_position,  # Actual joint positions
+                joints_position=final_observation_joints_position,  # Actual joint positions
                 timestamp=current_time_in_episode,
             )
 
@@ -344,7 +359,8 @@ class Recorder:
             # update_previous_step handles this.
             step = Step(
                 observation=observation,
-                action=action_joints_position,  # Will be filled by update_previous_step for the *previous* step
+                action=final_action_joints_position,  # Will be filled by update_previous_step for the *previous* step
+                action_cartesian=final_action_state,
                 metadata={"created_at": loop_iteration_start_time},
             )
 
@@ -363,7 +379,7 @@ class Recorder:
 
             # Order: update previous, then add current.
             if (
-                self.episode.steps and action_joints_position is None
+                self.episode.steps and final_action_joints_position is None
             ):  # If there's a previous step
                 # The 'action' of the previous step is the 'joints_position' of the current observation
                 self.episode.update_previous_step(step)
@@ -465,8 +481,8 @@ class Recorder:
             return None
 
     async def _gather_robot_observations_parallel(
-        self,
-    ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+        self, save_cartesian: Optional[bool] = False
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Simple parallel robot observation gathering - each robot runs independently.
         Returns (final_state, final_joints_position).
@@ -476,7 +492,7 @@ class Recorder:
             or not self.observations_robots_mapping
             or len(self.observations_robots_mapping) == 0
         ):
-            return np.array([]), np.array([]), np.array([])
+            return np.array([]), np.array([]), np.array([]), np.array([])
 
         loop = asyncio.get_event_loop()
 
@@ -495,6 +511,7 @@ class Recorder:
                     robot,
                     idx,
                     source,
+                    save_cartesian,
                 )
                 robot_observations_futures.append(future_observations_real)
             # A robot can be both in action and observation mappings
@@ -506,66 +523,93 @@ class Recorder:
                     robot,
                     idx,
                     source,
+                    save_cartesian,
                 )
                 robot_actions_future.append(future_actions_real)
 
         # Wait for all robot observations
-        all_robot_states = []
-        all_robot_joints_positions = []
-        all_robot_joints_positions_actions = []
+        all_robots_observation_states = []
+        all_robots_observation_joints_positions = []
+        all_robots_actions_states = []
+        all_robots_actions_joints_positions = []
 
         for future in robot_observations_futures:
             try:
                 robot_state, robot_joints = await future
                 if robot_state is not None and robot_joints is not None:
-                    all_robot_states.append(robot_state)
-                    all_robot_joints_positions.append(robot_joints)
+                    all_robots_observation_states.append(robot_state)
+                    all_robots_observation_joints_positions.append(robot_joints)
             except Exception as e:
                 logger.warning(f"Failed to get robot observation: {e}")
         for future in robot_actions_future:
             try:
                 robot_state, robot_joints = await future
-                if robot_joints is not None:
-                    all_robot_joints_positions_actions.append(robot_joints)
+                if robot_state is not None and robot_joints is not None:
+                    all_robots_actions_states.append(robot_state)
+                    all_robots_actions_joints_positions.append(robot_joints)
             except Exception as e:
                 logger.warning(f"Failed to get action robot observation: {e}")
 
         # Concatenate if multiple robots, otherwise use the first robot's data
-        final_state = (
-            np.concatenate(all_robot_states)
-            if len(all_robot_states) > 1
-            else (all_robot_states[0] if all_robot_states else np.array([]))
-        )
-        final_joints_position = (
-            np.concatenate(all_robot_joints_positions)
-            if len(all_robot_joints_positions) > 1
+        final_observation_state = (
+            np.concatenate(all_robots_observation_states)
+            if len(all_robots_observation_states) > 1
             else (
-                all_robot_joints_positions[0]
-                if all_robot_joints_positions
+                all_robots_observation_states[0]
+                if all_robots_observation_states
                 else np.array([])
             )
         )
-        final_action_joints = (
-            np.concatenate(all_robot_joints_positions_actions)
-            if len(all_robot_joints_positions_actions) > 1
+        final_observation_joints_position = (
+            np.concatenate(all_robots_observation_joints_positions)
+            if len(all_robots_observation_joints_positions) > 1
             else (
-                all_robot_joints_positions_actions[0]
-                if all_robot_joints_positions_actions
-                else None
+                all_robots_observation_joints_positions[0]
+                if all_robots_observation_joints_positions
+                else np.array([])
+            )
+        )
+        final_action_state = (
+            np.concatenate(all_robots_actions_states)
+            if len(all_robots_actions_states) > 1
+            else (
+                all_robots_actions_states[0]
+                if all_robots_actions_states
+                else np.array([])
+            )
+        )
+        final_action_joints_position = (
+            np.concatenate(all_robots_actions_joints_positions)
+            if len(all_robots_actions_joints_positions) > 1
+            else (
+                all_robots_actions_joints_positions[0]
+                if all_robots_actions_joints_positions
+                else np.array([])
             )
         )
 
-        return (final_state, final_joints_position, final_action_joints)
+        return (
+            final_observation_state,
+            final_observation_joints_position,
+            final_action_state,
+            final_action_joints_position,
+        )
 
     def _get_single_robot_observation(
-        self, robot: BaseRobot, robot_idx: int, source: Literal["sim", "robot"]
+        self,
+        robot: BaseRobot,
+        robot_idx: int,
+        source: Literal["sim", "robot"],
+        do_forward: Optional[bool] = False,
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get observation from a single robot.
         This runs in the thread pool.
         """
         try:
-            return robot.get_observation(source=source)
+            return robot.get_observation(
+                source=source, do_forward=do_forward if do_forward else False
+            )
         except Exception as e:
             logger.warning(f"Exception getting observation from robot {robot_idx}: {e}")
             return None, None

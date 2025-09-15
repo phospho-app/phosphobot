@@ -54,8 +54,8 @@ async def signup(
     """
     Sign up a new user.
     """
-    from phosphobot.app import get_local_ip
     from phosphobot.configs import config
+    from phosphobot.utils import get_local_ip
 
     delete_session()
     client = await get_client()

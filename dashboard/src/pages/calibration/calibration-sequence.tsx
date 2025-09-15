@@ -74,18 +74,33 @@ export function CalibrationSequence() {
           <p>An error occurred during calibration:</p>
           <code>{data.message || "Unknown error"}</code>
           <ul className="mt-2 list-disc pl-5 space-y-1">
-            <li>Ensure the robot is connected to USB-C and to the power.</li>
             <li>
-              If you have a Torque Read error, check that all the wires are
-              fully plugged in the servomotors. Lose wires can cause this!
+              Make the robot is connected to USB-C <u>and</u> to the power
+              cable.
             </li>
             <li>
-              Check that the power voltage of your servomotors and the power
-              supply are compatible.
+              If you have a <b>Torque Read error,</b> check that all the wires
+              are fully plugged in the servomotors. Lose wires can cause this!
+            </li>
+            <li>
+              Make sure your robot servomotors have the <b>same voltage</b> as
+              the power cable (eg: 12V servos and 12V power cable, 7.2V servos
+              and 5.2V power cable).
             </li>
             <li>
               Ensure your terminal is allowed to access the USB port. This is a
               common issue on Windows.
+            </li>
+            <li>
+              If you have a <b>"Access is denied" error on Windows,</b> a common
+              workaround is to{" "}
+              <a
+                href="https://docs.phospho.ai/installation#windows-wsl"
+                target="_blank"
+                className="underline"
+              >
+                install phosphobot with WSL (Windows Subsystem for Linux).
+              </a>
             </li>
           </ul>
         </>,

@@ -1,15 +1,18 @@
 import asyncio
+import concurrent
 import datetime
 import json
 import os
 import shutil
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import Future
 from pathlib import Path
-from typing import Any, List, Literal, Optional, cast
+from typing import Any, Dict, List, Literal, Optional, cast
 
 import numpy as np
 from huggingface_hub import (
+    CommitInfo,
     HfApi,
     create_repo,
     delete_folder,
@@ -50,7 +53,7 @@ class Observation(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    def dict(self, *args, **kwargs):
+    def dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         # Override dict method to handle numpy arrays
         d = super().dict(*args, **kwargs)
         return d
@@ -60,6 +63,7 @@ class Step(BaseModel):
     observation: Observation  # Current observation, most informations are stored here
     # Robot action as outputed by OpenVLA (size 7 array) based on the CURRENT observation
     action: Optional[np.ndarray] = None
+    action_cartesian: Optional[np.ndarray] = None  # Full state when action was taken
     # if this is the first step of an episode that contains the initial state.
     is_first: Optional[bool] = None
     # True if this is a terminal step, meaning the episode isn' over after this step but the robot is in a terminal state
@@ -88,7 +92,7 @@ class BaseEpisode(BaseModel, ABC):
         arbitrary_types_allowed = True
         extra = "allow"  # Allow extra fields like dataset_manager for LeRobotEpisode not in schema
 
-    def add_step(self, step: Step):
+    def add_step(self, step: Step) -> None:
         """Common logic for adding a step to the internal list and managing flags."""
         # is_terminal and is_last are true by default for a new step
         step.is_terminal = True
@@ -113,7 +117,7 @@ class BaseEpisode(BaseModel, ABC):
 
         self.steps.append(step)
 
-    def update_previous_step(self, current_step_data: Step):
+    def update_previous_step(self, current_step_data: Step) -> None:
         """
         Updates the 'action' of the previous step.
         The action that led to `current_step_data.observation` was `current_step_data.observation.joints_position`.
@@ -141,7 +145,7 @@ class BaseEpisode(BaseModel, ABC):
         return int(idx)
 
     @episode_index.setter
-    def episode_index(self, value: int):
+    def episode_index(self, value: int) -> None:
         self.metadata["episode_index"] = value
 
     @property
@@ -150,17 +154,17 @@ class BaseEpisode(BaseModel, ABC):
 
     @classmethod
     @abstractmethod
-    async def start_new(cls, **kwargs) -> "BaseEpisode":  # type: ignore[misc]
+    async def start_new(cls, **kwargs: Dict[str, Any]) -> "BaseEpisode":  # type: ignore[misc]
         """Factory method to create and initialize a new episode."""
         pass
 
     @abstractmethod
-    async def append_step(self, step: Step, **kwargs) -> None:
+    async def append_step(self, step: Step, **kwargs: Dict[str, Any]) -> None:
         """Appends a step and handles related business logic (e.g., updating live meta files)."""
         pass
 
     @abstractmethod
-    async def save(self, **kwargs) -> None:
+    async def save(self, **kwargs: Dict[str, Any]) -> None:
         """Saves the episode data and any related metadata or artifacts."""
         pass
 
@@ -221,7 +225,7 @@ class BaseEpisode(BaseModel, ABC):
         playback_speed: float = 1.0,
         interpolation_factor: int = 4,
         replicate: bool = False,
-    ):
+    ) -> None:
         """
         Play the episode on the robot with on-the-fly interpolation.
         """
@@ -480,7 +484,7 @@ class BaseDataset:
         return name
 
     @classmethod
-    def remove_ds_store_files(cls, folder_path: str):
+    def remove_ds_store_files(cls, folder_path: str) -> None:
         try:
             # Iterate through all items in the folder
             for item in os.listdir(folder_path):
@@ -511,7 +515,7 @@ class BaseDataset:
         repo_id = repo_id or self.repo_id
         return self.HF_API.repo_exists(repo_id=repo_id, repo_type="dataset")
 
-    def sync_local_to_hub(self):
+    def sync_local_to_hub(self) -> None:
         """Reupload the dataset folder to Hugging Face"""
         username_or_orgid = get_hf_username_or_orgid()
         if username_or_orgid is None:
@@ -670,7 +674,7 @@ To get started in robotics, [get your own phospho starter pack.](https://robots.
                 run_as_future=True,
             )
 
-            def sync_branch(fut):
+            def sync_branch(fut: Future[CommitInfo]) -> None:
                 try:
                     fut.result()  # raises if upload failed
 

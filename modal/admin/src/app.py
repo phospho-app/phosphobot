@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
+import modal
 import requests  # type: ignore
 import sentry_sdk
 from fastapi import Depends, status
@@ -12,22 +13,23 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-import modal
 import supabase
 from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.base import TrainingRequest
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig
-from phosphobot.models import CancelTrainingRequest
+from phosphobot.models import CancelTrainingRequest, ChatRequest, ChatResponse
 
 phosphobot_dir = (
-    Path(__file__).parent.parent.parent.parent / "phosphobot" / "phosphobot"
+    Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 admin_image = (
     modal.Image.debian_slim(python_version="3.10")
-    .pip_install(
+    .uv_pip_install(
         "ffmpeg-python>=0.2.0",
         "stripe",
+        "httpx",
+        "google-genai>=1.35.0",
     )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
@@ -447,6 +449,7 @@ class PublicUser(BaseModel):
         modal.Secret.from_name("huggingface"),
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("stripe"),
+        modal.Secret.from_name("gemini"),
     ],
     # We keep at least one instance of the app running
     min_containers=1,
@@ -456,11 +459,12 @@ class PublicUser(BaseModel):
 def fastapi_app():
     from datetime import datetime, timezone
 
+    import stripe
     from fastapi import FastAPI, Request
+    from fastapi.exceptions import HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
-    from fastapi.exceptions import HTTPException
-    import stripe
+    from supabase_auth.types import User as SupabaseUser
 
     stripe.api_key = os.environ["STRIPE_API_KEY"]
 
@@ -1197,6 +1201,50 @@ def fastapi_app():
                 logger.error(f"No user found with subscription_id: {subscription_id}")
 
         return {"status": "ok"}
+
+    async def get_user_and_check_quota(
+        token: HTTPAuthorizationCredentials = Depends(auth_scheme),
+    ) -> SupabaseUser:
+        user_auth = supabase_client.auth.get_user(jwt=token.credentials)
+        if not user_auth:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+        # Check if the user is a pro user
+        user_data = (
+            supabase_client.table("users")
+            .select("*")
+            .eq("id", user_auth.user.id)
+            .execute()
+        )
+        if not user_data.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        user_plan = user_data.data[0].get("plan", None)
+        if user_plan != "pro":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This endpoint is only available for PRO users",
+            )
+
+        return user_auth.user
+
+    @web_app.post("/ai-control/chat", response_model=ChatResponse)
+    async def ai_control_chat(
+        chat_request: ChatRequest,
+        user: SupabaseUser = Depends(get_user_and_check_quota),
+    ):
+        """
+        Endpoint to handle AI control chat requests.
+        """
+
+        from .chat import GeminiAgent
+
+        gemini_agent = GeminiAgent()
+        return await gemini_agent.run(chat_request=chat_request)
 
     # Required by modal
     return web_app

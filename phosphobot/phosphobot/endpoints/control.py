@@ -7,6 +7,7 @@ from typing import Optional, cast
 import httpx
 import json_numpy  # type: ignore
 import numpy as np
+import serial
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -55,11 +56,9 @@ from phosphobot.models import (
     VoltageReadResponse,
 )
 from phosphobot.robot import (
-    PiperHardware,
     RemotePhosphobot,
     RobotConnectionManager,
     SO100Hardware,
-    URDFLoader,
     get_rcm,
 )
 from phosphobot.supabase import get_client, user_is_logged_in
@@ -276,7 +275,6 @@ async def move_to_absolute_position(
                 await robot.move_robot_absolute(
                     target_position=target_position,
                     target_orientation_rad=target_orientation_rad,
-                    interpolate_trajectory=False,
                 )
                 current_position, current_orientation = robot.forward_kinematics()
                 position_residual = np.linalg.norm(current_position - target_position)
@@ -1281,6 +1279,30 @@ async def add_robot_connection(
             message=f"Robot connection to {query.robot_name} added",
             robot_id=robot_id,
         )
+    except serial.SerialException as e:
+        if "Access is denied" in str(e):
+            logger.warning(
+                f"Failed to add robot connection: {e}\n{traceback.format_exc()}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission error: {e}. If you're on Windows, try running with WSL (Windows Subsystem for Linux) or phosphobot has the authorization to use the serial port.",
+            )
+        elif "Permission denied" in str(e):
+            logger.warning(
+                f"Failed to add robot connection: {e}\n{traceback.format_exc()}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied: {e}. If you're on Linux, try running with sudo or ensure that your user has access to the serial port.",
+            )
+        else:
+            logger.error(
+                f"Failed to add robot connection (SerialException): {e}\n{traceback.format_exc()}"
+            )
+            raise HTTPException(
+                status_code=400, detail=f"Failed to add robot connection: {e}"
+            )
     except Exception as e:
         logger.error(f"Failed to add robot connection: {e}\n{traceback.format_exc()}")
         raise HTTPException(

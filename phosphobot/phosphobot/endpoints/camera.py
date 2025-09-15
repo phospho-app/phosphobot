@@ -12,7 +12,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from phosphobot.camera import AllCameras, get_all_cameras, ZMQCamera
+from phosphobot.camera import AllCameras, ZMQCamera, get_all_cameras
 from phosphobot.models import AddZMQCameraRequest
 
 router = APIRouter(tags=["camera"])
@@ -20,7 +20,6 @@ router = APIRouter(tags=["camera"])
 
 @router.get(
     "/video/{camera_id}",
-    response_class=StreamingResponse,
     description="Stream video feed of the specified camera. "
     + "If no camera id is provided, the default camera is used. "
     + "Specify a target size and quality using query parameters.",
@@ -28,6 +27,7 @@ router = APIRouter(tags=["camera"])
         200: {"description": "Streaming video feed of the specified camera."},
         404: {"description": "Camera not available"},
     },
+    response_model=None,
 )
 def video_feed_for_camera(
     request: Request,
@@ -36,7 +36,7 @@ def video_feed_for_camera(
     width: Optional[int] = None,
     quality: Optional[int] = None,
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> StreamingResponse | HTTPException:
     """
     Stream video feed of the specified camera.
     """
@@ -107,6 +107,8 @@ def video_feed_for_camera(
     },
 )
 async def get_all_camera_frames(
+    resize_x: Optional[int] = None,
+    resize_y: Optional[int] = None,
     cameras: AllCameras = Depends(get_all_cameras),
 ) -> Dict[str, Optional[str]]:
     """
@@ -118,7 +120,12 @@ async def get_all_camera_frames(
     logger.debug("Received request for all camera frames")
 
     # We can add a resize here if needed
-    frames = cameras.get_rgb_frames_for_all_cameras()
+    if resize_x is not None and resize_y is not None:
+        resize = (resize_x, resize_y)
+    else:
+        resize = None
+
+    frames = cameras.get_rgb_frames_for_all_cameras(resize=resize)
 
     # Initialize response dictionary
     response: Dict[str, Optional[str]] = {}
@@ -146,7 +153,10 @@ async def get_all_camera_frames(
             response[camera_id] = None
 
     if not response:
-        raise HTTPException(status_code=503, detail="No camera frames available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"No frames captured from any camera: frames={frames} and cameras={cameras}",
+        )
 
     return response
 
@@ -160,7 +170,7 @@ async def get_all_camera_frames(
 )
 async def refresh_camera_list(
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> dict:
     """
     Refresh the list of available cameras.
     This operation can take a few seconds as it disconnects and reconnects to all cameras.
@@ -178,7 +188,7 @@ async def refresh_camera_list(
 async def add_zmq_camera_feed(
     query: AddZMQCameraRequest,
     cameras: AllCameras = Depends(get_all_cameras),
-):
+) -> dict:
     """
     Add a camera feed from a ZMQ publisher.
     This allows the application to receive camera frames from a ZMQ publisher.

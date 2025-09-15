@@ -1,6 +1,6 @@
 [project]
 name = "phosphobot"
-version = "0.3.113"
+version = "0.3.119"
 description = "The AI-ready robotics dev kit, with built-in remote control and VLA support."
 authors = [{ name = "phospho", email = "contact@phospho.ai" }]
 license = "MIT"
@@ -31,7 +31,7 @@ dependencies = [
     "datasets>=3.2.0",
     "sentry-sdk[fastapi]>=2.20.0",
     "posthog>=6.0.0",
-    "piper-sdk>=0.4.1",
+    "piper-sdk>=0.4.2",
     "supabase>=2.18.1",
     "toml>=0.10.2",
     "av>=12.0.0",
@@ -48,6 +48,7 @@ dependencies = [
     "wasmtime>=33.0.0",
     "async-property>=0.2.2",
     "pyzmq>=27.0.2",
+    "textual>=6.1.0",
 ]
 
 [dependency-groups]
@@ -65,6 +66,7 @@ dev = [
     "pytest-asyncio>=0.25.1",
     "pytest-dependency>=0.6.0",
     "types-python-dateutil>=2.9.0.20250516",
+    "textual-dev>=1.7.0",
 ]
 rerun = ["rerun-sdk>=0.23.0"]
 

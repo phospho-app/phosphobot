@@ -1,10 +1,10 @@
 import json
 import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Tuple, cast
-import tempfile
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -13,11 +13,14 @@ from loguru import logger
 from pydantic import (
     AliasChoices,
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
 )
 
+from phosphobot.models.dataset import BaseDataset, BaseEpisode, Step
+from phosphobot.models.robot import BaseRobot
 from phosphobot.types import VideoCodecs
 from phosphobot.utils import (
     NdArrayAsList,
@@ -26,8 +29,6 @@ from phosphobot.utils import (
     get_field_min_max,
     get_home_app_path,
 )
-from phosphobot.models.robot import BaseRobot
-from phosphobot.models.dataset import BaseDataset, BaseEpisode, Step
 
 DEFAULT_FILE_ENCODING = "utf-8"
 
@@ -82,7 +83,9 @@ class LeRobotDataset(BaseDataset):
         fps: Optional[int] = None,
         all_camera_key_names: Optional[List[str]] = None,
         force: bool = False,
-    ):
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: bool = False,
+    ) -> None:
         """Loads existing meta files or initializes new ones if they don't exist."""
         logger.debug(
             f"Initializing/loading meta models for dataset: {self.dataset_name}"
@@ -96,6 +99,8 @@ class LeRobotDataset(BaseDataset):
                 all_camera_key_names=all_camera_key_names,
                 fps=fps,
                 format=self.format_version,
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian,
             )
             # Edit the .format_version field to match the dataset format
             if "2.1" in self.info_model.codebase_version:
@@ -107,12 +112,16 @@ class LeRobotDataset(BaseDataset):
         if self.format_version == "lerobot_v2.1":
             if self.episodes_stats_model is None or force:
                 self.episodes_stats_model = EpisodesStatsModel.from_jsonl(
-                    meta_folder_path=self.meta_folder_full_path
+                    meta_folder_path=self.meta_folder_full_path,
+                    add_metadata=add_metadata,
+                    save_cartesian=save_cartesian,
                 )
         elif self.format_version == "lerobot_v2":
             if self.stats_model is None or force:  # Only for v2
                 self.stats_model = StatsModel.from_json(
-                    meta_folder_path=self.meta_folder_full_path
+                    meta_folder_path=self.meta_folder_full_path,
+                    add_metadata=add_metadata,
+                    save_cartesian=save_cartesian,
                 )
 
         if self.episodes_model is None or force:
@@ -926,26 +935,21 @@ class LeRobotDataset(BaseDataset):
             video_keys_to_delete, self.meta_folder_full_path
         )
 
-    def shuffle_dataset(self, new_dataset_name) -> None:
+    def shuffle_dataset(self) -> None:
         """
         Shuffle the episodes in the dataset inplace.
         Expects a dataset in v2.1 format.
         This will pick a random shuffle of the episodes and apply it to the videos, data and meta files.
         """
-        # if self.format_version != "lerobot_v2.1":
-        #     raise ValueError(
-        #         f"Dataset {self.dataset_name} is not in v2.1 format, cannot shuffle"
-        #     )
-        # TODO: add check on info.json
+        # Get the number of episodes from the info.json file
+        info = InfoModel.from_json(meta_folder_path=self.meta_folder_full_path)
+        if info.codebase_version != "v2.1":
+            raise ValueError(
+                f"Dataset {self.dataset_name} is not in v2.1 format, cannot shuffle"
+            )
 
         # Find the number of episodes in the dataset
         logger.info("Shuffling the dataset episodes")
-
-        # Get the number of episodes from the info.json file
-        info = InfoModel.from_json(
-            meta_folder_path=self.meta_folder_full_path,
-            format="lerobot_v2.1",
-        )
 
         episodes_model = EpisodesModel.from_jsonl(
             meta_folder_path=self.meta_folder_full_path,
@@ -954,6 +958,7 @@ class LeRobotDataset(BaseDataset):
 
         number_of_episodes = info.total_episodes
         shuffle = np.random.permutation(number_of_episodes)
+        logger.debug(f"Shuffle permutation: {shuffle}")
         # Generate a mapping of type Dict[int, int] that maps the old episode index to the new episode index
         # This will be used to reindex the episodes.jsonl file
         old_index_to_new_index = {k: int(v) for k, v in enumerate(shuffle)}
@@ -961,6 +966,7 @@ class LeRobotDataset(BaseDataset):
         # Reindex the data folder
         old_index_to_new_index = self.reindex_episodes(
             folder_path=self.data_folder_full_path,
+            old_index_to_new_index=old_index_to_new_index,
         )
         # Reindex the episode videos
         for camera_folder_full_path in self.get_camera_folders_full_paths():
@@ -968,14 +974,6 @@ class LeRobotDataset(BaseDataset):
                 folder_path=camera_folder_full_path,
                 old_index_to_new_index=old_index_to_new_index,  # type: ignore
             )
-
-        episodes_model.update_for_episode_removal(
-            -1,
-            old_index_to_new_index=old_index_to_new_index,
-        )
-        episodes_model.save(
-            meta_folder_path=self.meta_folder_full_path, save_mode="overwrite"
-        )
         ### Meta files ###
 
         #### TASKS
@@ -1078,7 +1076,7 @@ class LeRobotDataset(BaseDataset):
                     new_index = current_new_index_max
                     current_new_index_max += 1
 
-                new_filename = f"episode_{new_index:06d}.{file_extension}"
+                new_filename = f"temp_episode_{new_index:06d}.{file_extension}"
                 os.rename(
                     os.path.join(folder_path, filename),
                     os.path.join(folder_path, new_filename),
@@ -1112,6 +1110,14 @@ class LeRobotDataset(BaseDataset):
                         old_index_to_new_index
                     )
                     df.to_json(os.path.join(folder_path, new_filename))
+
+        # Only keep the temp files and remove the original files
+        for filename in os.listdir(folder_path):
+            if filename.startswith("temp_"):
+                os.rename(
+                    os.path.join(folder_path, filename),
+                    os.path.join(folder_path, filename.replace("temp_", "")),
+                )
 
         return old_index_to_new_index
 
@@ -1165,6 +1171,8 @@ class LeRobotEpisode(BaseEpisode):
     freq: int  # Recording frequency (Hz)
     codec: VideoCodecs  # For saving videos
     target_size: tuple[int, int]  # For video creation (width, height)
+    is_cartesian: bool = False  # Whether to save cartesian coordinates
+    add_metadata: Optional[Dict[str, list]] = None  # Extra metadata to save
 
     # Paths are derived from the dataset_manager and episode_index (from metadata)
     @property
@@ -1224,7 +1232,9 @@ class LeRobotEpisode(BaseEpisode):
         target_size: tuple[int, int],  # width, height
         instruction: Optional[str],
         all_camera_key_names: List[str],
-        **kwargs,
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: bool = False,
+        **kwargs: Dict[str, Any],
     ) -> "LeRobotEpisode":
         # Ensure meta models are loaded/initialized in the dataset manager
         dataset_manager.load_meta_models(
@@ -1233,6 +1243,8 @@ class LeRobotEpisode(BaseEpisode):
             target_size=target_size,  # Used by InfoModel if creating new
             fps=freq,
             all_camera_key_names=all_camera_key_names,
+            add_metadata=add_metadata,
+            save_cartesian=save_cartesian,
         )
 
         # These must not be None after the above call
@@ -1271,16 +1283,19 @@ class LeRobotEpisode(BaseEpisode):
             f"Starting new LeRobotEpisode, index: {episode_idx}, task: '{instruction}' (idx: {task_idx}) for dataset '{dataset_manager.dataset_name}'."
         )
 
-        return cls(
+        episode = cls(
             steps=[],
             metadata=episode_metadata,
             dataset_manager=dataset_manager,
             freq=freq,
             codec=codec,
             target_size=target_size,
+            is_cartesian=save_cartesian,
+            add_metadata=add_metadata,
         )
+        return episode
 
-    async def append_step(self, step: Step, **kwargs) -> None:
+    async def append_step(self, step: Step, **kwargs: Dict[str, Any]) -> None:
         self.add_step(step)  # Appends to self.steps, manages is_first/is_last flags
 
         current_step_in_episode_index = (
@@ -1327,6 +1342,12 @@ class LeRobotEpisode(BaseEpisode):
             "frame_index": [],
             "index": [],
         }
+        if self.is_cartesian:
+            episode_data_dict["action.cartesian"] = []
+            episode_data_dict["observation.cartesian.state"] = []
+        if self.add_metadata:
+            for key in self.add_metadata.keys():
+                episode_data_dict[key] = []
 
         # We rewrite the timestamps based on the frequency to validate LeRobot tests
         timestamps_for_episode = (np.arange(len(self.steps)) / self.freq).tolist()
@@ -1347,6 +1368,20 @@ class LeRobotEpisode(BaseEpisode):
             # "index" is the global frame index across the entire dataset
             episode_data_dict["index"].append(local_frame_idx + global_frame_offset)
             episode_data_dict["task_index"].append(self.metadata["task_index"])
+            # If cartesian, add those fields too
+            if self.is_cartesian:
+                episode_data_dict["observation.cartesian.state"].append(
+                    step_item.observation.state.astype(np.float32)
+                )
+                if step_item.action_cartesian is not None:
+                    episode_data_dict["action.cartesian"].append(
+                        step_item.action_cartesian.astype(np.float32)
+                    )
+
+            # Additional metadata fields, if any
+            if self.add_metadata:
+                for key, values_list in self.add_metadata.items():
+                    episode_data_dict[key].append(values_list)
 
             if (
                 step_item.action is None
@@ -1386,7 +1421,7 @@ class LeRobotEpisode(BaseEpisode):
 
         return LeRobotEpisodeModel(**episode_data_dict)
 
-    async def save(self, **kwargs) -> None:
+    async def save(self, **kwargs: Dict[str, Any]) -> None:
         if not self.steps:
             logger.warning(
                 f"LeRobotEpisode {self.episode_index} has no steps. Skipping save."
@@ -1689,6 +1724,8 @@ class LeRobotEpisode(BaseEpisode):
 
 
 class LeRobotEpisodeModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     action: List[List[float]]
     observation_state: List[List[float]] = Field(
         validation_alias=AliasChoices("observation.state", "observation_state")
@@ -1700,7 +1737,7 @@ class LeRobotEpisodeModel(BaseModel):
     index: List[int]
 
     @model_validator(mode="before")
-    def validate_lengths(cls, values):
+    def validate_lengths(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         fields_to_check = [
             "action",
             "observation_state",
@@ -1738,7 +1775,7 @@ class LeRobotEpisodeModel(BaseModel):
             )
         return values
 
-    def to_parquet(self, filename: str):
+    def to_parquet(self, filename: str) -> None:
         """
         Save the episode to a Parquet file
         """
@@ -1834,7 +1871,7 @@ class TasksModel(BaseModel):
             )
 
     def update_for_episode_removal(
-        self, df_episode_to_delete: pd.DataFrame, data_folder_full_path=str
+        self, df_episode_to_delete: pd.DataFrame, data_folder_full_path: str
     ) -> None:
         """
         Update the tasks when removing an episode from the dataset.
@@ -1896,7 +1933,9 @@ class TasksModel(BaseModel):
 
         return old_index_to_new_index, new_number_of_tasks
 
-    def split(self, split_ratio: float, initial_episodes_model: "EpisodesModel"):
+    def split(
+        self, split_ratio: float, initial_episodes_model: "EpisodesModel"
+    ) -> Tuple["TasksModel", "TasksModel", int, int, dict[int, int]]:
         """
         Splits the tasks model into two parts.
         The first part contains the first split_ratio * len(tasks) tasks.
@@ -1966,7 +2005,7 @@ class EpisodesFeatures(BaseModel):
 
     # Import tasks as a list of str if it is a str
     @field_validator("tasks", mode="before")
-    def validate_tasks(cls, v):
+    def validate_tasks(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
             return [v]
         elif isinstance(v, list):
@@ -2212,7 +2251,7 @@ class EpisodesModel(BaseModel):
         }
 
     def merge_with(
-        self, second_episodes_model: "EpisodesModel", meta_folder_to_save_to
+        self, second_episodes_model: "EpisodesModel", meta_folder_to_save_to: str
     ) -> None:
         """
         Merge the episodes with another episodes model and save it to the new meta folder.
@@ -2276,7 +2315,7 @@ class EpisodesModel(BaseModel):
 
         return True
 
-    def split(self, split_ratio: float):
+    def split(self, split_ratio: float) -> Tuple["EpisodesModel", "EpisodesModel"]:
         """
         Split the episodes model into two parts.
         """
@@ -2324,7 +2363,7 @@ class Stats(BaseModel):
 
     @field_validator("count", mode="before")
     @classmethod
-    def validate_count(cls, value) -> int:
+    def validate_count(cls, value: Union[list, int]) -> int:
         if isinstance(value, int):
             return value
         elif isinstance(value, list) and len(value) == 1:
@@ -2375,7 +2414,7 @@ class Stats(BaseModel):
             self.square_sum = self.square_sum + value**2
             self.count += 1
 
-    def compute_from_rolling(self):
+    def compute_from_rolling(self) -> None:
         """
         Compute the mean and std from the rolling sum and square sum.
         """
@@ -2449,7 +2488,7 @@ class Stats(BaseModel):
             self.square_sum = self.square_sum + np.sum(image_norm_32**2, axis=(0, 1))
             self.count += nb_pixels
 
-    def compute_from_rolling_images(self):
+    def compute_from_rolling_images(self) -> None:
         """
         Compute the mean and std from the rolling sum and square sum for images.
         """
@@ -2494,12 +2533,31 @@ class StatsModel(BaseModel):
     The other stats are dim 1
     """
 
+    model_config = ConfigDict(extra="allow")
+    add_metadata: Optional[Dict[str, list]] = None
+    save_cartesian: bool = False
+
     observation_state: Stats = Field(
         default_factory=Stats,
         serialization_alias="observation.state",
         validation_alias=AliasChoices("observation.state", "observation_state"),
     )
+    observation_cartesian_state: Optional[Stats] = Field(
+        default_factory=Stats,
+        serialization_alias="observation.cartesian.state",
+        validation_alias=AliasChoices(
+            "observation.cartesian.state",
+            "observation.cartesian_state",
+            "observation_cartesian_state",
+            "observation_cartesian_state",
+        ),
+    )
     action: Stats = Field(default_factory=Stats)
+    action_cartesian: Optional[Stats] = Field(
+        default_factory=Stats,
+        serialization_alias="action.cartesian",
+        validation_alias=AliasChoices("action.cartesian", "action_cartesian"),
+    )
     timestamp: Stats = Field(default_factory=Stats)
     frame_index: Stats = Field(default_factory=Stats)
     episode_index: Stats = Field(default_factory=Stats)
@@ -2519,8 +2577,20 @@ class StatsModel(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def set_action_cartesian(self) -> "StatsModel":
+        if self.save_cartesian is False:
+            self.action_cartesian = None
+            self.observation_cartesian_state = None
+        return self
+
     @classmethod
-    def from_json(cls, meta_folder_path: str) -> "StatsModel":
+    def from_json(
+        cls,
+        meta_folder_path: str,
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: bool = False,
+    ) -> "StatsModel":
         """
         Read the stats.json file in the meta folder path.
         If the file does not exist, return an empty StatsModel.
@@ -2529,12 +2599,16 @@ class StatsModel(BaseModel):
             not os.path.exists(f"{meta_folder_path}/stats.json")
             or os.stat(f"{meta_folder_path}/stats.json").st_size == 0
         ):
-            return cls()
+            stats = cls(
+                add_metadata=add_metadata,
+                save_cartesian=save_cartesian,
+            )
+            return stats
 
         with open(
             f"{meta_folder_path}/stats.json", "r", encoding=DEFAULT_FILE_ENCODING
         ) as f:
-            stats_dict: Dict[str, Stats] = json.load(f)
+            stats_dict = json.load(f)
 
         # Create a temporary dictionary for observation_images
         observation_images = {}
@@ -2545,7 +2619,17 @@ class StatsModel(BaseModel):
                 observation_images[key] = stats_dict.pop(key)
 
         # Pass observation_images into the model constructor
-        return cls(**stats_dict, observation_images=observation_images)
+        stats = cls(**stats_dict, observation_images=observation_images)
+        stats.add_metadata = add_metadata
+        stats.save_cartesian = save_cartesian
+        if stats.save_cartesian:
+            stats.action_cartesian = Stats.model_validate(
+                stats_dict["action.cartesian"]
+            )
+            stats.observation_cartesian_state = Stats.model_validate(
+                stats_dict["observation.cartesian.state"]
+            )
+        return stats
 
     def to_json(self, meta_folder_path: str) -> None:
         """
@@ -2557,6 +2641,12 @@ class StatsModel(BaseModel):
         for key, value in model_dict["observation.images"].items():
             model_dict[key] = value
         model_dict.pop("observation.images")
+        model_dict.pop("save_cartesian")
+        model_dict.pop("add_metadata")
+
+        if not self.save_cartesian:
+            model_dict.pop("action.cartesian", None)
+            model_dict.pop("observation.cartesian.state", None)
 
         with open(
             f"{meta_folder_path}/stats.json", "w", encoding=DEFAULT_FILE_ENCODING
@@ -2582,6 +2672,11 @@ class StatsModel(BaseModel):
         self.index.update(np.array([self.index.count]))
         self.episode_index.update(np.array([episode_index]))
         self.frame_index.update(np.array([current_step_index]))
+        if self.save_cartesian:
+            self.action_cartesian.update(np.array([step.action_cartesian]))  # type: ignore
+            self.observation_cartesian_state.update(  # type: ignore
+                np.array([step.observation.state])
+            )
 
         # TODO: Implement multiple language instructions
         # This should be the index of the instruction as it's in tasks.jsonl (TasksModel)
@@ -2626,6 +2721,22 @@ class StatsModel(BaseModel):
                             value.compute_from_rolling_images()
                     except ValueError as e:
                         logger.error(f"Error computing mean and std for {key}: {e}")
+
+        if self.add_metadata is not None:
+            for key, value in self.add_metadata.items():
+                # We create a Stats object with max,
+                self.__setattr__(
+                    key,
+                    Stats(
+                        max=np.array(value),
+                        min=np.array(value),
+                        mean=np.array(value),
+                        std=np.zeros(len(value), dtype=np.float32),
+                        count=self.action.count,  # All stats have the same count
+                        sum=np.array(value) * self.action.count,
+                        square_sum=np.array(value) ** 2 * self.action.count,
+                    ),
+                )
 
         self.to_json(meta_folder_path)
 
@@ -2732,7 +2843,7 @@ class StatsModel(BaseModel):
 
     def _compute_count_sum_square_sum_item_from_mean_std(
         self, stats_item: "Stats", stats_key: str, meta_folder_path: str
-    ):
+    ) -> None:
         """Helper function to compute sum and square_sum from mean, std, and count
         meta_folder_path is used to compute the count from info.json
         This is the number of frames or the number of frames times the dimension of images for videos
@@ -2777,7 +2888,9 @@ class StatsModel(BaseModel):
                     f"Mean shape for {stats_key} after: {stats_item.mean.shape}"
                 )
 
-    def compute_count_square_sum_framecount_from_mean_std(self, meta_folder_path: str):
+    def compute_count_square_sum_framecount_from_mean_std(
+        self, meta_folder_path: str
+    ) -> None:
         """
         Compute the sum and square sum from the mean and std.
         This is useful when we want to update the stats after repairing a dataset.
@@ -2995,15 +3108,36 @@ class EpisodesStatsFeatures(BaseModel):
         for key, value in model_dict["observation.images"].items():
             model_dict[key] = value
         model_dict.pop("observation.images")
+        model_dict.pop("save_cartesian")
+        metadata = model_dict.pop("add_metadata")
+
+        keys_to_pop: list[str] = []
 
         # Convert count to a list and remove sum and square_sum for compatibility
         for key, value in model_dict.items():
+            if value is None:
+                keys_to_pop.append(key)
+                continue
             if isinstance(value["count"], int):
                 value["count"] = [value["count"]]
             if "sum" in value.keys():
                 value.pop("sum")
             if "square_sum" in value.keys():
                 value.pop("square_sum")
+
+        for key in keys_to_pop:
+            model_dict.pop(key)
+
+        # Patch the dataset with metadata if available
+        if metadata is not None:
+            for key, value in metadata.items():
+                model_dict[key] = {
+                    "max": value,
+                    "min": value,
+                    "mean": value,
+                    "std": [0.0] * len(value),
+                    "count": model_dict["action"]["count"],
+                }
 
         # Add the episode index
         result_dict = {"episode_index": self.episode_index, "stats": model_dict}
@@ -3018,6 +3152,8 @@ class EpisodesStatsModel(BaseModel):
     """
 
     episodes_stats: List[EpisodesStatsFeatures] = Field(default_factory=list)
+    save_cartesian: bool = False
+    add_metadata: Optional[Dict[str, list]] = None
 
     def update(self, step: Step, episode_index: int, current_step_index: int) -> None:
         """
@@ -3039,7 +3175,9 @@ class EpisodesStatsModel(BaseModel):
         # If the episode index does not exist, create a new entry
         new_episode_stats = EpisodesStatsFeatures(
             episode_index=episode_index,
-            stats=StatsModel(),
+            stats=StatsModel(
+                save_cartesian=self.save_cartesian, add_metadata=self.add_metadata
+            ),
         )
         new_episode_stats.stats.update(
             step=step,
@@ -3061,7 +3199,12 @@ class EpisodesStatsModel(BaseModel):
                 f.write(episode_stats.to_json() + "\n")
 
     @classmethod
-    def from_jsonl(cls, meta_folder_path: str) -> "EpisodesStatsModel":
+    def from_jsonl(
+        cls,
+        meta_folder_path: str,
+        add_metadata: Optional[dict[str, list]] = None,
+        save_cartesian: bool = False,
+    ) -> "EpisodesStatsModel":
         """
         Read the episodes_stats.jsonl file in the meta folder path.
         If the file does not exist, return an empty EpisodeStatsModel.
@@ -3070,7 +3213,10 @@ class EpisodesStatsModel(BaseModel):
             not os.path.exists(f"{meta_folder_path}/episodes_stats.jsonl")
             or os.stat(f"{meta_folder_path}/episodes_stats.jsonl").st_size == 0
         ):
-            return EpisodesStatsModel()
+            episode_stats = EpisodesStatsModel()
+            episode_stats.add_metadata = add_metadata
+            episode_stats.save_cartesian = save_cartesian
+            return episode_stats
 
         with open(
             f"{meta_folder_path}/episodes_stats.jsonl",
@@ -3104,6 +3250,8 @@ class EpisodesStatsModel(BaseModel):
         episodes_stats_model = EpisodesStatsModel(
             episodes_stats=list(_episodes_stats_dict.values())
         )
+        episodes_stats_model.add_metadata = add_metadata
+        episodes_stats_model.save_cartesian = save_cartesian
 
         return episodes_stats_model
 
@@ -3191,7 +3339,9 @@ class EpisodesStatsModel(BaseModel):
         # Save the merged model
         self.save(meta_folder_path)
 
-    def split(self, split_ratio: float):
+    def split(
+        self, split_ratio: float
+    ) -> tuple["EpisodesStatsModel", "EpisodesStatsModel"]:
         """
         Splits the episodes stats model into two parts.
         The first part contains the first split_ratio * len(episodes_stats) episodes.
@@ -3219,7 +3369,16 @@ class EpisodesStatsModel(BaseModel):
         if len(permutation) != len(self.episodes_stats):
             raise ValueError("Permutation length must match the number of episodes.")
 
-        self.episodes_stats = [self.episodes_stats[i] for i in permutation]
+        temp: list[EpisodesStatsFeatures | None] = [None] * len(self.episodes_stats)
+
+        for original_index, new_index in enumerate(permutation):
+            temp[new_index] = self.episodes_stats[original_index]
+
+        if None in temp:
+            raise ValueError("Permutation is invalid, some indices are missing.")
+
+        self.episodes_stats = cast(list[EpisodesStatsFeatures], temp)
+
         # Update episode_index
         for new_index, episode_stats in enumerate(self.episodes_stats):
             episode_stats.episode_index = new_index
@@ -3265,10 +3424,30 @@ class VideoFeatureDetails(FeatureDetails):
 
 
 class InfoFeatures(BaseModel):
+    model_config = ConfigDict(extra="allow")
     action: FeatureDetails
+    action_cartesian: Optional[FeatureDetails] = Field(
+        default=None,
+        serialization_alias="action.cartesian",
+        validation_alias=AliasChoices(
+            "action_cartesian",
+            "action.cartesian",
+        ),
+    )
+
     observation_state: FeatureDetails = Field(
         serialization_alias="observation.state",
         validation_alias=AliasChoices("observation.state", "observation_state"),
+    )
+    observation_cartesian_state: Optional[FeatureDetails] = Field(
+        default=None,
+        serialization_alias="observation_cartesian.state",
+        validation_alias=AliasChoices(
+            "observation.cartesian.state",
+            "observation.cartesian_state",
+            "observation_cartesian.state",
+            "observation_cartesian_state",
+        ),
     )
 
     timestamp: FeatureDetails = Field(
@@ -3412,7 +3591,9 @@ class InfoModel(BaseModel):
     features: InfoFeatures
 
     @classmethod
-    def from_robots(cls, robots: List[BaseRobot], **data) -> "InfoModel":
+    def from_robots(
+        cls, robots: List[BaseRobot], **data: Dict[str, Any]
+    ) -> "InfoModel":
         """
         From a robot configuration, create the appropriate InfoModel.
         This is because it depends on the number of joints etc.
@@ -3428,12 +3609,12 @@ class InfoModel(BaseModel):
             observation_state=robot_info.observation_state,
         )
         return cls(
-            **data,
+            **data,  # type: ignore
             features=features,
             robot_type=robot_info.robot_type,
         )
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Convert the InfoModel to a dictionary. This is different from
         model_dump() as it transforms the features to the correct format.
@@ -3452,6 +3633,8 @@ class InfoModel(BaseModel):
         target_size: Optional[tuple[int, int]] = None,
         all_camera_key_names: Optional[List[str]] = None,
         format: Literal["lerobot_v2", "lerobot_v2.1"] = "lerobot_v2.1",
+        add_metadata: Optional[Dict[str, list]] = None,
+        save_cartesian: Optional[bool] = False,
     ) -> "InfoModel":
         """
         Read the info.json file in the meta folder path.
@@ -3496,6 +3679,33 @@ class InfoModel(BaseModel):
                 )
 
             info_model.codebase_version = "v2.1" if format == "lerobot_v2.1" else "v2.0"
+
+            for key, value in (add_metadata or {}).items():
+                if hasattr(info_model.features, key):
+                    raise ValueError(
+                        f"Metadata key {key} already exists in InfoFeatures. Please choose another name."
+                    )
+                info_model.features.__setattr__(
+                    key,
+                    FeatureDetails(
+                        dtype="float32",
+                        shape=[len(value)],
+                        names=None,
+                    ),
+                )
+
+            if save_cartesian:
+                # Cartesian action and observation_state will never depend on the robot type
+                info_model.features.action_cartesian = FeatureDetails(
+                    dtype="float32",
+                    shape=[7],
+                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
+                )
+                info_model.features.observation_cartesian_state = FeatureDetails(
+                    dtype="float32",
+                    shape=[7],
+                    names=["x", "y", "z", "rx", "ry", "rz", "gripper"],
+                )
 
             return info_model
 

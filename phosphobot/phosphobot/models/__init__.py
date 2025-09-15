@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -20,9 +21,9 @@ from .robot import (
     BaseRobot,
     BaseRobotConfig,
     BaseRobotPIDGains,
+    RobotConfigResponse,
     RobotConfigStatus,
     Temperature,
-    RobotConfigResponse,
 )
 
 
@@ -574,6 +575,15 @@ class RecordingStartRequest(BaseModel):
         None,
         description="Serial numbers of the leader arms used during the recording",
         examples=[["/dev/ttyUSB0"]],
+    )
+    save_cartesian: bool = Field(
+        False,
+        description="Record cartesian positions of the robots as well, this will make your dataset incompatible with lerobot and it only works for robots with simulators. Defaults to False.",
+    )
+    add_metadata: Optional[Dict[str, list]] = Field(
+        None,
+        description="Passing a dictionnary will store the value in each row of the recorded dataset. The key is the name of the column, and the value is a list. If set to None, no additional metadata is saved.",
+        examples=[{"bbox_position": [0.5, 1.0, 0.0, 0.5]}],
     )
 
 
@@ -1237,4 +1247,40 @@ class TeleopSettingsRequest(BaseModel):
         description="VR scaling factor for teleoperation control.",
         gt=0,
         examples=[1.0, 0.5, 2.0],
+    )
+
+
+class ChatRequest(BaseModel):
+    """
+    Control the robot with a natural language prompt.
+    """
+
+    chat_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Unique identifier for the chat session. If not provided, a new UUID will be generated.",
+    )
+    prompt: str = Field(
+        ...,
+        description="The task to be performed by the robot, described in natural language.",
+    )
+    images: Optional[List[str]] = Field(
+        None, description="base64 encoded images to be sent with the request. "
+    )
+    command_history: Optional[List[str]] = Field(
+        None, description="List of previous commands to provide context for the chat."
+    )
+
+
+class ChatResponse(BaseModel):
+    """
+    Response to the chat request.
+    """
+
+    command: Optional[str] = Field(
+        ...,
+        description="The command to be executed by the robot, generated from the prompt.",
+    )
+    endpoint: Optional[str] = Field(None, description="The endpoint to call.")
+    endpoint_params: Optional[Dict[str, Any]] = Field(
+        None, description="Parameters to pass to the endpoint."
     )

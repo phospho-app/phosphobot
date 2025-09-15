@@ -58,7 +58,10 @@ class Configuration(BaseModel):
     # Only simulation: Only use the simulation
     ONLY_SIMULATION: bool = False
     SIMULATE_CAMERAS: bool = False
+
     MAX_OPENCV_INDEX: int = 10
+    # Adjust based on maximum expected CAN interfaces
+    MAX_CAN_INTERFACES: int = 4
 
     # HF token
     HF_TOKEN_VALID: bool = False

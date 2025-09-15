@@ -1,18 +1,19 @@
+import asyncio
 import atexit
 import json
 import os
-import asyncio
 from abc import abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from fastapi import HTTPException
 import numpy as np
+from fastapi import HTTPException
 from loguru import logger
+from scipy.spatial.transform import Rotation as R  # type: ignore
+
 from phosphobot.configs import config as cfg
+from phosphobot.hardware import get_sim
 from phosphobot.models import BaseRobot, BaseRobotConfig, BaseRobotInfo, Temperature
 from phosphobot.models.lerobot_dataset import FeatureDetails
-from phosphobot.hardware import get_sim
-from scipy.spatial.transform import Rotation as R  # type: ignore
 from phosphobot.utils import (
     euler_from_quaternion,
     get_resources_path,
@@ -930,9 +931,7 @@ class BaseManipulator(BaseRobot):
         self,
         target_position: np.ndarray,  # cartesian np.array
         target_orientation_rad: Optional[np.ndarray],  # rad np.array
-        interpolate_trajectory: bool = False,
-        steps: int = 10,
-        **kwargs: Any,
+        **kwargs: Dict[str, Any],
     ) -> None:
         """
         Move the robot to the absolute position and orientation.
@@ -987,10 +986,7 @@ class BaseManipulator(BaseRobot):
         )
 
         self.is_moving = True
-        if not interpolate_trajectory:
-            self.set_motors_positions(goal_q_robot_rad)
-        else:
-            raise NotImplementedError("Interpolation not implemented yet")
+        self.set_motors_positions(goal_q_robot_rad)
         self.is_moving = False
 
         # reset gripping status when going to init position
@@ -1064,11 +1060,7 @@ class BaseManipulator(BaseRobot):
         self.SLEEP_POSITION = None
         self.config = None
 
-    def control_gripper(
-        self,
-        open_command: float,  # Should be between 0 and 1
-        **kwargs: Any,
-    ) -> None:
+    def control_gripper(self, open_command: float, **kwargs: Any) -> None:
         """
         Open or close the gripper until object is gripped.
         open_command: 0 to close, 1 to open
@@ -1136,10 +1128,16 @@ class BaseManipulator(BaseRobot):
             effector_position, effector_orientation_euler_rad = (
                 self.forward_kinematics()
             )
-            state = np.concatenate((effector_position, effector_orientation_euler_rad))
+            state = np.concatenate(
+                (
+                    effector_position,
+                    effector_orientation_euler_rad,
+                    [joints_position[-1]],
+                )
+            )
         else:
             # Skip forward kinematics and return nan values
-            state = np.full(6, np.nan)
+            state = np.full(7, np.nan)
 
         return state, joints_position
 

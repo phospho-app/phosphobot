@@ -1,11 +1,11 @@
 import asyncio
-from collections import deque
 import time
-import httpx
-import json_numpy  # type: ignore
+from collections import deque
 from typing import Any, Dict, List, Literal
 
 import cv2
+import httpx
+import json_numpy  # type: ignore
 import numpy as np
 from fastapi import HTTPException
 from huggingface_hub import HfApi
@@ -16,7 +16,7 @@ from phosphobot.am.base import (
     ActionModel,
     BaseTrainer,
     BaseTrainerConfig,
-    TrainingParamsPi0
+    TrainingParamsPi0,
 )
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
@@ -27,12 +27,14 @@ from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
 class InputFeature(BaseModel):
     """Individual input feature for the pi0 model"""
+
     type: Literal["STATE", "VISUAL"]
     shape: List[int]
 
 
 class InputFeatures(BaseModel):
     """Collection of input features for the pi0 model."""
+
     state_key: str
     video_keys: List[str] = []
     # Currently all supported robots have 6 joints (5 joints + 1 gripper).
@@ -45,7 +47,7 @@ class InputFeatures(BaseModel):
         Currently all supported robots have 6 joints.
         To be changed when this is no longer true.
         """
-        return self.features[self.state_key].shape[0] // self.action_size
+        return self.features[self.state_key].shape[0] // self.action_dim
 
     @model_validator(mode="before")
     def infer_keys(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -65,7 +67,7 @@ class InputFeatures(BaseModel):
             return {
                 "state_key": state_key,
                 "video_keys": video_keys,
-                "features": features
+                "features": features,
             }
         return values
 
@@ -203,6 +205,7 @@ def fetch_camera_images(
 
 class RetryError(Exception):
     """Custom exception to retry the inference call."""
+
     pass
 
 
@@ -440,10 +443,10 @@ class Pi0(ActionModel):
         robots: list[BaseManipulator],
         model_spawn_config: Pi0SpawnConfig,
         all_cameras: AllCameras,
+        prompt: str,
         fps: int = 30,
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
-        prompt: str | None = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",
         min_angle: float | None = None,
         max_angle: float | None = None,
@@ -551,7 +554,10 @@ class Pi0(ActionModel):
 
                 for robot_index in range(len(robots)):
                     robots[robot_index].write_joint_positions(
-                        angles=action_list[robot_index * action_dim: robot_index * action_dim + action_dim],
+                        angles=action_list[
+                            robot_index * action_dim : robot_index * action_dim
+                            + action_dim
+                        ],
                         unit=unit,
                         min_value=min_angle,
                         max_value=max_angle,
@@ -568,6 +574,7 @@ class Pi0(ActionModel):
 
 class Pi0TrainerConfig(BaseTrainerConfig):
     """Pi0 trainer configuration."""
+
     model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0", "custom"] = "pi0"
     training_params: TrainingParamsPi0 | None = None
 

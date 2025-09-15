@@ -1,11 +1,11 @@
 import asyncio
 from typing import Any, List, Literal, Optional, Tuple
+
 import httpx
 import numpy as np
-
-from phosphobot.hardware.base import BaseRobot
 from loguru import logger
 
+from phosphobot.hardware.base import BaseRobot
 from phosphobot.models import BaseRobotConfig, RobotConfigStatus
 
 
@@ -17,7 +17,9 @@ class RemotePhosphobot(BaseRobot):
     name = "phosphobot"
     _config: Optional[BaseRobotConfig] = None
 
-    def __init__(self, ip: str, port: int, robot_id: int, **kwargs):
+    def __init__(
+        self, ip: str, port: int, robot_id: int, **kwargs: dict[str, Any]
+    ) -> None:
         """
         Initialize connectio to phosphobot.
 
@@ -91,7 +93,7 @@ class RemotePhosphobot(BaseRobot):
             raise Exception(f"Disconnection failed: {e}")
 
     def get_observation(
-        self, source: Literal["sim", "robot"]
+        self, source: Literal["sim", "robot"], do_forward: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the observation of the robot.
@@ -399,7 +401,11 @@ class RemotePhosphobot(BaseRobot):
             params={"robot_id": self.robot_id},
         )
 
-    def read_joints_position(self, unit: str = "rad") -> np.ndarray:
+    def read_joints_position(
+        self,
+        unit: Literal["rad", "degrees", "motor_units"] = "rad",
+        source: Optional[Literal["sim", "robot"]] = None,
+    ) -> np.ndarray:
         """
         Read the current joint positions of the robot.
 
@@ -414,7 +420,7 @@ class RemotePhosphobot(BaseRobot):
 
         response = self.client.post(
             "/joints/read",
-            json={"unit": unit},
+            json={"unit": unit, "source": source},
             params={"robot_id": self.robot_id},
         )
         joints = response.json()

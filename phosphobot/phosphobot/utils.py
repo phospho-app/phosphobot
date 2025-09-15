@@ -15,7 +15,7 @@ import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, Tuple, Union, Optional
+from typing import Annotated, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
 import av
 import cv2
@@ -28,7 +28,6 @@ from fastapi import HTTPException
 from huggingface_hub import HfApi, login
 from loguru import logger
 from pydantic import BaseModel, BeforeValidator, PlainSerializer
-
 
 from phosphobot.types import VideoCodecs
 
@@ -79,13 +78,13 @@ def get_quaternion_from_euler(euler_angles: np.ndarray, degrees: bool) -> np.nda
 
 
 def print_numpy_array(
-    arr,
-    precision=2,
-    max_line_width=100,
-    suppress_small=True,
-    show_shape=True,
-    show_dtype=True,
-):
+    arr: np.ndarray,
+    precision: int = 2,
+    max_line_width: int = 100,
+    suppress_small: bool = True,
+    show_shape: bool = True,
+    show_dtype: bool = True,
+) -> None:
     """
     Customizable pretty-printer for NumPy arrays.
 
@@ -128,7 +127,9 @@ def print_numpy_array(
     np.set_printoptions()
 
 
-def cartesian_to_polar(x, y, z):
+def cartesian_to_polar(
+    x: np.ndarray, y: np.ndarray, z: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert cartesian coordinates to polar coordinates
     """
@@ -139,7 +140,9 @@ def cartesian_to_polar(x, y, z):
     return r, theta, z
 
 
-def polar_to_cartesian(r, theta, z):
+def polar_to_cartesian(
+    r: np.ndarray, theta: np.ndarray, z: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert polar coordinates to cartesian coordinates
     """
@@ -226,7 +229,7 @@ def login_to_hf(revalidate: bool = True) -> bool:
         return False
 
 
-def zip_folder(folder_path, zip_path):
+def zip_folder(folder_path: str, zip_path: str) -> None:
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(folder_path):
             for file in files:
@@ -365,7 +368,7 @@ def get_tokens() -> Tokens:
 class NumpyEncoder(json.JSONEncoder):
     """Custom encoder for numpy data types"""
 
-    def default(self, obj):
+    def default(self, obj: object) -> Any:
         logger.info(f"Encoding with NumpyEncoder object type({type(obj)}) {obj}")
         if isinstance(obj, np.ndarray):
             logger.debug(f"Encoding NumpyEncoder numpy array of shape {obj.shape}")
@@ -404,7 +407,7 @@ def nd_array_custom_before_validator(x: Any) -> np.ndarray:
         raise ValueError("Invalid type for numpy array")
 
 
-def nd_array_custom_serializer(x: np.ndarray):
+def nd_array_custom_serializer(x: np.ndarray) -> list:
     # custom serialization logic: convert to list
     return x.tolist()
 
@@ -468,12 +471,14 @@ def create_video_file(
     is_stereo = aspect_ratio >= 8 / 3
     logger.info(f"Stereo={is_stereo}, aspect_ratio={aspect_ratio:.2f}")
 
-    def open_container(path: str, size: Tuple[int, int]):
+    def open_container(
+        path: str, size: Tuple[int, int]
+    ) -> Tuple[av.container.output.OutputContainer, av.VideoStream]:  # type: ignore
         os.makedirs(os.path.dirname(path), exist_ok=True)
         container = av.open(path, mode="w")
 
         # pick encoder options based on codec
-        encoder_opts: dict[str, str] = {}
+        encoder_opts: Dict[str, str] = {}
         if codec_av in ("h264", "mpeg4", "hevc"):
             # CRF = quality (lower = better), preset = speed/efficiency trade-off
             encoder_opts = {"crf": "18", "preset": "slow"}
@@ -495,11 +500,11 @@ def create_video_file(
             encoder_opts = {"qscale": "2"}
         # else: leave encoder_opts empty for codecs that don’t support these flags
 
-        stream = container.add_stream(
+        stream: av.VideoStream = container.add_stream(  # type: ignore
             codec_av,
             rate=fps,
             options=encoder_opts or None,  # type: ignore
-        )  # type: ignore
+        )
         # Force a minimum bitrate for mpeg4 to avoid artifacts
         if codec_av == "mpeg4":
             # ~5 Mb/s
@@ -509,7 +514,12 @@ def create_video_file(
         stream.pix_fmt = "yuv420p"  # type: ignore
         return container, stream
 
-    def process_and_encode(frame: np.ndarray, stream, container, size: Tuple[int, int]):
+    def process_and_encode(
+        frame: np.ndarray,
+        stream: av.VideoStream,  # type: ignore
+        container: av.container.output.OutputContainer,
+        size: Tuple[int, int],
+    ) -> None:
         # Convert to uint8 RGB if needed
         if frame.dtype != np.uint8:
             frame = np.clip(frame, 0, 255).astype(np.uint8)
@@ -786,14 +796,14 @@ def get_hf_token() -> Optional[str]:
         return None
 
 
-def background_task_log_exceptions(func):
+def background_task_log_exceptions(func: Callable) -> Callable:
     """
     Decorator to log exceptions in background tasks (works for both sync/async functions).
     Otherwise, the exception is silently swallowed.
     """
 
     @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
+    async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except Exception as e:
@@ -801,7 +811,7 @@ def background_task_log_exceptions(func):
             raise
 
     @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs):
+    def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
         except Exception as e:
@@ -814,7 +824,7 @@ def background_task_log_exceptions(func):
         return sync_wrapper
 
 
-def get_local_network_ip():
+def get_local_network_ip() -> str:
     # Connect to a public IP to get the IP used by the current network interface
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -1003,3 +1013,17 @@ async def scan_network_devices(
         logger.warning(f"Fast scan failed: {e}. Falling back to slow scan...")
         ALLOWED_TO_RUN_SCAPY = False
         return await slow_arp_scan()
+
+
+def get_local_ip() -> str:
+    """
+    Get the local IP address of the server.
+    """
+    try:
+        # Create a temporary socket to get the local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))  # Doesn't actually send data
+            server_ip = s.getsockname()[0]
+    except Exception:
+        server_ip = "localhost"
+    return server_ip

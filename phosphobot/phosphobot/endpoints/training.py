@@ -9,21 +9,20 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from huggingface_hub import HfApi
 from loguru import logger
+from supabase_auth.types import Session as SupabaseSession
 
 from phosphobot.am.base import TrainingParamsGr00T, TrainingRequest
 from phosphobot.models import (
+    CancelTrainingRequest,
     CustomTrainingRequest,
     InfoModel,
     StartTrainingResponse,
-    CancelTrainingRequest,
     StatusResponse,
     SupabaseTrainingModel,
     TrainingsList,
 )
 from phosphobot.supabase import get_client, user_is_logged_in
 from phosphobot.utils import get_hf_token, get_home_app_path, get_tokens
-from supabase_auth.types import Session as SupabaseSession
-
 
 router = APIRouter(tags=["training"])
 

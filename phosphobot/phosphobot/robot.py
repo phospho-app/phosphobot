@@ -12,13 +12,13 @@ from serial.tools.list_ports_common import ListPortInfo
 from phosphobot.configs import config
 from phosphobot.hardware import (
     BaseRobot,
-    URDFLoader,
     KochHardware,
     LeKiwi,
     PiperHardware,
     RemotePhosphobot,
     SO100Hardware,
     UnitreeGo2,
+    URDFLoader,
     WX250SHardware,
     get_sim,
 )
@@ -78,7 +78,7 @@ class RobotConnectionManager:
         if config.ENABLE_CAN:
             # Look for CAN ports
             can_ports = []
-            for i in range(2):  # Adjust based on maximum expected CAN interfaces
+            for i in range(config.MAX_CAN_INTERFACES):
                 can_name = f"can{i}"
                 if is_can_plugged(can_name):
                     can_ports.append(can_name)

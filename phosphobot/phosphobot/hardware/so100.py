@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, Literal, Optional, List, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
 import numpy as np
 from loguru import logger
@@ -10,8 +10,8 @@ from phosphobot.configs import SimulationMode, config
 from phosphobot.control_signal import ControlSignal
 from phosphobot.hardware.base import BaseManipulator
 from phosphobot.hardware.motors.feetech import FeetechMotorsBus  # type: ignore
-from phosphobot.utils import get_resources_path
 from phosphobot.models import RobotConfigStatus
+from phosphobot.utils import get_resources_path
 
 
 class SO100Hardware(BaseManipulator):
@@ -322,7 +322,7 @@ class SO100Hardware(BaseManipulator):
             self.update_motor_errors()
             return None
 
-    def read_motor_voltage(self, servo_id: int, **kwargs) -> Optional[float]:
+    def read_motor_voltage(self, servo_id: int, **kwargs: Any) -> Optional[float]:
         """
         Read the voltage of a Feetech servo.
         """
@@ -379,7 +379,7 @@ class SO100Hardware(BaseManipulator):
             return None
 
     def write_group_motor_maximum_temperature(
-        self, maximum_temperature_target: List[int], **kwargs
+        self, maximum_temperature_target: List[int], **kwargs: Any
     ) -> None:
         """
         Write the maximum temperature of all motors of a robot.

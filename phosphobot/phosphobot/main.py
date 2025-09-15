@@ -1,4 +1,3 @@
-from asyncio import CancelledError
 from loguru import logger
 
 logger.info("Starting phosphobot...")
@@ -29,7 +28,7 @@ from phosphobot import __version__
 _splash_shown = False
 
 
-def print_phospho_splash():
+def print_phospho_splash() -> None:
     global _splash_shown
     if not _splash_shown:
         print(
@@ -55,7 +54,7 @@ from phosphobot.utils import fetch_latest_brew_version
 _version_check_started = False
 
 
-def fetch_latest_version():
+def fetch_latest_version() -> None:
     try:
         version = fetch_latest_brew_version(fail_silently=True)
         if version != "unknown" and (version != "v" + __version__):
@@ -85,8 +84,7 @@ import time
 from typing import Annotated
 
 import typer
-import uvicorn
-from phosphobot.configs import config
+
 from phosphobot.types import SimulationMode
 
 
@@ -99,24 +97,10 @@ def init_telemetry() -> None:
     init_sentry()
 
 
-def get_local_ip() -> str:
-    """
-    Get the local IP address of the server.
-    """
-    try:
-        # Create a temporary socket to get the local IP
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))  # Doesn't actually send data
-            server_ip = s.getsockname()[0]
-    except Exception:
-        server_ip = "localhost"
-    return server_ip
-
-
 cli = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     if value:
         print(f"phosphobot {__version__}")
         raise typer.Exit()
@@ -133,7 +117,7 @@ def main(
             callback=version_callback,
         ),
     ] = False,
-):
+) -> None:
     """
     phosphobot - A robotics teleoperation server.
     """
@@ -144,7 +128,7 @@ def main(
 def info(
     opencv: Annotated[bool, typer.Option(help="Show OpenCV information.")] = False,
     servos: Annotated[bool, typer.Option(help="Show servo information.")] = False,
-):
+) -> typer.Exit:
     """
     Show all serial ports (/dev/ttyUSB0) and camera information. Useful for debugging.
     """
@@ -178,14 +162,16 @@ def info(
         print(cv2.getBuildInformation())
 
     if servos:
-        from phosphobot.hardware.motors.feetech import dump_servo_states_to_file  # type: ignore
+        from phosphobot.hardware.motors.feetech import (  # type: ignore
+            dump_servo_states_to_file,
+        )
         from phosphobot.utils import get_home_app_path
 
         # Diagnose SO-100 servos
         for port in ports:
             if port.pid == 21971:
                 dump_servo_states_to_file(
-                    get_home_app_path() / f"servo_states_{port.device}.csv",
+                    str(get_home_app_path() / f"servo_states_{port.device}.csv"),
                     port.device,
                 )
 
@@ -204,7 +190,7 @@ def is_port_in_use(port: int, host: str) -> bool:
 
 
 @cli.command()
-def update():
+def update() -> None:
     """
     Display information on how to update the software.
     """
@@ -226,6 +212,7 @@ def update():
 
 @cli.command()
 def run(
+    chat: Annotated[bool, typer.Option(help="Run phosphobot in chat mode.")] = False,
     host: Annotated[str, typer.Option(help="Host to bind to.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port to bind to.")] = 80,
     simulation: Annotated[
@@ -257,6 +244,12 @@ def run(
             help="Enable the cameras. If False, no camera will be detected. Useful in case of conflicts.",
         ),
     ] = True,
+    max_can_interfaces: Annotated[
+        int,
+        typer.Option(
+            help="Maximum expected CAN interfaces. Default is 4.",
+        ),
+    ] = 4,
     max_opencv_index: Annotated[
         int,
         typer.Option(
@@ -287,76 +280,64 @@ def run(
         bool,
         typer.Option(help="Disable all telemetry (Crash and Usage)."),
     ] = True,
-):
+) -> None:
     """
     🧪 [green]Run the phosphobot dashboard and API server.[/green] Control your robot and record datasets.
     """
+    from phosphobot.app import start_server
 
-    config.SIM_MODE = simulation
-    config.ONLY_SIMULATION = only_simulation
-    config.SIMULATE_CAMERAS = simulate_cameras
-    config.ENABLE_REALSENSE = realsense
-    config.ENABLE_CAMERAS = cameras
-    config.PORT = port
-    config.PROFILE = profile
-    config.CRASH_TELEMETRY = crash_telemetry  # Enable crash telemetry by default
-    config.USAGE_TELEMETRY = usage_telemetry  # Enable usage telemetry by default
-    config.ENABLE_CAN = can
-    config.MAX_OPENCV_INDEX = max_opencv_index
-
-    if not telemetry:
-        config.CRASH_TELEMETRY = False
-        config.USAGE_TELEMETRY = False
-
-    # Start the FastAPI app using uvicorn with port retry logic
-    ports = [port]
-    if port == 80:
-        ports += list(range(8020, 8040))  # 8020-8039 inclusive
-
-    success = False
-    for current_port in ports:
-        if is_port_in_use(current_port, host):
-            logger.warning(f"Port {current_port} is unavailable. Trying next...")
-            continue
-
-        try:
-            # Update config with current port
-            config.PORT = current_port
-
-            uvicorn.run(
-                "phosphobot.app:app",
-                host=host,
-                port=current_port,
-                reload=reload,
-                timeout_graceful_shutdown=1,
-            )
-            success = True
-            break
-        except OSError as e:
-            if "address already in use" in str(e).lower():
-                logger.warning(f"Port conflict on {current_port}: {e}")
-                continue
-            logger.error(f"Critical server error: {e}")
-            raise typer.Exit(code=1)
-        except KeyboardInterrupt:
-            logger.debug("Server stopped by user.")
-            raise typer.Exit(code=0)
-        except CancelledError:
-            logger.debug("Server shutdown gracefully.")
-            raise typer.Exit(code=0)
-        # Log the full traceback for unexpected errors
-        # except Exception as e:
-        #     logger.error(f"Unexpected error: {e}")
-        #     raise typer.Exit(code=1)
-
-    if not success:
-        logger.warning(
-            "All ports failed. Try a custom port with:\n"
-            "phosphobot run --port 8000\n\n"
-            "Check used ports with:\n"
-            "sudo lsof -i :80 # Replace 80 with your port"
+    if not chat:
+        start_server(
+            host=host,
+            port=port,
+            reload=reload,
+            simulation=simulation,
+            only_simulation=only_simulation,
+            simulate_cameras=simulate_cameras,
+            realsense=realsense,
+            can=can,
+            cameras=cameras,
+            max_opencv_index=max_opencv_index,
+            max_can_interfaces=max_can_interfaces,
+            profile=profile,
+            crash_telemetry=crash_telemetry,
+            usage_telemetry=usage_telemetry,
+            telemetry=telemetry,
         )
-        raise typer.Exit(code=1)
+    else:
+        # Create a new thread with the server
+        import threading
+
+        # Start the server in a separate thread
+        thread = threading.Thread(
+            target=start_server,
+            args=(
+                host,
+                port,
+                reload,
+                simulation,
+                only_simulation,
+                simulate_cameras,
+                realsense,
+                can,
+                cameras,
+                max_opencv_index,
+                max_can_interfaces,
+                profile,
+                crash_telemetry,
+                usage_telemetry,
+                telemetry,
+                True,  # silent mode to avoid logging text
+            ),
+            daemon=True,  # Ensure the thread exits when the main program exits
+        )
+        thread.start()
+
+        # Launch in chat mode
+        from phosphobot.chat.app import AgentApp
+
+        app = AgentApp()
+        app.run()
 
 
 if __name__ == "__main__":

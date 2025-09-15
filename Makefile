@@ -12,6 +12,10 @@ prod:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
 	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
+# Chat agent run
+chat:
+	cd phosphobot && uv run --python 3.10 phosphobot run --chat --simulation=headless --no-crash-telemetry
+
 # Same as prod, but with the simulation GUI (useful when adding new robots to test)
 prod_gui:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
@@ -101,7 +105,10 @@ submodule:
 	git submodule update --init --recursive
 
 types: 
-	cd phosphobot && uv run mypy . --check-untyped-defs --ignore-missing-imports --follow-imports=silent
+	cd phosphobot && uv run mypy . --check-untyped-defs --disallow-untyped-defs --ignore-missing-imports --follow-imports=silent
+
+sort:
+	cd phosphobot && uv run ruff check --select I --fix .
 
 
 .PHONY: all dev prod prod_gui stop stop_hard dataset_annotate dataset_convert dataset_push robot_watch test_server build clean_build build_pyinstaller run_bin run_bin_test info_bin

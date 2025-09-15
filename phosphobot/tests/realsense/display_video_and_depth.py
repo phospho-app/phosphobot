@@ -5,9 +5,9 @@
 ##      Open CV and Numpy integration        ##
 ###############################################
 
-import pyrealsense2 as rs
-import numpy as np
 import cv2
+import numpy as np
+import pyrealsense2 as rs
 
 # Configure depth and color streams
 pipeline = rs.pipeline()

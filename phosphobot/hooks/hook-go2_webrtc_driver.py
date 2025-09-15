@@ -1,5 +1,6 @@
-from PyInstaller.utils.hooks import collect_data_files, get_package_paths
 import os
+
+from PyInstaller.utils.hooks import collect_data_files, get_package_paths
 
 # We need to ensure this is the correct Python package name that PyInstaller can find.
 _package_name = "go2_webrtc_driver"

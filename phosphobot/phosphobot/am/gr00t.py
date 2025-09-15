@@ -8,12 +8,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Tuple, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import cv2
-import zmq
 import numpy as np
 import pandas as pd
+import zmq
 from fastapi import HTTPException
 from huggingface_hub import HfApi, snapshot_download
 from loguru import logger
