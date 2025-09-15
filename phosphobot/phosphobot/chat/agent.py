@@ -51,7 +51,7 @@ class PhosphobotClient:
             self._write_to_log(message, who)
 
     async def _safe_request(
-        self, method: str, url: str, **kwargs
+        self, method: str, url: str, **kwargs: Any
     ) -> Optional[httpx.Response]:
         """Wrapper around httpx requests with error handling + logging."""
         try:
