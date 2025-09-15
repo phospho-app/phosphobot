@@ -432,7 +432,7 @@ class AgentApp(App):
             )
             return
 
-        self.current_agent.set_manual_command(command)
+        self.current_agent.next_command = command
         screen._write_to_log(f"Keyboard command: {command}", "system")
 
 

@@ -147,29 +147,31 @@ class RoboticAgent:
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
         task_description: str = "Pick up white foam",
-        keyboard_control: bool = False,
     ):
         self.resize = images_sizes
-        self.phosphobot_client = PhosphobotClient()
         self.task_description = task_description
-        self.keyboard_control = keyboard_control
-        self.manual_command: Optional[str] = None
+
+        self.phosphobot_client = PhosphobotClient()
+        self.keyboard_control = False
+        self._next_command: Optional[str] = None
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
         self.command_history: List[str] = []
 
-    def set_manual_command(self, command: str) -> None:
-        """
-        Set a manual command for the robot.
-        """
-        self.manual_command = command
-
-    def get_manual_command(self) -> Optional[str]:
+    @property
+    def next_command(self) -> Optional[str]:
         """
         Get the current manual command and clear it.
         """
-        command = self.manual_command
-        self.manual_command = None
+        command = self._next_command
+        self._next_command = None
         return command
+
+    @next_command.setter
+    def next_command(self, command: str) -> None:
+        """
+        Set a manual command for the robot.
+        """
+        self._next_command = command
 
     def toggle_control_mode(self) -> str:
         """
@@ -267,7 +269,7 @@ class RoboticAgent:
 
             if self.keyboard_control:
                 # MANUAL MODE: Wait for keyboard commands without consuming steps
-                manual_command = self.get_manual_command()
+                manual_command = self.next_command
                 if manual_command:
                     step_count += 1
                     yield (
