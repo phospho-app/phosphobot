@@ -375,12 +375,16 @@ class AgentApp(App):
         if m:
             name = m.group(1)
             if name:
-                # call the action with the provided name
-                self.action_change_dataset_name(name)
-            else:
-                # no name provided: instruct the user to type /dataset <name>
+                self.current_agent.dataset_name = name.strip()
                 screen._write_to_log(
-                    "Usage: /dataset <name> — type the command and the dataset name in the input field.",
+                    f"Dataset name set to: [bold green]{self.current_agent.dataset_name}[/bold green]",
+                    "system",
+                )
+            else:
+                # no name provided: returns the current dataset name and explain usage
+                screen._write_to_log(
+                    f"Current dataset name: [bold green]{self.current_agent.dataset_name}[/bold green]. "
+                    "To change it, use: /dataset <name> (e.g. /dataset my_dataset)",
                     "system",
                 )
             return None
@@ -527,7 +531,6 @@ class AgentApp(App):
             self.action_new_chat,
             self.action_stop_agent,
             self.action_toggle_control_mode,
-            self.action_change_dataset_name,
         ]:
             command_name = function.__name__.replace("action_", "")
             command_description = function.__doc__ or "No description available."
@@ -566,25 +569,6 @@ class AgentApp(App):
             self.action_stop_agent()
         screen.query_one(RichLog).clear()
         screen._write_welcome_message()
-
-    def action_change_dataset_name(self, name: Optional[str] = None) -> None:
-        """Change the dataset name in which the agent will save its data."""
-        screen = self._get_main_screen()
-        if not screen:
-            return
-
-        if not name:
-            screen._write_to_log("No dataset name provided.", "system")
-            return
-
-        # set the attribute (RoboticAgent may store it differently)
-        try:
-            setattr(self.current_agent, "dataset_name", name)
-        except Exception:
-            # best-effort
-            pass
-
-        screen._write_to_log(f"Dataset name set to: [bold]{name}[/]", "system")
 
     def action_toggle_control_mode(self) -> None:
         """Toggle between AI control and keyboard control mode."""

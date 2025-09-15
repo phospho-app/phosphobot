@@ -127,12 +127,15 @@ class PhosphobotClient:
         )
         response.raise_for_status()
 
-    async def start_recording(self) -> None:
+    async def start_recording(self, dataset_name: str) -> None:
         """
         Start recording a dataset with the specified name.
         """
         response = await self.client.post(
-            "/recording/start", json={"dataset_name": "chat_dataset"}
+            "/recording/start",
+            json={
+                "dataset_name": dataset_name,
+            },
         )
         response.raise_for_status()
 
@@ -152,6 +155,8 @@ class RoboticAgent:
         self.resize = images_sizes
 
         self.task_description: Optional[str] = None
+        self.dataset_name: str = "chat_dataset"
+
         self.phosphobot_client = PhosphobotClient()
         self.control_mode: Literal["ai", "keyboard"] = "ai"
         self.action_queue: deque = deque(maxlen=100)
@@ -390,7 +395,7 @@ class RoboticAgent:
 
         # Start recording
         yield "start_step", {"desc": "🔴 Starting recording."}
-        await self.phosphobot_client.start_recording()
+        await self.phosphobot_client.start_recording(dataset_name=self.dataset_name)
 
         step_count = 0
         max_steps = 50
