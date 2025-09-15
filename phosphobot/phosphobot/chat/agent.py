@@ -147,12 +147,12 @@ class RoboticAgent:
         self,
         images_sizes: Optional[Tuple[int, int]] = (256, 256),
         task_description: str = "Pick up white foam",
-        manual_control: bool = False,
+        keyboard_control: bool = False,
     ):
         self.resize = images_sizes
         self.phosphobot_client = PhosphobotClient()
         self.task_description = task_description
-        self.manual_control = manual_control
+        self.keyboard_control = keyboard_control
         self.manual_command: Optional[str] = None
         self.chat_history: List[Union[ChatRequest, ChatResponse]] = []
         self.command_history: List[str] = []
@@ -176,8 +176,8 @@ class RoboticAgent:
         Toggle between AI and manual control modes.
         Returns the new mode.
         """
-        self.manual_control = not self.manual_control
-        mode = "manual" if self.manual_control else "AI"
+        self.keyboard_control = not self.keyboard_control
+        mode = "manual" if self.keyboard_control else "AI"
         logger.info(f"Switched to {mode} control mode")
         return mode
 
@@ -250,7 +250,7 @@ class RoboticAgent:
         yield "step_done", {"success": True}
 
         # Manual control setup
-        if self.manual_control:
+        if self.keyboard_control:
             yield "start_step", {"desc": "Manual control mode enabled."}
             yield "step_done", {"success": True}
 
@@ -263,10 +263,10 @@ class RoboticAgent:
         chat_logged = False
 
         while step_count < max_steps:
-            current_mode = "manual" if self.manual_control else "AI"
+            current_mode = "manual" if self.keyboard_control else "AI"
 
-            if self.manual_control:
-                # MANUAL MODE: Wait for manual commands without consuming steps
+            if self.keyboard_control:
+                # MANUAL MODE: Wait for keyboard commands without consuming steps
                 manual_command = self.get_manual_command()
                 if manual_command:
                     step_count += 1
@@ -336,5 +336,5 @@ class RoboticAgent:
         await self.phosphobot_client.stop_recording()
 
         yield "step_done", {"success": True}
-        control_mode = "manual" if self.manual_control else "AI"
+        control_mode = "keyboard" if self.keyboard_control else "AI"
         yield "log", {"text": f"Robotic agent run completed in {control_mode} mode."}

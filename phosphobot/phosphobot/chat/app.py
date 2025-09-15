@@ -56,35 +56,35 @@ class AgentScreen(Screen):
         yield Footer()
 
     def on_key(self, event: Key) -> None:
-        """Handle key presses at screen level to bypass input focus for manual control."""
+        """Handle key presses at screen level to bypass input focus for keyboard control."""
         app = self.app
         if not isinstance(app, AgentApp) or not app.current_agent:
             return
 
-        # Manual control keys should work regardless of focus
-        if app.current_agent.manual_control:
+        # Keyboard control keys should work regardless of focus
+        if app.current_agent.keyboard_control:
             # Movement keys
             if event.key == "up":
-                app.action_manual_forward()
+                app.action_keyboard_forward()
                 event.prevent_default()
             elif event.key == "down":
-                app.action_manual_backward()
+                app.action_keyboard_backward()
                 event.prevent_default()
             elif event.key == "left":
-                app.action_manual_left()
+                app.action_keyboard_left()
                 event.prevent_default()
             elif event.key == "right":
-                app.action_manual_right()
+                app.action_keyboard_right()
                 event.prevent_default()
             elif event.key == "d":
-                app.action_manual_up()
+                app.action_keyboard_up()
                 event.prevent_default()
             elif event.key == "c":
-                app.action_manual_down()
+                app.action_keyboard_down()
                 event.prevent_default()
             # Gripper toggle
             elif event.key == "space":
-                app.action_gripper_toggle()
+                app.action_keyboard_gripper()
                 event.prevent_default()
 
         # Toggle key always works
@@ -98,9 +98,9 @@ class AgentScreen(Screen):
 
 {ascii_test_tube()}
 
-[grey46]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
+[dim]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
 
-💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/grey46]
+💡 Tip: Press Ctrl+T for keyboard control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/dim]
 """,
             "system",
         )
@@ -118,17 +118,17 @@ class AgentScreen(Screen):
         input_widget = self.query_one(Input)
         app = self.app
 
-        # Check if we're in manual control mode
+        # Check if we're in keyboard control mode
         manual_mode = (
             isinstance(app, AgentApp)
             and app.current_agent
-            and app.current_agent.manual_control
+            and app.current_agent.keyboard_control
         )
 
         if manual_mode:
-            self.app.sub_title = "Manual Control Active - See command layout below"
+            self.app.sub_title = "Keyboard Control Active - See command layout below"
             input_widget.disabled = True
-            input_widget.placeholder = "Manual control active - keys control robot"
+            input_widget.placeholder = "Keyboard control active - keys control robot"
             # Show command layout
             self._show_manual_controls()
             # Remove focus from input so keys work
@@ -157,9 +157,9 @@ class AgentScreen(Screen):
         log.write(Text(prefix, style=style) + Text.from_markup(content))
 
     def _show_manual_controls(self) -> None:
-        """Display the manual control layout."""
+        """Display the keyboard control layout."""
         controls_text = """
-[bold green]🎮 Manual Control Commands:[/bold green]
+[bold green]🎮 Keyboard Control Commands:[/bold green]
 
 Movement:
   ↑ ↓ ← →  Move Forward/Back/Left/Right
@@ -169,7 +169,7 @@ Gripper:
   Space    Toggle Open/Close
 
 Mode:
-  Ctrl+T   Toggle AI/Manual control  
+  Ctrl+T   Toggle AI/Keyboard control  
   Ctrl+S   Stop Agent
 
 [dim]Press keys to control the robot immediately[/dim]
@@ -270,7 +270,7 @@ class AgentApp(App):
             return None
         screen._write_to_log(prompt, "user")
         agent = RoboticAgent(task_description=prompt)
-        self.current_agent = agent  # Store reference for manual control
+        self.current_agent = agent  # Store reference for keyboard control
 
         if prompt.strip() == "/init":
             screen._write_to_log("Moving robot to initial position", "system")
@@ -322,23 +322,26 @@ class AgentApp(App):
             log.write("")
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
-        yield SystemCommand(
-            "New chat",
-            "Start a new chat session.",
+        """
+        Generate system commands for the command palette (Ctrl+P menu).
+        """
+        for function in [
             self.action_new_chat,
-        )
-        yield SystemCommand(
-            "Stop Agent", "Stop the currently running agent.", self.action_stop_agent
-        )
-        yield SystemCommand(
-            "Toggle Control Mode",
-            "Switch between AI and manual control.",
+            self.action_stop_agent,
             self.action_toggle_control_mode,
-        )
+        ]:
+            command_name = function.__name__.replace("action_", "")
+            command_description = function.__doc__ or "No description available."
+            yield SystemCommand(
+                command_name.replace("_", " ").title(),
+                command_description,
+                function,
+            )
+
         yield from super().get_system_commands(screen)
 
     def action_stop_agent(self) -> None:
-        """Stops the agent task. Called by binding or command palette."""
+        """Stop the currently running agent."""
         screen = self._get_main_screen()
         if not screen:
             return
@@ -347,10 +350,10 @@ class AgentApp(App):
             self.worker.cancel()
             screen._write_to_log("Interrupt requested. Stopping agent...", "system")
             # If we were in manual mode, switch back to AI mode and update UI
-            if self.current_agent and self.current_agent.manual_control:
-                self.current_agent.manual_control = False
+            if self.current_agent and self.current_agent.keyboard_control:
+                self.current_agent.keyboard_control = False
                 screen._write_to_log(
-                    "Manual control disabled - agent stopped.", "system"
+                    "Keyboard control disabled - agent stopped.", "system"
                 )
                 # Update UI to show normal state
                 screen.set_running_state(False)
@@ -358,7 +361,7 @@ class AgentApp(App):
             screen._write_to_log("No agent is currently running.", "system")
 
     def action_new_chat(self) -> None:
-        """Clears the log. Called by command palette."""
+        """Start a new chat session by clearing the log and stopping any running agent."""
         screen = self._get_main_screen()
         if not screen:
             return
@@ -368,8 +371,12 @@ class AgentApp(App):
         screen.query_one(RichLog).clear()
         screen._write_welcome_message()
 
+    def action_change_dataset_name(self) -> None:
+        """The dataset name where agent control sessions are stored."""
+        pass
+
     def action_toggle_control_mode(self) -> None:
-        """Toggle between AI and manual control mode."""
+        """Toggle between AI control and keyboard control mode."""
         screen = self._get_main_screen()
         if not screen or not self.current_agent:
             screen._write_to_log(
@@ -383,31 +390,31 @@ class AgentApp(App):
         # Update UI to reflect new mode
         screen.set_running_state(self.is_agent_running)
 
-    def action_manual_forward(self) -> None:
+    def action_keyboard_forward(self) -> None:
         """Send manual forward command."""
         self._send_manual_command("move_forward")
 
-    def action_manual_backward(self) -> None:
+    def action_keyboard_backward(self) -> None:
         """Send manual backward command."""
         self._send_manual_command("move_backward")
 
-    def action_manual_left(self) -> None:
+    def action_keyboard_left(self) -> None:
         """Send manual left command."""
         self._send_manual_command("move_left")
 
-    def action_manual_right(self) -> None:
+    def action_keyboard_right(self) -> None:
         """Send manual right command."""
         self._send_manual_command("move_right")
 
-    def action_manual_up(self) -> None:
+    def action_keyboard_up(self) -> None:
         """Send manual up command."""
         self._send_manual_command("move_up")
 
-    def action_manual_down(self) -> None:
+    def action_keyboard_down(self) -> None:
         """Send manual down command."""
         self._send_manual_command("move_down")
 
-    def action_gripper_toggle(self) -> None:
+    def action_keyboard_gripper(self) -> None:
         """Toggle gripper between open and closed."""
         if self.gripper_is_open:
             self._send_manual_command("close_gripper")
@@ -422,9 +429,9 @@ class AgentApp(App):
         if not screen or not self.current_agent:
             return
 
-        if not self.current_agent.manual_control:
+        if not self.current_agent.keyboard_control:
             screen._write_to_log(
-                "Manual control not active. Press 'ctrl+T' to toggle.", "system"
+                "Keyboard control not active. Press 'ctrl+T' to toggle.", "system"
             )
             return
 
