@@ -22,10 +22,24 @@ if os.getenv("MODAL_ENVIRONMENT") == "production":
     )
 
 phosphobot_dir = (
-    Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
+    Path(__file__).parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
 pi0_image = (
     modal.Image.from_dockerfile("Dockerfile")
+    .uv_pip_install(
+        "sentry-sdk",
+        "loguru",
+        "supabase",
+        "huggingface_hub[hf_transfer]",
+        "hf_xet",
+        "httpx",
+        "fastparquet",
+        "opencv-python-headless",
+        "json-numpy",
+        "fastapi",
+        "uvicorn",
+        "pytest",
+    )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
