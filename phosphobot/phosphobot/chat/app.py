@@ -92,30 +92,25 @@ class AgentScreen(Screen):
             app.action_toggle_control_mode()
             event.prevent_default()
 
-    def on_mount(self) -> None:
-        """Focus the input when the screen is mounted."""
-
-        # self._write_to_log(
-        #     "🧪 Welcome to phosphobot chat!\n\n"
-        #     + f"Access the dashboard here: http://{get_local_ip()}:{config.PORT}\n"
-        #     + "\nEnter a prompt in the box below or press Ctrl+P for commands.\n"
-        #     + "💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!",
-        #     "system",
-        # )
+    def _write_welcome_message(self) -> None:
         self._write_to_log(
             f"""🧪 Welcome to phosphobot chat!
 
 {ascii_test_tube()}
 
-Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
+[grey46]Access the phosphobot dashboard here: http://{get_local_ip()}:{config.PORT}
 
-Enter a prompt in the box below or press Ctrl+P for commands.
-
-💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent!
+💡 Tip: Press Ctrl+T to take manual control, Ctrl+S to stop the agent, and Ctrl+P for commands.[/grey46]
 """,
             "system",
         )
+        self._write_to_log("Type a prompt and press Enter to start.", "agent")
 
+    def on_mount(self) -> None:
+        """
+        Display welcome message and initial instructions when the screen is mounted.
+        """
+        self._write_welcome_message()
         self.query_one(Input).focus()
 
     def set_running_state(self, running: bool) -> None:
@@ -329,8 +324,8 @@ class AgentApp(App):
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         yield SystemCommand(
             "New chat",
-            "Clear the log output and start a new chat",
-            self.action_clear_log,
+            "Start a new chat session.",
+            self.action_new_chat,
         )
         yield SystemCommand(
             "Stop Agent", "Stop the currently running agent.", self.action_stop_agent
@@ -362,14 +357,16 @@ class AgentApp(App):
         else:
             screen._write_to_log("No agent is currently running.", "system")
 
-    def action_clear_log(self) -> None:
+    def action_new_chat(self) -> None:
         """Clears the log. Called by command palette."""
         screen = self._get_main_screen()
         if not screen:
             return
 
+        if self.is_agent_running:
+            self.action_stop_agent()
         screen.query_one(RichLog).clear()
-        screen._write_to_log("Log cleared.", "system")
+        screen._write_welcome_message()
 
     def action_toggle_control_mode(self) -> None:
         """Toggle between AI and manual control mode."""
