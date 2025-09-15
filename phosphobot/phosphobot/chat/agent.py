@@ -393,7 +393,6 @@ class RoboticAgent:
             action_processed = await self.process_action_queue()
 
             if action_processed is True:
-                yield "step_done", {"success": True}
                 continue  # Skip to the next iteration if an action was processed
 
             # Queue is empty: Add a new action based on the current mode
