@@ -351,11 +351,14 @@ class AgentApp(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self.current_agent = RoboticAgent(
-            write_to_log=self._get_main_screen()._write_to_log
-            if self._get_main_screen()
-            else None
-        )
+
+        self.current_agent = RoboticAgent(write_to_log=self._write_to_log)
+
+    def _write_to_log(self, message: str, who: str = "agent") -> None:
+        """Internal logging helper to write messages to the main screen's log."""
+        screen = self._get_main_screen()
+        if screen:
+            screen._write_to_log(message, who)
 
     def _handle_prompt(self, prompt: str, screen: AgentScreen) -> None:
         """
