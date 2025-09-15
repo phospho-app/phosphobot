@@ -532,18 +532,6 @@ class AgentApp(App):
             "Quit the application as soon as possible",
             self.action_quit,
         )
-        if screen.query("HelpPanel"):
-            yield SystemCommand(
-                "Hide keys and help panel",
-                "Hide the keys and widget help panel",
-                self.action_hide_help_panel,
-            )
-        else:
-            yield SystemCommand(
-                "Show keys and help panel",
-                "Show help for the focused widget and a summary of available keys",
-                self.action_show_help_panel,
-            )
 
     def action_stop_agent(self) -> None:
         """Stop the currently running agent."""
