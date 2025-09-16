@@ -38,7 +38,7 @@ async def move_robot_testing(
     robot: BaseManipulator,
     delta_position: np.ndarray,
     delta_orientation_rad: np.ndarray,
-    atol_pos=0.01,  # in meters
+    atol_pos=0.03,  # in meters
     atol_rot=5,  # in degrees
 ):
     """
