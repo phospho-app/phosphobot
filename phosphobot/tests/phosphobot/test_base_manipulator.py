@@ -8,6 +8,7 @@ run uv pytest tests/test_base.py
 
 import os
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -64,7 +65,8 @@ async def test_inverse_kinematics(robot: BaseManipulator):
 
     # Move to the initial position
     await robot.move_to_initial_position()
-    robot.sim.step()
+    robot.sim.step(steps=600)
+    time.sleep(0.1)  # Allow some time for the simulation to update
 
     position = robot.initial_position
     orientation = robot.initial_orientation_rad
