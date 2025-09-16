@@ -344,6 +344,7 @@ class Pi0(ActionModel):
         )
 
         return Pi0SpawnConfig(
+            type=hf_model_config.type,
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,
@@ -403,6 +404,7 @@ class Pi0(ActionModel):
             )
 
         return Pi0SpawnConfig(
+            type=hf_model_config.type,
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,
