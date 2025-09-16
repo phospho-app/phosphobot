@@ -344,7 +344,7 @@ class Pi0(ActionModel):
         )
 
         return Pi0SpawnConfig(
-            type=hf_model_config.type,
+            type="pi0",  # todo: support pi0_fast and pi0.5 based on hf_model_config
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,
@@ -404,7 +404,7 @@ class Pi0(ActionModel):
             )
 
         return Pi0SpawnConfig(
-            type=hf_model_config.type,
+            type="pi0",  # todo: support pi0_fast and pi0.5 based on hf_model_config
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,

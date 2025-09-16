@@ -24,7 +24,10 @@ class PyBulletSimulation:
     A comprehensive wrapper class for PyBullet simulation environment.
     """
 
-    def __init__(self, sim_mode: SimulationMode = SimulationMode.headless) -> None:
+    def __init__(
+        self,
+        sim_mode: SimulationMode = SimulationMode.headless,
+    ) -> None:
         """
         Initialize the PyBullet simulation environment.
 
@@ -34,7 +37,14 @@ class PyBulletSimulation:
         self.sim_mode = sim_mode
         self.connected = False
         self.robots: dict = {}  # Store loaded robots
+        self._running = False
+        self._step_thread: Optional[threading.Thread] = None
+
+        self._pending_steps = 0
+        self._lock = threading.Lock()
+
         self.init_simulation()
+        self.start_stepping()
 
     def init_simulation(self) -> None:
         """
@@ -43,6 +53,7 @@ class PyBulletSimulation:
         if self.sim_mode == SimulationMode.headless:
             p.connect(p.DIRECT)
             p.setGravity(0, 0, -9.81)
+            p.setTimeStep(1.0 / 10)  # 10 Hz simulation
             self.connected = True
             logger.debug("Simulation: headless mode enabled")
 
@@ -104,10 +115,60 @@ class PyBulletSimulation:
         except Exception as e:
             logger.debug(f"Failed to set additional search path for pybullet_data: {e}")
 
+    def start_stepping(self) -> None:
+        if self._running:
+            logger.debug("Simulation stepping already running")
+            return
+
+        if not self.connected or not p.isConnected():
+            logger.warning("Simulation is not connected, cannot start stepping")
+            return
+
+        self._running = True
+
+        def _loop() -> None:
+            while self._running and self.connected and p.isConnected():
+                steps_to_do = 0
+                with self._lock:
+                    if self._pending_steps > 0:
+                        steps_to_do = self._pending_steps
+                        self._pending_steps = 0
+
+                if steps_to_do > 0:
+                    for _ in range(steps_to_do):
+                        p.stepSimulation()
+                else:
+                    time.sleep(0.01)  # avoid busy loop
+
+        self._step_thread = threading.Thread(target=_loop, daemon=True)
+        self._step_thread.start()
+        logger.info("Started background stepping thread with counter")
+
+    def stop_stepping(self) -> None:
+        if not self._running:
+            return
+        self._running = False
+        if self._step_thread is not None:
+            self._step_thread.join(timeout=1)
+            self._step_thread = None
+        logger.info("Stopped background stepping thread")
+
+    def step(self, steps: int = 60) -> None:
+        """
+        Increment the pending step counter (non-blocking).
+        """
+        if not self.connected or not p.isConnected():
+            logger.warning("Simulation is not connected, cannot enqueue step")
+            return
+
+        with self._lock:
+            self._pending_steps += steps
+
     def stop(self) -> None:
         """
         Cleanup the simulation environment.
         """
+        self.stop_stepping()
         if self.connected and p.isConnected():
             p.disconnect()
             self.connected = False
@@ -141,20 +202,6 @@ class PyBulletSimulation:
         p.resetSimulation()
         self.robots.clear()
         logger.info("Simulation reset")
-
-    def step(self, steps: int = 960) -> None:
-        """
-        Step the simulation environment.
-
-        Args:
-            steps (int): Number of simulation steps to execute
-        """
-        if not self.connected or not p.isConnected():
-            logger.warning("Simulation is not connected, cannot step")
-            return
-
-        for _ in range(steps):
-            p.stepSimulation()
 
     def set_joint_state(
         self, robot_id: int, joint_id: int, joint_position: float

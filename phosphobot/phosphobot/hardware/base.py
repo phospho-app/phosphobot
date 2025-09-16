@@ -1141,25 +1141,6 @@ class BaseManipulator(BaseRobot):
 
         return state, joints_position
 
-    def mimick_simu_to_robot(self) -> None:
-        """
-        Update simulation base on leader robot reading of joint position.
-        """
-        joints_position = self.read_joints_position(unit="rad")
-        gripper_command = self.read_gripper_command()
-
-        # Update simulation
-        # this take into account the leader that has less joints
-        logger.debug(f"Moving to position: {joints_position}")
-        self.sim.set_joints_states(
-            robot_id=self.p_robot_id,
-            joint_indices=self.actuated_joints,
-            target_positions=joints_position.tolist(),
-        )
-        # Update the simulation
-        self.sim.step()
-        self.control_gripper(gripper_command)
-
     def get_info_for_dataset(self) -> BaseRobotInfo:
         """
         Get information about a robot.
