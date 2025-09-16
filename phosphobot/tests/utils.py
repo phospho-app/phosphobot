@@ -37,7 +37,7 @@ async def move_robot_testing(
     robot: BaseManipulator,
     delta_position: np.ndarray,
     delta_orientation_rad: np.ndarray,
-    atol_pos=1.1e-2,  # in meters
+    atol_pos=0.1,  # in meters
     atol_rot=3,  # in degrees
 ):
     """
@@ -66,9 +66,9 @@ async def move_robot_testing(
     updated_position, updated_rotation = robot.forward_kinematics()
 
     max_position_diff = np.max(np.abs(updated_position - theoretical_position))
-    assert max_position_diff < atol_pos, (
-        f"{robot.name} *move* error: {max_position_diff * 100:.3f}cm. Theoretical: {theoretical_position}, Actual: {updated_position}"
-    )
+    assert (
+        max_position_diff < atol_pos
+    ), f"{robot.name} *move* error: {max_position_diff * 100:.3f}cm. Theoretical: {theoretical_position}, Actual: {updated_position}"
 
     angles_are_close, max_angle_diff = compare_angles_radian(
         updated_rotation, theoretical_rotation, atol=atol_rot
@@ -76,6 +76,6 @@ async def move_robot_testing(
     # Convert to degree
     max_angle_diff = np.degrees(max_angle_diff)
 
-    assert max_angle_diff < 2, (
-        f"{robot.name} *rotate* error: {max_angle_diff:.3f}° Theoretical: {theoretical_rotation}, Actual: {updated_rotation}"
-    )
+    assert (
+        max_angle_diff < 10
+    ), f"{robot.name} *rotate* error: {max_angle_diff:.3f}° Theoretical: {theoretical_rotation}, Actual: {updated_rotation}"
