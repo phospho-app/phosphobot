@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pytest
 from phosphobot.hardware import get_sim
@@ -37,8 +38,8 @@ async def move_robot_testing(
     robot: BaseManipulator,
     delta_position: np.ndarray,
     delta_orientation_rad: np.ndarray,
-    atol_pos=0.1,  # in meters
-    atol_rot=3,  # in degrees
+    atol_pos=0.01,  # in meters
+    atol_rot=5,  # in degrees
 ):
     """
     Utils function used to test the movement of a robot given a delta position and orientation.
@@ -61,7 +62,8 @@ async def move_robot_testing(
         target_orientation_rad=theoretical_rotation,
     )
 
-    robot.sim.step()
+    robot.sim.step(steps=600)
+    time.sleep(0.1)  # Allow some time for the simulation to update
 
     updated_position, updated_rotation = robot.forward_kinematics()
 
@@ -77,5 +79,5 @@ async def move_robot_testing(
     max_angle_diff = np.degrees(max_angle_diff)
 
     assert (
-        max_angle_diff < 10
+        max_angle_diff < atol_rot
     ), f"{robot.name} *rotate* error: {max_angle_diff:.3f}° Theoretical: {theoretical_rotation}, Actual: {updated_rotation}"

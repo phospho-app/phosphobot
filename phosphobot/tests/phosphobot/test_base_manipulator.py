@@ -147,8 +147,6 @@ async def test_move_robot_right(robot: BaseManipulator):
         robot,
         np.array([0, -0.1, 0]),
         np.deg2rad([0, 0, -30]),
-        atol_pos=4e-2,
-        atol_rot=5,
     )
 
 
