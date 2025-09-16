@@ -113,5 +113,8 @@ types:
 sort:
 	cd phosphobot && uv run ruff check --select I --fix .
 
+tests:
+	cd phosphobot && uv run pytest tests/phosphobot/ -n 5
+
 
 .PHONY: all dev prod prod_gui stop stop_hard dataset_annotate dataset_convert dataset_push robot_watch test_server build clean_build build_pyinstaller run_bin run_bin_test info_bin

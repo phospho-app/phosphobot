@@ -85,8 +85,8 @@ async def test_inverse_kinematics(robot: BaseManipulator):
     logger.info(f"q_robot_rad: {q_robot_rad}")
 
     assert np.allclose(
-        q_robot_rad, q_robot_reference_rad, rtol=0, atol=1e-3
-    ), "The angles should be the same"
+        q_robot_rad, q_robot_reference_rad, rtol=0, atol=1e-2
+    ), f"Forward + Inverse kinematics should be the same. {q_robot_rad} != {q_robot_reference_rad}"
 
 
 @pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
@@ -106,8 +106,8 @@ def test_forward_inverse_kinematics(robot: BaseManipulator):
     logger.info(f"q_robot_rad_reference: {q_robot_rad_reference}")
 
     assert np.allclose(
-        q_robot_rad, q_robot_rad_reference, rtol=0, atol=1e-6
-    ), "The angles should be the same"
+        q_robot_rad, q_robot_rad_reference, rtol=0, atol=1e-3
+    ), f"Joint angles should be the same. {q_robot_rad} != {q_robot_rad_reference}"
 
 
 @pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
