@@ -48,7 +48,8 @@ async def move_robot_testing(
     robot.set_simulation_positions(np.zeros(6))
 
     # This steps the simulation to update the robot's position
-    robot.sim.step()
+    robot.sim.step(steps=600)
+    time.sleep(0.1)  # Allow some time for the simulation to update
 
     # Calculate the start position
     start_position, start_orientation = robot.forward_kinematics()
