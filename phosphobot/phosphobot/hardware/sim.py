@@ -126,7 +126,7 @@ class PyBulletSimulation:
 
         self._running = True
 
-        def _loop():
+        def _loop() -> None:
             while self._running and self.connected and p.isConnected():
                 steps_to_do = 0
                 with self._lock:
