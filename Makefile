@@ -12,6 +12,9 @@ prod:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
 	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
+prod_back:
+	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
+
 # Chat agent run
 chat:
 	cd phosphobot && uv run --python 3.10 phosphobot run --chat --simulation=headless --no-crash-telemetry
