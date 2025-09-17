@@ -1,5 +1,6 @@
-import asyncio
 import time
+import dill
+import asyncio
 from collections import deque
 from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
@@ -15,7 +16,7 @@ import numpy as np
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 
 from phosphobot.am.base import (
     ActionModel,
@@ -26,148 +27,56 @@ from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
 
 
+class Statistics(BaseModel):
+    mean: List[float]
+    std: List[float]
+    q01: List[float]
+    q99: List[float]
+
+
 class InputFeature(BaseModel):
-    """Individual input feature for the pi0 model"""
-
-    type: Literal["STATE", "VISUAL"]
-    shape: List[int]
+    state: Statistics
+    actions: Statistics
 
 
-class InputFeatures(BaseModel):
-    """Collection of input features for the pi0 model."""
-
-    state_key: str
-    video_keys: List[str] = []
-    # Currently all supported robots have 6 joints (5 joints + 1 gripper).
-    action_dim: int = 6
-    features: Dict[str, InputFeature]
-
-    @property
-    def number_of_arms(self) -> int:
-        """
-        Currently all supported robots have 6 joints.
-        To be changed when this is no longer true.
-        """
-        return self.features[self.state_key].shape[0] // self.action_dim
-
-    @model_validator(mode="before")
-    def infer_keys(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Preprocess input to infer state_key and video_keys if input is a flat features dict.
-        Runs before field validation.
-        """
-        if isinstance(values, dict) and "features" not in values:
-            features = values
-            state_keys = [k for k in features if ".state" in k.lower()]
-            video_keys = [k for k in features if "image" in k.lower()]
-            if len(state_keys) != 1:
-                raise ValueError(
-                    "Exactly one state key must be present in the features"
-                )
-            state_key = state_keys[0]
-            return {
-                "state_key": state_key,
-                "video_keys": video_keys,
-                "features": features,
-            }
-        return values
-
-    @field_validator("features", mode="before")
-    def validate_features(cls, value: Dict[str, Any]) -> Dict[str, InputFeature]:
-        """
-        Validate and transform the features dictionary into InputFeature instances.
-        """
-        if not isinstance(value, dict):
-            raise ValueError("Features must be a dictionary")
-        result = {}
-        for key, item in value.items():
-            if ".state" in key.lower():
-                if item.get("type") != "STATE":
-                    raise ValueError(f"Key {key} with 'state' must have type 'STATE'")
-            elif "image" in key.lower():
-                if item.get("type") != "VISUAL":
-                    raise ValueError(f"Key {key} with 'image' must have type 'VISUAL'")
-            else:
-                raise ValueError(f"Key {key} must contain 'state' or 'image'")
-            result[key] = InputFeature(**item)
-        return result
-
-    @model_validator(mode="after")
-    def validate_keys(self) -> "InputFeatures":
-        """
-        Validate state_key and video_keys against features after all fields are processed.
-        """
-        features = self.features
-        state_key = self.state_key
-        video_keys = self.video_keys
-
-        # Validate state_key
-        if state_key not in features:
-            raise ValueError(f"State key {state_key} not found in features")
-        if ".state" not in state_key.lower():
-            raise ValueError(f"State key {state_key} must contain '.state'")
-        if features[state_key].type != "STATE":
-            raise ValueError(f"State key {state_key} must map to a STATE feature")
-
-        # Validate video_keys
-        if video_keys is not None:
-            for key in video_keys:
-                if key not in features:
-                    raise ValueError(f"Image key {key} not found in features")
-                if "image" not in key.lower():
-                    raise ValueError(f"Image key {key} must contain 'image'")
-                if features[key].type != "VISUAL":
-                    raise ValueError(f"Image key {key} must map to a VISUAL feature")
-
-        # Ensure all image keys in features are in video_keys
-        feature_video_keys = [k for k in features.keys() if "image" in k.lower()]
-        if sorted(video_keys) != sorted(feature_video_keys):
-            raise ValueError(
-                "Video keys must include all image-related keys in features"
-            )
-
-        return self
-
-
-# Top-level model to validate the entire JSON
-class HuggingFaceModelValidator(BaseModel):
-    input_features: InputFeatures
-
+class NormFile(BaseModel):
     class Config:
         extra = "allow"
 
+    norm_stats: InputFeature
 
-class HuggingFaceAugmentedValidator(HuggingFaceModelValidator):
-    """
-    This model extends HuggingFaceModelValidator to include additional fields
-    for augmented models, such as available checkpoints.
-    """
-
-    checkpoints: List[str] = Field(
-        default_factory=list,
-        description="List of available checkpoints for the model.",
-    )
+    @property
+    def action_dim(self) -> int:
+        """
+        Count the number of values that are not zero in the std of actions.
+        """
+        return sum(1 for x in self.norm_stats.actions.std if x != 0.0)
 
 
 class Pi05SpawnConfig(BaseModel):
-    type: Literal["pi0.5"] = "pi0.5"
-    state_key: str
-    state_size: list[int]
-    video_keys: list[str]
-    video_size: list[int]
-    camera_mappings: Dict[str, str] = Field(
-        default_factory=lambda: {
-            "observation.images.main.left": "base_0_rgb",
-            "observation.images.secondary_0": "left_wrist_0_rgb",
-            "observation.images.secondary_1": "right_wrist_0_rgb",
-        },
-        description="Mapping from camera names to model image keys.",
+    action_dim: int = Field(
+        ...,
+        description="Dimension of the action space (number of joints)",
     )
-    hf_model_config: HuggingFaceAugmentedValidator
+    image_keys: List[str] = Field(
+        default_factory=list,
+        description="List of image keys expected by the model",
+    )
+
+
+class HuggingFaceAugmentedValidator(BaseModel):
+    class Config:
+        extra = "allow"
+
+    config: Pi05SpawnConfig
+    checkpoints: List[str] = Field(
+        default_factory=list,
+        description="List of available checkpoints/branches for the model",
+    )
 
 
 def fetch_camera_images(
-    config: HuggingFaceAugmentedValidator,
+    config: Pi05SpawnConfig,
     all_cameras: AllCameras,
     cameras_keys_mapping: Dict[str, int] | None = None,
 ) -> Dict[str, np.ndarray]:
@@ -183,13 +92,13 @@ def fetch_camera_images(
         Dictionary mapping camera names to captured image arrays
     """
     image_inputs: Dict[str, np.ndarray] = {}
-    for i, camera_name in enumerate(config.input_features.video_keys):
+    for i, camera_name in enumerate(config.image_keys):
         if cameras_keys_mapping is None:
             camera_id = i
         else:
             camera_id = cameras_keys_mapping.get(camera_name, i)
 
-        video_resolution = config.input_features.features[camera_name].shape
+        video_resolution = [3, 224, 224]  # Default resolution (C, H, W)
         frame_array = Pi05.fetch_frame(
             all_cameras=all_cameras,
             camera_id=camera_id,
@@ -296,23 +205,40 @@ class Pi05(ActionModel):
             refs = api.list_repo_refs(model_id)
             for branch in refs.branches:
                 branches.append(branch.name)
-            config_path = api.hf_hub_download(
+
+            config = api.hf_hub_download(
                 repo_id=model_id,
                 filename="config.pkl",
                 force_download=True,
             )
-            with open(config_path, "r") as f:
+            with open(config, "rb") as f:
                 config_content = f.read()
-            hf_model_config = HuggingFaceModelValidator.model_validate_json(
-                config_content
+            config_dict = dill.load(config_content)
+
+            norm_stats = api.hf_hub_download(
+                repo_id=model_id,
+                filename="norm_stats.json",
+                force_download=True,
             )
-            hf_augmented_config = HuggingFaceAugmentedValidator(
-                **hf_model_config.model_dump(),
+            with open(norm_stats, "r") as f:
+                norm_stats_content = f.read()
+            norm_parsed = NormFile.model_validate(norm_stats_content)
+
+            logger.debug(f"Fetched model config: {config_dict}")
+
+            return HuggingFaceAugmentedValidator(
+                config=Pi05SpawnConfig(
+                    action_dim=norm_parsed.action_dim,
+                    image_keys=config_dict.get("image_keys", []),
+                ),
                 checkpoints=branches,
             )
         except Exception as e:
-            raise Exception(f"Error loading model {model_id} from HuggingFace: {e}")
-        return hf_augmented_config
+            logger.warning(f"Could not fetch model config from HuggingFace: {e}")
+            return HuggingFaceAugmentedValidator(
+                config=Pi05SpawnConfig(action_dim=0, image_keys=[]),
+                checkpoints=[],
+            )
 
     @classmethod
     def fetch_and_get_configuration(cls, model_id: str) -> ModelConfigurationResponse:
@@ -321,7 +247,7 @@ class Pi05(ActionModel):
         """
         hf_model_config = cls.fetch_config(model_id=model_id)
         configuration = ModelConfigurationResponse(
-            video_keys=hf_model_config.input_features.video_keys,
+            video_keys=hf_model_config.config.image_keys,
             checkpoints=hf_model_config.checkpoints,
         )
         return configuration
@@ -331,21 +257,9 @@ class Pi05(ActionModel):
         """Fetch spawn configuration for Pi0 model."""
         hf_model_config = cls.fetch_config(model_id=model_id)
 
-        state_key: str = hf_model_config.input_features.state_key
-        state_size: list[int] = hf_model_config.input_features.features[state_key].shape
-        video_keys: list[str] = hf_model_config.input_features.video_keys
-        video_size: list[int] = (
-            hf_model_config.input_features.features[video_keys[0]].shape
-            if len(video_keys) > 0
-            else [3, 224, 224]  # default video resolution
-        )
-
         return Pi05SpawnConfig(
-            state_key=state_key,
-            state_size=state_size,
-            video_keys=video_keys,
-            video_size=video_size,
-            hf_model_config=hf_model_config,
+            action_dim=hf_model_config.config.action_dim,
+            image_keys=hf_model_config.config.image_keys,
         )
 
     @classmethod
@@ -362,49 +276,15 @@ class Pi05(ActionModel):
         """
         hf_model_config = cls.fetch_config(model_id=model_id)
 
-        state_key: str = hf_model_config.input_features.state_key
-        state_size: list[int] = hf_model_config.input_features.features[state_key].shape
-        video_keys: list[str] = hf_model_config.input_features.video_keys
-        video_size: list[int] = (
-            hf_model_config.input_features.features[video_keys[0]].shape
-            if len(video_keys) > 0
-            else [3, 224, 224]  # default video resolution
-        )
-
-        if cameras_keys_mapping is None:
-            nb_connected_cams = len(all_cameras.video_cameras)
-        else:
-            # Check if all keys are in the model config
-            keys_in_common = set(
-                [
-                    k.replace("video.", "") if k.startswith("video.") else k
-                    for k in cameras_keys_mapping.keys()
-                ]
-            ).intersection(hf_model_config.input_features.video_keys)
-            nb_connected_cams = len(keys_in_common)
-
-        if nb_connected_cams < len(video_keys) and verify_cameras:
-            logger.warning(
-                f"Model has {len(video_keys)} cameras but {nb_connected_cams} camera streams are detected."
-            )
+        action_dim = hf_model_config.config.action_dim
+        if action_dim != sum(robot.num_actuated_joints for robot in robots):
             raise HTTPException(
                 status_code=400,
-                detail=f"Model has {len(video_keys)} cameras but {nb_connected_cams} camera streams are detected.",
-            )
-
-        number_of_robots = hf_model_config.input_features.number_of_arms
-        if number_of_robots != len(robots):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model has {number_of_robots} robots but {len(robots)} robots are connected.",
+                detail=f"Model has {action_dim} action dimensions but we found {sum(robot.num_actuated_joints for robot in robots)} connected joints on {len(robots)} robots.",
             )
 
         return Pi05SpawnConfig(
-            state_key=state_key,
-            state_size=state_size,
-            video_keys=video_keys,
-            video_size=video_size,
-            hf_model_config=hf_model_config,
+            action_dim=action_dim,
         )
 
     @classmethod
@@ -456,8 +336,7 @@ class Pi05(ActionModel):
         The loop runs at the specified fps and speed.
         """
         nb_iter = 0
-        config = model_spawn_config.hf_model_config
-        action_dim = config.input_features.action_dim
+        action_dim = model_spawn_config.action_dim
 
         signal_marked_as_started = False
         actions_queue: deque = deque([])
@@ -476,33 +355,33 @@ class Pi05(ActionModel):
             # Get the images from the cameras based on the config
             # For now, just put as many cameras as the model config
             image_inputs = fetch_camera_images(
-                config=config,
+                config=model_spawn_config,
                 all_cameras=all_cameras,
                 cameras_keys_mapping=cameras_keys_mapping,
             )
 
             # Verify number of cameras
-            if len(image_inputs) != len(config.input_features.video_keys):
+            if len(image_inputs) != len(model_spawn_config.image_keys):
                 logger.warning(
-                    f"Model has {len(config.input_features.video_keys)} cameras but "
+                    f"Model has {len(model_spawn_config.image_keys)} cameras but "
                     f"{len(image_inputs)} cameras are plugged."
                 )
                 control_signal.stop()
                 raise Exception(
-                    f"Model has {len(config.input_features.video_keys)} cameras but "
+                    f"Model has {len(model_spawn_config.image_keys)} cameras but "
                     f"{len(image_inputs)} cameras are plugged."
                 )
 
             # Verify number of robots
-            number_of_robots = len(robots)
-            number_of_robots_in_config = config.input_features.number_of_arms
-            if number_of_robots != number_of_robots_in_config:
+            number_of_joints = sum(robot.num_actuated_joints for robot in robots)
+            number_of_joints_in_config = model_spawn_config.action_dim
+            if number_of_joints != number_of_joints_in_config:
                 logger.warning(
-                    f"Model has {number_of_robots_in_config} robots but {number_of_robots} robots are connected."
+                    f"Model has {number_of_joints_in_config} joints but {number_of_joints} joints are connected with {len(robots)} robots."
                 )
                 control_signal.stop()
                 raise Exception(
-                    f"Model has {number_of_robots_in_config} robots but {number_of_robots} robots are connected."
+                    f"Model has {number_of_joints_in_config} joints but {number_of_joints} joints are connected with {len(robots)} robots."
                 )
 
             # Concatenate all robot states
@@ -514,7 +393,7 @@ class Pi05(ActionModel):
 
             # Prepare model input
             inputs: dict[str, np.ndarray | str] = {
-                config.input_features.state_key: state,
+                "state": state,
                 "prompt": prompt,
                 **image_inputs,
             }

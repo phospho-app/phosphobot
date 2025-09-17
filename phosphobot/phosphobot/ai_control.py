@@ -144,11 +144,11 @@ async def setup_ai_control(
             detail="Session expired. Please log in again.",
         )
 
-    model_types: Dict[str, type[ACT | Gr00tN1 | Pi0]] = {
+    model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,
-        "pi0": Pi0,
+        "pi0": Pi05,
     }
 
     try:

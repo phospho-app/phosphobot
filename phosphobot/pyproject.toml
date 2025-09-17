@@ -49,6 +49,7 @@ dependencies = [
     "async-property>=0.2.2",
     "pyzmq>=27.0.2",
     "textual>=6.1.0",
+    "dill>=0.3.8",
 ]
 
 [dependency-groups]
