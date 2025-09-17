@@ -33,14 +33,5 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install pip in the virtual environment
 RUN uv pip install pip
 
-# Trick to force reinstalling openpi if we update the GitHub repo
-RUN echo "v1"
-
-# Clone the repo first
-RUN git clone --branch fred-update https://github.com/phospho-app/openpi.git /app/openpi-source
-
-# Then install from the cloned directory
-RUN GIT_LFS_SKIP_SMUDGE=1 uv pip install /app/openpi-source
-
 # Verify we're using the correct Python version
 RUN python --version

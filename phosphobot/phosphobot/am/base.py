@@ -160,24 +160,30 @@ class TrainingParamsPi0(BaseModel):
     class Config:
         extra = "allow"
 
-    batch_size: int = Field(
-        default=64,
-        description="Batch size for training, leave it to None to auto-detect based on your dataset",
+    data_image_keys: str = Field(
+        "observation.images.main,observation.images.secondary_0",
+        description="Comma-separated list of image keys to use for training",
+        serialization_alias="data.image_keys",
+    )
+    save_interval: int = Field(
+        default=100,
+        description="Number of steps to save the model.",
         gt=0,
-        le=128,
     )
     num_train_steps: int = Field(
-        default=30_000,
+        default=500,
         description="Number of training steps.",
         gt=0,
-        le=100_000,
+        le=2_000,
     )
-    action_dim: int = Field(
-        default=6, description="Dimension of the action space.", gt=0
+    batch_size: int = Field(
+        default=32,
+        description="Batch size for training. Decrease it if you get an Out Of Memory (OOM) error",
+        gt=0,
     )
-    action_horizon: int = Field(
-        default=10,
-        description="Number of actions to predict in one forward pass.",
+    seed: int = Field(
+        default=42,
+        description="Random seed for reproducibility.",
         gt=0,
     )
 

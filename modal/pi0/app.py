@@ -28,6 +28,7 @@ phosphobot_dir = (
 )
 pi0_image = (
     modal.Image.from_dockerfile("Dockerfile")
+    .env({"GIT_LFS_SKIP_SMUDGE": "1"})
     .uv_pip_install(
         "sentry-sdk",
         "loguru",
@@ -45,6 +46,13 @@ pi0_image = (
     )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
+    )
+    .workdir("/")
+    .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout cccdd166379fd85fd82ec04c1ab3d414c90a51eb"
+    )
+    .run_commands(
+        "uv pip install -e /openpi-source",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
@@ -526,6 +534,98 @@ async def serve(
             )
 
 
+def _upload_checkpoint(checkpoint_dir: Path, model_name: str, hf_token: str):
+    """
+    Upload the last available checkpoint to the HF model repo.
+    This can be used for both the final model and intermediate checkpoints if the training times out.
+    Folder will look like this
+    checkpoints/
+        config.pkl
+        wandb_id.txt
+        0/
+            _CHECKPOINT_METADATA
+            assets/
+                ...
+            params/
+                ...
+            train_state/
+                ...
+        100/
+            _CHECKPOINT_METADATA
+            assets/
+                ...
+            params/
+                ...
+            train_state/
+                ...
+
+
+    We want to upload config.pkl, and the assets and params folders from the last checkpoint (highest number).
+    """
+    api = HfApi(token=hf_token)
+
+    # Find the latest checkpoint (highest numbered directory)
+    checkpoint_dirs = [
+        d for d in checkpoint_dir.iterdir() if d.is_dir() and d.name.isdigit()
+    ]
+
+    if not checkpoint_dirs:
+        raise ValueError(f"No checkpoint directories found in {checkpoint_dir}")
+
+    # Get the latest checkpoint by sorting numerically
+    latest_checkpoint = max(checkpoint_dirs, key=lambda x: int(x.name))
+    print(f"Found latest checkpoint: {latest_checkpoint}")
+
+    # Create the repository if it doesn't exist
+    try:
+        api.create_repo(repo_id=model_name, exist_ok=True, repo_type="model")
+        print(f"Repository {model_name} created/verified")
+    except Exception as e:
+        print(f"Warning: Could not create repository: {e}")
+
+    # Upload config.pkl from the root checkpoint directory
+    config_path = checkpoint_dir / "config.pkl"
+    if config_path.exists():
+        api.upload_file(
+            path_or_fileobj=str(config_path),
+            path_in_repo="config.pkl",
+            repo_id=model_name,
+            repo_type="model",
+        )
+        print(f"Uploaded config.pkl")
+    else:
+        print(f"Warning: config.pkl not found at {config_path}")
+
+    # Upload assets folder from the latest checkpoint
+    assets_path = latest_checkpoint / "assets"
+    if assets_path.exists() and assets_path.is_dir():
+        api.upload_folder(
+            folder_path=str(assets_path),
+            path_in_repo="assets",
+            repo_id=model_name,
+            repo_type="model",
+        )
+        print(f"Uploaded assets folder from checkpoint {latest_checkpoint.name}")
+    else:
+        print(f"Warning: assets folder not found at {assets_path}")
+
+    # Upload params folder from the latest checkpoint
+    params_path = latest_checkpoint / "params"
+    if params_path.exists() and params_path.is_dir():
+        api.upload_folder(
+            folder_path=str(params_path),
+            path_in_repo="params",
+            repo_id=model_name,
+            repo_type="model",
+        )
+        print(f"Uploaded params folder from checkpoint {latest_checkpoint.name}")
+    else:
+        print(f"Warning: params folder not found at {params_path}")
+
+    print(f"Successfully uploaded checkpoint to HuggingFace model: {model_name}")
+    return f"https://huggingface.co/{model_name}"
+
+
 @app.function(
     image=FUNCTION_IMAGE,
     gpu=FUNCTION_GPU_TRAINING,
@@ -546,7 +646,6 @@ async def train(
     training_params: TrainingParamsPi0,
     user_hf_token: str | None = None,
     private_mode: bool = False,
-    max_hf_download_retries: int = 3,
     timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
     **kwargs,
 ):
@@ -598,18 +697,17 @@ async def train(
         norm_cmd = [
             "uv",
             "run",
-            "/app/openpi-source/scripts/compute_norm_stats.py",
-            "--repo-id",
-            str(dataset_name),
-            "--num-train-steps",
-            str(training_params.num_train_steps),
-            "--batch-size",
-            str(training_params.batch_size),
-            "--action-horizon",
-            str(training_params.action_horizon),
-            "--action-dim",
-            str(training_params.action_dim),
+            "/openpi-source/scripts/compute_norm_stats.py",
+            "pi0.5_LoRA_finetune_so100",
+            "--data.repo_id=" + dataset_name,
         ]
+        training_params_dict = training_params.model_dump(
+            by_alias=True,
+            exclude_none=True,
+        )
+        logger.info(f"Training parameters: {training_params_dict}")
+        for key, value in training_params_dict.items():
+            norm_cmd.append(f"--{key}={value}")
 
         # Run the command
         logger.info(f"Computing normalization stats with command: {' '.join(norm_cmd)}")
@@ -621,32 +719,13 @@ async def train(
         train_cmd = [
             "uv",
             "run",
-            "/app/openpi-source/scripts/train.py",
-            "train-custom",
-            "--repo-id",
-            str(dataset_name),
-            "--num-train-steps",
-            str(training_params.num_train_steps),
-            "--batch-size",
-            str(training_params.batch_size),
-            "--action-horizon",
-            str(training_params.action_horizon),
-            "--action-dim",
-            str(training_params.action_dim),
-            "--wandb-enabled",
-            str(wandb_enabled),
+            "/openpi-source/scripts/train.py",
+            "pi0.5_LoRA_finetune_so100",
+            "--data.repo_id=" + dataset_name,
         ]
 
         # Add any other training parameters that are not None
-        training_params_dict = training_params.model_dump(
-            by_alias=True,
-            exclude_none=True,
-            exclude={
-                "target_detection_instruction": True,
-                "image_key": True,
-                "image_keys_to_keep": True,
-            },
-        )
+        logger.info(f"Training parameters: {training_params_dict}")
         for key, value in training_params_dict.items():
             train_cmd.append(f"--{key}={value}")
 
@@ -674,6 +753,14 @@ async def train(
 
         try:
             await asyncio.wait_for(read_output(), timeout=timeout_seconds)
+
+            # Upload the last available checkpoint to HuggingFace
+            _upload_checkpoint(
+                checkpoint_dir=Path("./checkpoints") / model_name,
+                model_name=model_name,
+                hf_token=hf_token,
+            )
+
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
@@ -684,7 +771,7 @@ async def train(
         logger.success(f"Pi0 training {training_id} completed successfully")
         supabase_client.table("trainings").update(
             {
-                "status": "completed",
+                "status": "succeeded",
                 "terminated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", training_id).execute()
