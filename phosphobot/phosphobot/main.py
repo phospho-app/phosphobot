@@ -311,24 +311,23 @@ def run(
         # Start the server in a separate thread
         thread = threading.Thread(
             target=start_server,
-            args=(
-                host,
-                port,
-                reload,
-                simulation,
-                only_simulation,
-                simulate_cameras,
-                realsense,
-                can,
-                cameras,
-                max_opencv_index,
-                max_can_interfaces,
-                profile,
-                crash_telemetry,
-                usage_telemetry,
-                telemetry,
-                True,  # silent mode to avoid logging text
-            ),
+            kwargs={
+                "host": host,
+                "port": port,
+                "reload": reload,
+                "simulation": simulation,
+                "only_simulation": only_simulation,
+                "simulate_cameras": simulate_cameras,
+                "realsense": realsense,
+                "can": can,
+                "cameras": cameras,
+                "max_opencv_index": max_opencv_index,
+                "max_can_interfaces": max_can_interfaces,
+                "profile": profile,
+                "crash_telemetry": crash_telemetry,
+                "usage_telemetry": usage_telemetry,
+                "telemetry": telemetry,
+            },
             daemon=True,  # Ensure the thread exits when the main program exits
         )
         thread.start()
