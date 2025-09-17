@@ -12,6 +12,7 @@ from huggingface_hub import HfApi
 from loguru import logger
 
 from phosphobot.am.base import ActionModel, TrainingRequest
+from phosphobot.am.pi05 import Pi05
 from phosphobot.configs import config
 from phosphobot.models import (
     AdminSettingsRequest,
@@ -716,6 +717,7 @@ async def get_model_configuration(
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,  # ACT_BBOX is a variant of ACT
+        "pi0.5": Pi05,
     }
     model_class = model_type_to_class.get(request.model_type)
     if model_class is None:

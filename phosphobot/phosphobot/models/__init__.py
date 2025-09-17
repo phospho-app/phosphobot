@@ -756,7 +756,7 @@ class ModelConfigurationRequest(BaseModel):
         # no empty string
         pattern=r"^\s*\S.*$",
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"] = Field(
         ...,
         description="Type of model to use.",
     )

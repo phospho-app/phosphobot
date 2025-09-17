@@ -10,7 +10,7 @@ from supabase import AsyncClient
 
 from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
-from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig
+from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.hardware.base import BaseManipulator
@@ -119,7 +119,11 @@ async def setup_ai_control(
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
     checkpoint: Optional[int] = None,
-) -> Tuple[Gr00tN1 | ACT | Pi0, Gr00tSpawnConfig | ACTSpawnConfig | Pi0SpawnConfig, ServerInfoResponse]:
+) -> Tuple[
+    Gr00tN1 | ACT | Pi05,
+    Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig,
+    ServerInfoResponse,
+]:
     """
     Setup the AI control loop by spawning the inference server and returning the model.
     This function is called when the user clicks on the "Start AI Control" button in the UI.

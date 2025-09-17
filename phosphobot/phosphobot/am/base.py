@@ -152,7 +152,7 @@ class TrainingParamsActWithBbox(TrainingParamsAct):
         return instruction
 
 
-class TrainingParamsPi0(BaseModel):
+class TrainingParamsPi05(BaseModel):
     """
     Training parameters for Pi0 model
     """
@@ -261,7 +261,7 @@ class BaseTrainerConfig(BaseModel):
         TrainingParamsAct
         | TrainingParamsActWithBbox
         | TrainingParamsGr00T
-        | TrainingParamsPi0
+        | TrainingParamsPi05
     ] = Field(
         default=None,
         description="Training parameters for the model.",
@@ -298,7 +298,7 @@ class TrainingRequest(BaseTrainerConfig):
             "ACT": TrainingParamsAct,
             "ACT_BBOX": TrainingParamsActWithBbox,
             "gr00t": TrainingParamsGr00T,
-            "pi0.5": TrainingParamsPi0,
+            "pi0.5": TrainingParamsPi05,
         }
         model_type = data.get("model_type")
         if not model_type:

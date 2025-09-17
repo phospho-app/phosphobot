@@ -19,9 +19,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from phosphobot.am.base import (
     ActionModel,
-    BaseTrainer,
-    BaseTrainerConfig,
-    TrainingParamsPi0,
 )
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
@@ -152,16 +149,12 @@ class HuggingFaceAugmentedValidator(HuggingFaceModelValidator):
     )
 
 
-class Pi0SpawnConfig(BaseModel):
-    type: Literal["pi0", "pi0_fast", "pi0.5"] = "pi0.5"
+class Pi05SpawnConfig(BaseModel):
+    type: Literal["pi0.5"] = "pi0.5"
     state_key: str
     state_size: list[int]
     video_keys: list[str]
     video_size: list[int]
-    # Pi0 models always expect these three camera names in the input:
-    # image.base_0_rgb, image.left_wrist_0_rgb, image.right_wrist_0_rgb
-    # Add mapping from camera names to model image keys in your config
-    # Ref: https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models/model.py
     camera_mappings: Dict[str, str] = Field(
         default_factory=lambda: {
             "observation.images.main.left": "base_0_rgb",
@@ -197,7 +190,7 @@ def fetch_camera_images(
             camera_id = cameras_keys_mapping.get(camera_name, i)
 
         video_resolution = config.input_features.features[camera_name].shape
-        frame_array = Pi0.fetch_frame(
+        frame_array = Pi05.fetch_frame(
             all_cameras=all_cameras,
             camera_id=camera_id,
             resolution=video_resolution,
@@ -213,8 +206,8 @@ class RetryError(Exception):
     pass
 
 
-class Pi0(ActionModel):
-    """Client for Pi0 model inference server."""
+class Pi05(ActionModel):
+    """Client for Pi0.5 model inference server."""
 
     REQUIRED_CAMERA_KEYS = ["base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"]
 
@@ -305,7 +298,7 @@ class Pi0(ActionModel):
                 branches.append(branch.name)
             config_path = api.hf_hub_download(
                 repo_id=model_id,
-                filename="config.json",
+                filename="config.pkl",
                 force_download=True,
             )
             with open(config_path, "r") as f:
@@ -334,7 +327,7 @@ class Pi0(ActionModel):
         return configuration
 
     @classmethod
-    def fetch_spawn_config(cls, model_id: str) -> Pi0SpawnConfig:
+    def fetch_spawn_config(cls, model_id: str) -> Pi05SpawnConfig:
         """Fetch spawn configuration for Pi0 model."""
         hf_model_config = cls.fetch_config(model_id=model_id)
 
@@ -347,7 +340,7 @@ class Pi0(ActionModel):
             else [3, 224, 224]  # default video resolution
         )
 
-        return Pi0SpawnConfig(
+        return Pi05SpawnConfig(
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,
@@ -363,7 +356,7 @@ class Pi0(ActionModel):
         robots: list["BaseManipulator"],
         cameras_keys_mapping: Dict[str, int] | None = None,
         verify_cameras: bool = True,
-    ) -> Pi0SpawnConfig:
+    ) -> Pi05SpawnConfig:
         """
         Verify if the HuggingFace model is compatible with the current setup.
         """
@@ -406,7 +399,7 @@ class Pi0(ActionModel):
                 detail=f"Model has {number_of_robots} robots but {len(robots)} robots are connected.",
             )
 
-        return Pi0SpawnConfig(
+        return Pi05SpawnConfig(
             state_key=state_key,
             state_size=state_size,
             video_keys=video_keys,
@@ -445,7 +438,7 @@ class Pi0(ActionModel):
         self,
         control_signal: AIControlSignal,
         robots: list["BaseManipulator"],
-        model_spawn_config: Pi0SpawnConfig,
+        model_spawn_config: Pi05SpawnConfig,
         all_cameras: AllCameras,
         prompt: str,
         fps: int = 30,
@@ -574,22 +567,3 @@ class Pi0(ActionModel):
                 start_time = time.perf_counter()
 
             nb_iter += 1
-
-
-class Pi0TrainerConfig(BaseTrainerConfig):
-    """Pi0 trainer configuration."""
-
-    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0", "custom"] = "pi0"
-    training_params: TrainingParamsPi0 | None = None
-
-
-class Pi0Trainer(BaseTrainer):
-    """Pi0 model trainer."""
-
-    def __init__(self, config: Pi0TrainerConfig):
-        self.config = config
-
-    def train(self, timeout_seconds: int | None = None) -> None:
-        """Train a Pi0 model."""
-        logger.info(f"Starting Pi0 training for dataset={self.config.dataset_name}")
-        raise NotImplementedError("Pi0 training not supported yet!")
