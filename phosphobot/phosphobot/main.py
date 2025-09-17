@@ -81,7 +81,9 @@ if not _version_check_started:
 
 import socket
 import time
+import threading
 from typing import Annotated
+
 
 import typer
 
@@ -286,49 +288,33 @@ def run(
     """
     from phosphobot.app import start_server
 
-    if not chat:
-        start_server(
-            host=host,
-            port=port,
-            reload=reload,
-            simulation=simulation,
-            only_simulation=only_simulation,
-            simulate_cameras=simulate_cameras,
-            realsense=realsense,
-            can=can,
-            cameras=cameras,
-            max_opencv_index=max_opencv_index,
-            max_can_interfaces=max_can_interfaces,
-            profile=profile,
-            crash_telemetry=crash_telemetry,
-            usage_telemetry=usage_telemetry,
-            telemetry=telemetry,
-        )
-    else:
-        # Create a new thread with the server
-        import threading
+    kwargs = {
+        "host": host,
+        "port": port,
+        "reload": reload,
+        "simulation": simulation,
+        "only_simulation": only_simulation,
+        "simulate_cameras": simulate_cameras,
+        "realsense": realsense,
+        "can": can,
+        "cameras": cameras,
+        "max_opencv_index": max_opencv_index,
+        "max_can_interfaces": max_can_interfaces,
+        "profile": profile,
+        "crash_telemetry": crash_telemetry,
+        "usage_telemetry": usage_telemetry,
+        "telemetry": telemetry,
+    }
 
+    if not chat:
+        start_server(**kwargs)  # type: ignore
+    else:
+        # Remove logging
+        kwargs["silent"] = True
         # Start the server in a separate thread
         thread = threading.Thread(
             target=start_server,
-            args=(
-                host,
-                port,
-                reload,
-                simulation,
-                only_simulation,
-                simulate_cameras,
-                realsense,
-                can,
-                cameras,
-                max_opencv_index,
-                max_can_interfaces,
-                profile,
-                crash_telemetry,
-                usage_telemetry,
-                telemetry,
-                True,  # silent mode to avoid logging text
-            ),
+            kwargs=kwargs,
             daemon=True,  # Ensure the thread exits when the main program exits
         )
         thread.start()

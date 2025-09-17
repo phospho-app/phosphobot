@@ -211,12 +211,12 @@ class LeaderFollowerThread(threading.Thread):
                         continue
 
                     if self.enable_gravity_compensation:
-                        assert isinstance(leader, SO100Hardware), (
-                            "Gravity compensation is only supported for SO100Hardware."
-                        )
-                        assert isinstance(follower, SO100Hardware), (
-                            "Gravity compensation is only supported for SO100Hardware."
-                        )
+                        assert isinstance(
+                            leader, SO100Hardware
+                        ), "Gravity compensation is only supported for SO100Hardware."
+                        assert isinstance(
+                            follower, SO100Hardware
+                        ), "Gravity compensation is only supported for SO100Hardware."
                         self._gravity_compensation_step(
                             leader=leader, follower=follower, pos_rad=pos_rad
                         )
@@ -276,12 +276,12 @@ class LeaderFollowerThread(threading.Thread):
         - Commands the leader with the compensated joint positions.
         - Makes the follower mirror the leader's resulting position.
         """
-        assert isinstance(leader, SO100Hardware), (
-            "Gravity compensation is only supported for SO100Hardware."
-        )
-        assert isinstance(follower, SO100Hardware), (
-            "Gravity compensation is only supported for SO100Hardware."
-        )
+        assert isinstance(
+            leader, SO100Hardware
+        ), "Gravity compensation is only supported for SO100Hardware."
+        assert isinstance(
+            follower, SO100Hardware
+        ), "Gravity compensation is only supported for SO100Hardware."
 
         # Control loop parameters
         num_joints = len(leader.actuated_joints)
@@ -350,12 +350,13 @@ async def start_leader_follower_loop(
     invert_controls: bool,
     enable_gravity_compensation: bool,
     compensation_values: Optional[Dict[str, int]],
-    sim: PyBulletSimulation = get_sim(),
 ) -> None:
     """
     FastAPI background task that starts and manages the leader-follower
     control loop in a dedicated thread.
     """
+    sim = get_sim()
+
     # Create and start the dedicated thread
     control_thread = LeaderFollowerThread(
         robot_pairs=robot_pairs,

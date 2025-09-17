@@ -1294,7 +1294,7 @@ async def add_robot_connection(
             )
             raise HTTPException(
                 status_code=403,
-                detail=f"Permission denied: {e}. If you're on Linux, try running with sudo or ensure that your user has access to the serial port.",
+                detail=f"Permission denied: {e}. If you're on Linux, try running phosphobot as sudo (`sudo phosphobot`) and ensure that your user has access to the serial port.",
             )
         else:
             logger.error(
