@@ -36,7 +36,7 @@ class PiperHardware(BaseManipulator):
     is_moving = False
     robot_connected = False
 
-    GRIPPER_MAX_ANGLE = 100  # In degree
+    GRIPPER_MAX_ANGLE = 99  # In degree
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 
@@ -51,19 +51,19 @@ class PiperHardware(BaseManipulator):
     # Reference: https://github.com/agilexrobotics/piper_sdk/blob/master/asserts/V2/INTERFACE_V2.MD#jointctrl
     #  |joint_name|     limit(rad)     |    limit(angle)    |
     # |----------|     ----------     |     ----------     |
-    # |joint1    |   [-2.618, 2.618]  |    [-150.0, 150.0] |
+    # |joint1    |   [-2.6179, 2.6179]  |    [-150.0, 150.0] |
     # |joint2    |   [0, 3.14]        |    [0, 180.0]      |
     # |joint3    |   [-2.967, 0]      |    [-170, 0]       |
     # |joint4    |   [-1.745, 1.745]  |    [-100.0, 100.0] |
     # |joint5    |   [-1.22, 1.22]    |    [-70.0, 70.0]   |
-    # |joint6    |   [-2.0944, 2.0944]|    [-120.0, 120.0] |
+    # |joint6    |   [-2.09439, 2.09439]|    [-120.0, 120.0] |
     piper_limits_rad: dict = {
-        1: {"min_angle_limit": -2.618, "max_angle_limit": 2.618},
+        1: {"min_angle_limit": -2.6179, "max_angle_limit": 2.6179},
         2: {"min_angle_limit": 0, "max_angle_limit": 3.14},
         3: {"min_angle_limit": -2.967, "max_angle_limit": 0},
         4: {"min_angle_limit": -1.745, "max_angle_limit": 1.745},
         5: {"min_angle_limit": -1.22, "max_angle_limit": 1.22},
-        6: {"min_angle_limit": -2.0944, "max_angle_limit": 2.0944},
+        6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.09439},
     }
     piper_limits_degrees: dict = {
         1: {"min_angle_limit": -150.0, "max_angle_limit": 150.0},
@@ -269,11 +269,7 @@ class PiperHardware(BaseManipulator):
         # Override the position of the specified servo_id
         current_position[servo_id - 1] = units
 
-        logger.debug(f"Piper: Moving servo {servo_id} to position {units}")
         # Clamp the position in the allowed range for the motors using self.piper_limits
-        logger.debug(
-            f"Piper: Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
-        )
         if servo_id in self.piper_limits_degrees:
             min_limit = self.piper_limits_degrees[servo_id]["min_angle_limit"] * 1000
             max_limit = self.piper_limits_degrees[servo_id]["max_angle_limit"] * 1000

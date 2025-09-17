@@ -138,7 +138,7 @@ class TeleopManager:
 
         # Hard block the code to wait for the robot to reach the initial position
         if any(robot.name == "agilex-piper" for robot in (await self.rcm.robots)):
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(0.5)
         else:
             await asyncio.sleep(0.3)
 
