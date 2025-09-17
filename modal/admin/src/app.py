@@ -915,7 +915,7 @@ def fastapi_app():
             "gr00t": train_gr00t,
             "ACT": train_act,
             "ACT_BBOX": train_act,
-            "pi0.5": train_pi0_5,
+            "pi0.5": train_pi05,
         }
 
         logger.info(f"Starting training for {request.model_type}")
