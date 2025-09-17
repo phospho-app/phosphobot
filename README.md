@@ -26,15 +26,15 @@
 
 ### 1. Get a robot
 
-Purchase your phospho starter pack at [robots.phospho.ai](https://robots.phospho.ai), or use one of the supported robots:
+Purchase your phospho starter pack at [robots.phospho.ai](https://robots.phospho.ai/starter-pack), or use one of the supported robots:
 
-- [SO-100](https://github.com/TheRobotStudio/SO-ARM100)
-- [SO-101](https://github.com/TheRobotStudio/SO-ARM100)
+- [SO-101](https://docs.phospho.ai/so-101/quickstart)
+- [SO-100](https://docs.phospho.ai/so-100/quickstart)
 - [Koch v1.1](https://github.com/jess-moss/koch-v1-1) (beta)
 - WX-250 by Trossen Robotics (beta)
-- [AgileX Piper](https://global.agilex.ai/products/piper) (Linux-only, beta)
-- [Unitree Go2 Air, Pro, Edu](https://shop.unitree.com/en-fr/products/unitree-go2) (beta)
 - [LeCabot](https://github.com/phospho-app/lecabot) (beta)
+- [Unitree Go2 Air, Pro, Edu](https://shop.unitree.com/en-fr/products/unitree-go2) (beta)
+- [AgileX Piper](https://global.agilex.ai/products/piper) (Linux-only, beta. Make sure you install the required packages: `sudo apt ethtool can-utils`)
 
 See this [README](phosphobot/README.md) for more details on how to add support for a new robot.
 
