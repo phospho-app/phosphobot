@@ -179,7 +179,7 @@ class RobotConnectionManager:
                 logger.debug(f"Robot created: {robot}")
                 await robot.connect()
 
-                if robot is not None:
+                if robot is not None and robot.is_connected:
                     logger.success(f"Connected to {robot_class.name} on {port.device}.")
                     self._all_robots.append(robot)
                     # Mark both device and serial as connected
@@ -205,7 +205,7 @@ class RobotConnectionManager:
                         f"Error connecting to Agilex Piper on {can_name}: {e}. Skipping."
                     )
                     continue
-                if robot is not None:
+                if robot is not None and robot.is_connected:
                     self._all_robots.append(robot)
                     logger.success(f"Connected to Agilex Piper on {can_name}")
 

@@ -20,7 +20,7 @@ class PiperHardware(BaseManipulator):
         get_resources_path() / "urdf" / "piper" / "urdf" / "piper.urdf"
     )
 
-    AXIS_ORIENTATION = [0, 0, 0, 1]  # TODO : Verify the axis orientation
+    AXIS_ORIENTATION = [0, 0, 0, 1]  
 
     END_EFFECTOR_LINK_INDEX = 5
     GRIPPER_JOINT_INDEX = 6
@@ -36,7 +36,7 @@ class PiperHardware(BaseManipulator):
     is_moving = False
     robot_connected = False
 
-    GRIPPER_MAX_ANGLE = 100  # In degree
+    GRIPPER_MAX_ANGLE = 99  # In degree
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 
@@ -44,33 +44,33 @@ class PiperHardware(BaseManipulator):
     # When using the set zero of gripper control, we observe that current position is set to -1800 and not to zero
     GRIPPER_ZERO_POSITION = -1800
     # Strength with which the gripper will close. Similar to the gripping threshold value of other robots,
-    GRIPPER_EFFORT = 300
+    GRIPPER_EFFORT = 600
 
     calibration_max_steps: int = 2
 
     # Reference: https://github.com/agilexrobotics/piper_sdk/blob/master/asserts/V2/INTERFACE_V2.MD#jointctrl
     #  |joint_name|     limit(rad)     |    limit(angle)    |
     # |----------|     ----------     |     ----------     |
-    # |joint1    |   [-2.618, 2.618]  |    [-150.0, 150.0] |
+    # |joint1    |   [-2.6179, 2.6179]  |    [-150.0, 150.0] |
     # |joint2    |   [0, 3.14]        |    [0, 180.0]      |
     # |joint3    |   [-2.967, 0]      |    [-170, 0]       |
     # |joint4    |   [-1.745, 1.745]  |    [-100.0, 100.0] |
     # |joint5    |   [-1.22, 1.22]    |    [-70.0, 70.0]   |
-    # |joint6    |   [-2.0944, 2.0944]|    [-120.0, 120.0] |
+    # |joint6    |   [-2.09439, 2.09439]|    [-120.0, 120.0] |
     piper_limits_rad: dict = {
-        1: {"min_angle_limit": -2.618, "max_angle_limit": 2.618},
+        1: {"min_angle_limit": -2.6179, "max_angle_limit": 2.6179},
         2: {"min_angle_limit": 0, "max_angle_limit": 3.14},
         3: {"min_angle_limit": -2.967, "max_angle_limit": 0},
         4: {"min_angle_limit": -1.745, "max_angle_limit": 1.745},
-        5: {"min_angle_limit": -1.22, "max_angle_limit": 1.22},
-        6: {"min_angle_limit": -2.0944, "max_angle_limit": 2.0944},
+        5: {"min_angle_limit": -1.047, "max_angle_limit": 1.047}, 
+        6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.0943},
     }
     piper_limits_degrees: dict = {
         1: {"min_angle_limit": -150.0, "max_angle_limit": 150.0},
         2: {"min_angle_limit": 0, "max_angle_limit": 180.0},
         3: {"min_angle_limit": -170, "max_angle_limit": 0},
         4: {"min_angle_limit": -100.0, "max_angle_limit": 100.0},
-        5: {"min_angle_limit": -70.0, "max_angle_limit": 70.0},
+        5: {"min_angle_limit": -60.0, "max_angle_limit": 60.0}, 
         6: {"min_angle_limit": -120.0, "max_angle_limit": 120.0},
     }
 
@@ -127,7 +127,7 @@ class PiperHardware(BaseManipulator):
 
             proc.wait(timeout=10)
             if proc.returncode != 0:
-                logger.error("Script exited with %d", proc.returncode)
+                logger.warning(f"Script exited with exit code: {proc.returncode}")
                 return
         except subprocess.CalledProcessError as e:
             logger.warning(
@@ -143,7 +143,7 @@ class PiperHardware(BaseManipulator):
         # Check if CAN bus is OK
         is_ok = self.motors_bus.isOk()
         if not is_ok:
-            logger.debug(
+            logger.warning(
                 f"Could not connect to Agilex Piper on {self.can_name}: CAN bus is not OK."
             )
             return
@@ -168,8 +168,9 @@ class PiperHardware(BaseManipulator):
         )
         await asyncio.sleep(0.2)
 
-        self.is_connected = True
         self.init_config()
+        self.is_connected = True
+
 
     def get_default_base_robot_config(
         self, voltage: str, raise_if_none: bool = False
@@ -199,15 +200,7 @@ class PiperHardware(BaseManipulator):
         """
         Load the config file.
         """
-        self.config = BaseRobotConfig(
-            name=self.name,
-            servos_voltage=12.0,
-            servos_offsets=[0] * len(self.SERVO_IDS),
-            servos_offsets_signs=[1] * len(self.SERVO_IDS),
-            servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
-            gripping_threshold=1000,
-            non_gripping_threshold=10,
-        )
+        self.config = self.get_default_base_robot_config(voltage="24v")
 
     def enable_torque(self) -> None:
         if not self.is_connected:
@@ -254,6 +247,7 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
+        logger.debug(f"Piper: Writing position {units} to servo {servo_id}")
         # If servo_id is 7 (gripper), write the gripper command
         if servo_id == self.GRIPPER_SERVO_ID:
             self.write_gripper_command(units)
@@ -267,11 +261,7 @@ class PiperHardware(BaseManipulator):
         # Override the position of the specified servo_id
         current_position[servo_id - 1] = units
 
-        logger.debug(f"Piper: Moving servo {servo_id} to position {units}")
         # Clamp the position in the allowed range for the motors using self.piper_limits
-        logger.debug(
-            f"Piper: Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
-        )
         if servo_id in self.piper_limits_degrees:
             min_limit = self.piper_limits_degrees[servo_id]["min_angle_limit"] * 1000
             max_limit = self.piper_limits_degrees[servo_id]["max_angle_limit"] * 1000
@@ -299,7 +289,9 @@ class PiperHardware(BaseManipulator):
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
                 max_limit = self.piper_limits_degrees[i + 1]["max_angle_limit"] * 1000
                 # q_target[i] = np.clip(joint, min_limit, max_limit)  # noqa: F821
-                clamped_joints.append(int(np.clip(joint, min_limit, max_limit)))
+                clamped_joint = int(np.clip(joint, min_limit, max_limit))
+                clamped_joints.append(clamped_joint)
+        
 
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
@@ -383,18 +375,20 @@ class PiperHardware(BaseManipulator):
         position_deg = units * 2 * np.pi / self.RESOLUTION  # in 0.001 deg
         return position_deg  # in deg
 
-    def _radians_to_units_vec(self, radians: np.ndarray) -> np.ndarray:
+    def _radians_vec_to_motor_units(self, radians: np.ndarray) -> np.ndarray:
         """
         Convert from radians to motor discrete units (0 -> RESOLUTION)
+
+        Note: The result can exceed the resolution of the motor, in the case of a continuous rotation motor.
         """
-        position_deg = self.RESOLUTION * radians / (2 * np.pi)
-        return position_deg.astype(int)
+        position_deg = np.rad2deg(radians)  # in degrees
+        position_units = (position_deg * 1000).astype(int)  # in motor units
+        return position_units
 
     async def calibrate(self) -> tuple[Literal["success", "in_progress", "error"], str]:
         """
         This is called during the calibration phase of the robot.
-        CAUTION :
-        Set the robot in a sleep mode where falling wont be an issue and close the gripper.
+        CAUTION : Set the robot in sleep mode where falling wont be an issue and close the gripper.
         """
         if not self.is_connected:
             logger.warning("Robot is not connected. Cannot calibrate.")

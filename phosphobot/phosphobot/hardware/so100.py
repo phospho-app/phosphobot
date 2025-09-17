@@ -95,9 +95,10 @@ class SO100Hardware(BaseManipulator):
         # Create serial connection
         self.motors_bus = FeetechMotorsBus(port=self.device_name, motors=self.motors)
         self.motors_bus.connect()
-        self.is_connected = True
         self.init_config()
         self._max_temperature_cache: dict = {}
+        self.is_connected = True
+
 
     def disconnect(self) -> None:
         """
