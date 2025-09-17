@@ -127,7 +127,7 @@ class PiperHardware(BaseManipulator):
 
             proc.wait(timeout=10)
             if proc.returncode != 0:
-                logger.error("Script exited with %d", proc.returncode)
+                logger.warning(f"Script exited with {proc.returncode}")
                 return
         except subprocess.CalledProcessError as e:
             logger.warning(
@@ -143,7 +143,7 @@ class PiperHardware(BaseManipulator):
         # Check if CAN bus is OK
         is_ok = self.motors_bus.isOk()
         if not is_ok:
-            logger.debug(
+            logger.warning(
                 f"Could not connect to Agilex Piper on {self.can_name}: CAN bus is not OK."
             )
             return
@@ -168,8 +168,9 @@ class PiperHardware(BaseManipulator):
         )
         await asyncio.sleep(0.2)
 
-        self.is_connected = True
         self.init_config()
+        self.is_connected = True
+
 
     def get_default_base_robot_config(
         self, voltage: str, raise_if_none: bool = False
