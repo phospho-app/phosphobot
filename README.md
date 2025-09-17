@@ -107,7 +107,7 @@ Connect with other developers and share your experience in our [Discord communit
 git clone https://github.com/phospho-app/phosphobot.git
 ```
 
-3. On MacOS and Windows, to build the frontend and start the backend, run:
+3. On MacOS and Linux, to build the frontend and start the backend, run:
 
 ```bash
 make
