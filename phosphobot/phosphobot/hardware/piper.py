@@ -62,15 +62,15 @@ class PiperHardware(BaseManipulator):
         2: {"min_angle_limit": 0, "max_angle_limit": 3.14},
         3: {"min_angle_limit": -2.967, "max_angle_limit": 0},
         4: {"min_angle_limit": -1.745, "max_angle_limit": 1.745},
-        5: {"min_angle_limit": -1.22, "max_angle_limit": 1.22},
-        6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.09439},
+        5: {"min_angle_limit": -1.047, "max_angle_limit": 1.047}, # reduced for safety
+        6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.0943},
     }
     piper_limits_degrees: dict = {
         1: {"min_angle_limit": -150.0, "max_angle_limit": 150.0},
         2: {"min_angle_limit": 0, "max_angle_limit": 180.0},
         3: {"min_angle_limit": -170, "max_angle_limit": 0},
         4: {"min_angle_limit": -100.0, "max_angle_limit": 100.0},
-        5: {"min_angle_limit": -70.0, "max_angle_limit": 70.0},
+        5: {"min_angle_limit": -60.0, "max_angle_limit": 60.0}, # reduced for safety
         6: {"min_angle_limit": -120.0, "max_angle_limit": 120.0},
     }
 
