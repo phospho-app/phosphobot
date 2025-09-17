@@ -44,7 +44,7 @@ class PiperHardware(BaseManipulator):
     # When using the set zero of gripper control, we observe that current position is set to -1800 and not to zero
     GRIPPER_ZERO_POSITION = -1800
     # Strength with which the gripper will close. Similar to the gripping threshold value of other robots,
-    GRIPPER_EFFORT = 300
+    GRIPPER_EFFORT = 600
 
     calibration_max_steps: int = 2
 
@@ -62,7 +62,7 @@ class PiperHardware(BaseManipulator):
         2: {"min_angle_limit": 0, "max_angle_limit": 3.14},
         3: {"min_angle_limit": -2.967, "max_angle_limit": 0},
         4: {"min_angle_limit": -1.745, "max_angle_limit": 1.745},
-        5: {"min_angle_limit": -1.047, "max_angle_limit": 1.047}, # reduced for safety
+        5: {"min_angle_limit": -1.047, "max_angle_limit": 1.047}, 
         6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.0943},
     }
     piper_limits_degrees: dict = {
@@ -70,7 +70,7 @@ class PiperHardware(BaseManipulator):
         2: {"min_angle_limit": 0, "max_angle_limit": 180.0},
         3: {"min_angle_limit": -170, "max_angle_limit": 0},
         4: {"min_angle_limit": -100.0, "max_angle_limit": 100.0},
-        5: {"min_angle_limit": -60.0, "max_angle_limit": 60.0}, # reduced for safety
+        5: {"min_angle_limit": -60.0, "max_angle_limit": 60.0}, 
         6: {"min_angle_limit": -120.0, "max_angle_limit": 120.0},
     }
 
@@ -200,15 +200,7 @@ class PiperHardware(BaseManipulator):
         """
         Load the config file.
         """
-        self.config = BaseRobotConfig(
-            name=self.name,
-            servos_voltage=12.0,
-            servos_offsets=[0] * len(self.SERVO_IDS),
-            servos_offsets_signs=[1] * len(self.SERVO_IDS),
-            servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
-            gripping_threshold=1000,
-            non_gripping_threshold=10,
-        )
+        self.config = self.get_default_base_robot_config(voltage="24v")
 
     def enable_torque(self) -> None:
         if not self.is_connected:
@@ -290,7 +282,6 @@ class PiperHardware(BaseManipulator):
         # First 6 values of q_target are the joints position.
         # Clamp joints in the allowed range for the motors using self.piper_limits_degrees * 1000
         clamped_joints = []
-        logger.debug(f"Piper: {q_target=}")
         for i, joint in enumerate(q_target):
             # in self.piper_limits_degrees, there are only indexes 1 to 6
             servo_id = i + 1
@@ -301,7 +292,6 @@ class PiperHardware(BaseManipulator):
                 clamped_joint = int(np.clip(joint, min_limit, max_limit))
                 clamped_joints.append(clamped_joint)
         
-        logger.debug(f"Piper: Clipped joints {clamped_joints=}")
 
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
