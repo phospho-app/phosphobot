@@ -127,7 +127,7 @@ class PiperHardware(BaseManipulator):
 
             proc.wait(timeout=10)
             if proc.returncode != 0:
-                logger.warning(f"Script exited with {proc.returncode}")
+                logger.warning(f"Script exited with exit code: {proc.returncode}")
                 return
         except subprocess.CalledProcessError as e:
             logger.warning(
