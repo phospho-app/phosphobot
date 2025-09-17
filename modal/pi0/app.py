@@ -14,7 +14,7 @@ from huggingface_hub import HfApi, snapshot_download
 import modal
 from google.cloud.storage import Client as GCSClient
 from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig, RetryError
-from phosphobot.am.base import TrainingParamsPi0
+from phosphobot.am.base import TrainingParamsPi0, generate_readme
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -49,7 +49,7 @@ pi0_image = (
     )
     .workdir("/")
     .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
-        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout cccdd166379fd85fd82ec04c1ab3d414c90a51eb"
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 6ed610ab3d005061f3b517326524de491e9bb91f"
     )
     .run_commands(
         "uv pip install -e /openpi-source",
@@ -58,7 +58,7 @@ pi0_image = (
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_python_source("phosphobot")
 )
-
+pi0_volume = modal.Volume.from_name("pi0", create_if_missing=True)
 
 # Config constants
 MINUTES = 60  # seconds
@@ -72,7 +72,6 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0-server")
-pi0_volume = modal.Volume.from_name("pi0", create_if_missing=True)
 
 
 @app.function(
@@ -539,7 +538,7 @@ def _upload_checkpoint(checkpoint_dir: Path, model_name: str, hf_token: str):
     Upload the last available checkpoint to the HF model repo.
     This can be used for both the final model and intermediate checkpoints if the training times out.
     Folder will look like this
-    checkpoints/
+    folder/
         config.pkl
         wandb_id.txt
         0/
@@ -564,13 +563,19 @@ def _upload_checkpoint(checkpoint_dir: Path, model_name: str, hf_token: str):
     """
     api = HfApi(token=hf_token)
 
+    # Ensure the checkpoint directory exists
+    if not checkpoint_dir.exists() or not checkpoint_dir.is_dir():
+        raise ValueError(f"Checkpoint directory {checkpoint_dir} does not exist")
+
     # Find the latest checkpoint (highest numbered directory)
     checkpoint_dirs = [
         d for d in checkpoint_dir.iterdir() if d.is_dir() and d.name.isdigit()
     ]
 
     if not checkpoint_dirs:
-        raise ValueError(f"No checkpoint directories found in {checkpoint_dir}")
+        raise ValueError(
+            f"No checkpoint directories found in {checkpoint_dir}, available: {list(checkpoint_dir.iterdir())}"
+        )
 
     # Get the latest checkpoint by sorting numerically
     latest_checkpoint = max(checkpoint_dirs, key=lambda x: int(x.name))
@@ -636,7 +641,6 @@ def _upload_checkpoint(checkpoint_dir: Path, model_name: str, hf_token: str):
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": pi0_volume},
 )
 async def train(
     training_id: int,
@@ -671,6 +675,7 @@ async def train(
     logger.info(
         f"🚀 Training pi0.5 on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
+    wandb_run_url: str | None = None
 
     try:
         # Update training status to running
@@ -694,17 +699,24 @@ async def train(
 
         # Start by computing normalization stats
 
+        training_params_dict = training_params.model_dump(
+            exclude_none=True,
+        )
+
+        config_name = training_params_dict.get(
+            "config_name", "pi0.5_LoRA_finetune_so100"
+        )
+
+        exp_name = training_params_dict.get("exp_name", "pi05_so100_lora_finetune")
+
         norm_cmd = [
             "uv",
             "run",
             "/openpi-source/scripts/compute_norm_stats.py",
-            "pi0.5_LoRA_finetune_so100",
+            config_name,
             "--data.repo_id=" + dataset_name,
         ]
-        training_params_dict = training_params.model_dump(
-            by_alias=True,
-            exclude_none=True,
-        )
+
         logger.info(f"Training parameters: {training_params_dict}")
         for key, value in training_params_dict.items():
             norm_cmd.append(f"--{key}={value}")
@@ -720,7 +732,7 @@ async def train(
             "uv",
             "run",
             "/openpi-source/scripts/train.py",
-            "pi0.5_LoRA_finetune_so100",
+            config_name,
             "--data.repo_id=" + dataset_name,
         ]
 
@@ -756,9 +768,25 @@ async def train(
 
             # Upload the last available checkpoint to HuggingFace
             _upload_checkpoint(
-                checkpoint_dir=Path("./checkpoints") / model_name,
+                checkpoint_dir=Path("./checkpoints") / config_name / exp_name,
                 model_name=model_name,
                 hf_token=hf_token,
+            )
+
+            readme = generate_readme(
+                model_type="pi0.5",
+                dataset_repo_id=dataset_name,
+                training_params=training_params,
+                return_readme_as_bytes=True,
+                wandb_run_url=wandb_run_url,
+            )
+            api = HfApi(token=hf_token)
+            api.upload_file(
+                repo_type="model",
+                path_or_fileobj=readme,
+                path_in_repo="README.md",
+                repo_id=model_name,
+                token=hf_token,
             )
 
         except asyncio.TimeoutError:
@@ -778,6 +806,23 @@ async def train(
 
     except Exception as e:
         logger.error(f"Pi0 training {training_id} failed: {e}")
+
+        readme = generate_readme(
+            model_type="pi0.5",
+            dataset_repo_id=dataset_name,
+            training_params=training_params,
+            return_readme_as_bytes=True,
+            error_traceback=str(e),
+            wandb_run_url=wandb_run_url,
+        )
+        api = HfApi(token=hf_token)
+        api.upload_file(
+            repo_type="model",
+            path_or_fileobj=readme,
+            path_in_repo="README.md",
+            repo_id=model_name,
+            token=hf_token,
+        )
 
         # Update training status to failed
         try:

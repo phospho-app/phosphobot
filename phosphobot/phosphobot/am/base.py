@@ -9,7 +9,7 @@ import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
 from phosphobot.models import InfoModel, ModelConfigurationResponse
 from phosphobot.utils import get_hf_token
@@ -157,11 +157,13 @@ class TrainingParamsPi0(BaseModel):
     Training parameters for Pi0 model
     """
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(
+        extra="allow",
+        serialize_by_alias=True,
+    )
 
-    data_image_keys: str = Field(
-        "observation.images.main,observation.images.secondary_0",
+    data_image_keys: list[str] = Field(
+        default=["observation.images.main", "observation.images.secondary_0"],
         description="Comma-separated list of image keys to use for training",
         serialization_alias="data.image_keys",
     )
