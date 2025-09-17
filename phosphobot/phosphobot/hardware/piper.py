@@ -20,7 +20,7 @@ class PiperHardware(BaseManipulator):
         get_resources_path() / "urdf" / "piper" / "urdf" / "piper.urdf"
     )
 
-    AXIS_ORIENTATION = [0, 0, 0, 1]  # TODO : Verify the axis orientation
+    AXIS_ORIENTATION = [0, 0, 0, 1]  
 
     END_EFFECTOR_LINK_INDEX = 5
     GRIPPER_JOINT_INDEX = 6
@@ -255,6 +255,7 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
+        logger.debug(f"Piper: Writing position {units} to servo {servo_id}")
         # If servo_id is 7 (gripper), write the gripper command
         if servo_id == self.GRIPPER_SERVO_ID:
             self.write_gripper_command(units)
@@ -293,6 +294,7 @@ class PiperHardware(BaseManipulator):
         # First 6 values of q_target are the joints position.
         # Clamp joints in the allowed range for the motors using self.piper_limits_degrees * 1000
         clamped_joints = []
+        logger.debug(f"Piper: {q_target=}")
         for i, joint in enumerate(q_target):
             # in self.piper_limits_degrees, there are only indexes 1 to 6
             servo_id = i + 1
@@ -300,7 +302,10 @@ class PiperHardware(BaseManipulator):
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
                 max_limit = self.piper_limits_degrees[i + 1]["max_angle_limit"] * 1000
                 # q_target[i] = np.clip(joint, min_limit, max_limit)  # noqa: F821
-                clamped_joints.append(int(np.clip(joint, min_limit, max_limit)))
+                clamped_joint = int(np.clip(joint, min_limit, max_limit))
+                clamped_joints.append(clamped_joint)
+        
+        logger.debug(f"Piper: Clipped joints {clamped_joints=}")
 
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
@@ -384,18 +389,20 @@ class PiperHardware(BaseManipulator):
         position_deg = units * 2 * np.pi / self.RESOLUTION  # in 0.001 deg
         return position_deg  # in deg
 
-    def _radians_to_units_vec(self, radians: np.ndarray) -> np.ndarray:
+    def _radians_vec_to_motor_units(self, radians: np.ndarray) -> np.ndarray:
         """
         Convert from radians to motor discrete units (0 -> RESOLUTION)
+
+        Note: The result can exceed the resolution of the motor, in the case of a continuous rotation motor.
         """
-        position_deg = self.RESOLUTION * radians / (2 * np.pi)
-        return position_deg.astype(int)
+        position_deg = np.rad2deg(radians)  # in degrees
+        position_units = (position_deg * 1000).astype(int)  # in motor units
+        return position_units
 
     async def calibrate(self) -> tuple[Literal["success", "in_progress", "error"], str]:
         """
         This is called during the calibration phase of the robot.
-        CAUTION :
-        Set the robot in a sleep mode where falling wont be an issue and close the gripper.
+        CAUTION : Set the robot in sleep mode where falling wont be an issue and close the gripper.
         """
         if not self.is_connected:
             logger.warning("Robot is not connected. Cannot calibrate.")

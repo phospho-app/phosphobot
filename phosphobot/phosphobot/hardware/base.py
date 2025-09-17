@@ -585,7 +585,7 @@ class BaseManipulator(BaseRobot):
 
     def forward_kinematics(
         self, sync_robot_pos: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute the forward kinematics of the robot
         Returns cartesian position and orientation in radians

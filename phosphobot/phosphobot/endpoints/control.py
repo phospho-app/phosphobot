@@ -227,11 +227,6 @@ async def move_to_absolute_position(
             if robot.name == "so100":
                 # We invert rx and ry
                 target_controller_orientation = np.array([query.ry, query.rx, query.rz])
-            elif robot.name == "agilex-piper":
-                rotation = R.from_euler("y", -90, degrees=True)
-                target_controller_orientation = rotation.apply(
-                    [query.rx, query.ry, query.rz]
-                )
             else:
                 target_controller_orientation = np.array([query.rx, query.ry, query.rz])
 

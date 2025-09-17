@@ -24,8 +24,9 @@ prod_gui:
 	cd ./dashboard && (npm i && npm run build && mkdir -p ../phosphobot/resources/dist/ && cp -r ./dist/* ../phosphobot/resources/dist/)
 	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=gui --no-crash-telemetry
 
+# Trick for raspberrypi : pretend opengl>=3.2 so that pybullet will run in a gui
 prod_gui_back:
-	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=gui --no-crash-telemetry
+	cd phosphobot && MESA_GL_VERSION_OVERRIDE=3.3 uv run --python 3.10 phosphobot run --simulation=gui --no-crash-telemetry
 
 
 # Run the server for prod settings (able to connect to the Meta Quest) but with telemetry disabled. If npm is not installed, it will skip the build step.
