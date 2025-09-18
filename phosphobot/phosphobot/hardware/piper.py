@@ -453,7 +453,7 @@ class PiperHardware(BaseManipulator):
 
         if unit == "motor_units":
             # Don't do anything
-            pass
+            gripper_units = normalized
         elif unit == "rad":
             # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, pi / 2)
             gripper_units = normalized * (np.pi / 2)
