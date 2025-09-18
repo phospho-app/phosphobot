@@ -167,6 +167,7 @@ class PiperHardware(BaseManipulator):
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
         )
         await asyncio.sleep(0.2)
+        self.is_torqued = True
 
         self.init_config()
         self.is_connected = True
