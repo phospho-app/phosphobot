@@ -88,17 +88,22 @@ class PiperHardware(BaseManipulator):
 
     def _init_sim_gripper(self) -> None:
         """Discover and cache gripper joints + limits in simulation."""
-    
+
         self.gripper_initial_angle = None
-
-
-
+        
+        # Initialize gripper-related attributes with None/empty defaults
+        self._gripper_joint_indices = []
+        self._gripper_closed_positions = []
+        self._gripper_open_positions = []
+        self._gripper_joint_limits = []  # NEW: Cache joint limits
 
         try:
             name2idx = {
                 self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[1].decode("utf-8"): i
                 for i in range(self.num_joints)
             }
+            
+            # Try to find joint7 and joint8 first
             if "joint7" in name2idx and "joint8" in name2idx:
                 self._gripper_joint_indices = [name2idx["joint7"], name2idx["joint8"]]
             else:
@@ -117,19 +122,28 @@ class PiperHardware(BaseManipulator):
             logger.error(f"pybullet joint lookup failed: {e}")
             return
 
-        closed, opened = [], []
+        # Cache joint limits and positions in one pass
+        closed, opened, limits = [], [], []
         for jidx in self._gripper_joint_indices:
             info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
             lower, upper = float(info[8]), float(info[9])
+            
+            # Cache the limits for later use
+            limits.append((lower, upper))
 
+            # Determine closed/open positions
             closed_pos, open_pos = (upper, lower) if abs(upper) < abs(lower) else (lower, upper)
 
+            # Apply limits immediately
             closed.append(float(np.clip(closed_pos, lower, upper)))
             opened.append(float(np.clip(open_pos, lower, upper)))
 
         self._gripper_closed_positions = closed
         self._gripper_open_positions = opened
-        logger.debug(f"Init gripper: {self._gripper_joint_indices=} {closed=} {opened=}")
+        self._gripper_joint_limits = limits  # NEW: Store cached limits
+        
+        logger.debug(f"Init gripper: {self._gripper_joint_indices=} {closed=} {opened=} {limits=}")
+
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -583,31 +597,34 @@ class PiperHardware(BaseManipulator):
         """
         import pybullet as p
 
-        # clamp input to [0,1]
-        open = float(np.clip(open, 0.0, 1.0))
-
-        # if object already gripped, do not change simulation (keeps behavior from your single-servo version)
+        # Early returns for edge cases
+        if not self._gripper_joint_indices:
+            logger.debug("No gripper joints available")
+            return
+            
         if self.is_object_gripped:
             return
 
+        # Clamp input to [0,1]
+        open = float(np.clip(open, 0.0, 1.0))
 
-        # interpolate per-joint target positions
-        target_positions = [
-            close + (open_pos - close) * open
-            for close, open_pos in zip(self._gripper_closed_positions, self._gripper_open_positions)
-        ]
-
-        # clamp to actual joint limits (defensive)
-        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
-        for i, jidx in enumerate(self._gripper_joint_indices):
-            info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
-            lower = info[8]
-            upper = info[9]
-            tgt = target_positions[i]
+        # Calculate target positions using cached data
+        target_positions = []
+        for i, (close, open_pos, (lower, upper)) in enumerate(
+            zip(self._gripper_closed_positions, self._gripper_open_positions, self._gripper_joint_limits)
+        ):
+            # Interpolate target position
+            target = close + (open_pos - close) * open
+            
+            # Apply cached joint limits
             if lower <= upper:
-                tgt = float(np.clip(tgt, lower, upper))
-            target_positions[i] = tgt
+                target = float(np.clip(target, lower, upper))
+            
+            target_positions.append(target)
 
+        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
+        
+        # Apply the joint positions
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
             joint_indices=self._gripper_joint_indices,
