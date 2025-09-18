@@ -217,7 +217,7 @@ async def setup_ai_control(
 
     server_info = ServerInfoResponse.model_validate(response.json())
 
-    connects_through_tcp = ["gr00t"]
+    connects_through_tcp = ["gr00t", "pi0.5"]
 
     if model_type in connects_through_tcp:
         server_url = server_info.tcp_socket[0]

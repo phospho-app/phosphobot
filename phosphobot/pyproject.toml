@@ -18,7 +18,6 @@ dependencies = [
     "scipy>=1.13.0",
     "uvicorn>=0.32.1",
     "opencv-python-headless>=4.0",
-    # "openpi-client>=0.1.0",
     "requests>=2.32.4",
     "types-requests>=2.32.0.20241016",
     "json-numpy>=2.1.0",

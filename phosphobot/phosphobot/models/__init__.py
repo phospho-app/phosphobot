@@ -871,7 +871,7 @@ class StartServerRequest(BaseModel):
         description="List of robot serial ids to ignore. If set to None, controls all available robots.",
         examples=[["/dev/ttyUSB0"]],
     )
-    model_type: Literal["gr00t", "ACT"] = Field(
+    model_type: Literal["gr00t", "ACT", "pi0.5"] = Field(
         ...,
         description="Type of model to use. Can be gr00t or act.",
     )

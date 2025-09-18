@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 from collections import deque
-from typing import TYPE_CHECKING, Any, Dict, List, Literal
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 if TYPE_CHECKING:
     # We only need BaseManipulator for type checking
@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 import cv2
 import msgpack_numpy
 import numpy as np
-import websockets
+import websockets.sync.client
+from websockets.exceptions import InvalidMessage
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
@@ -102,50 +103,51 @@ class HuggingFaceAugmentedValidator(BaseModel):
     )
 
 
-class WebsocketPolicyClient:
-    """Client for communicating with a WebSocket policy server (like pi0.5 from OpenPi)."""
+class WebsocketClientPolicy:
+    """Implements the Policy interface by communicating with a server over websocket.
 
-    def __init__(self, host: str = "localhost", port: int = 8765):
-        self.host = host
-        self.port = port
-        self.websocket: websockets.ClientConnection | None = None
-        self.metadata = None
-        self.unpacker = msgpack_numpy.Unpacker(raw=False)
+    See WebsocketPolicyServer for a corresponding server implementation.
+    """
 
-    async def connect(self) -> Any:
-        """Connect to the policy server and receive metadata."""
-        uri = f"ws://{self.host}:{self.port}"
-        self.websocket = await websockets.connect(uri, compression=None, max_size=None)
-        logger.info(f"Connected to policy server at {uri}")
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: Optional[int] = None,
+    ) -> None:
+        self._uri = f"ws://{host}"
+        if port is not None:
+            self._uri += f":{port}"
+        self._packer = msgpack_numpy.Packer()
+        self._ws, self._server_metadata = self._wait_for_server()
 
-        # Receive metadata from server
-        metadata_packed = await self.websocket.recv()
-        self.metadata = msgpack_numpy.unpackb(metadata_packed)
-        logger.info(f"Received metadata: {self.metadata}")
+    def get_server_metadata(self) -> Dict:
+        return self._server_metadata
 
-        return self.metadata
+    def _wait_for_server(self) -> Tuple[websockets.sync.client.ClientConnection, Dict]:
+        logger.info(f"Waiting for server at {self._uri}...")
+        # Despite the error we try up to 20 times to connect
+        for _ in range(20):
+            try:
+                conn = websockets.sync.client.connect(
+                    self._uri,
+                    compression=None,
+                    max_size=None,
+                )
+                metadata = msgpack_numpy.unpackb(conn.recv())
+                return conn, metadata
+            except InvalidMessage:
+                logger.info("Still waiting for server...")
+                time.sleep(5)
+        raise RuntimeError(f"Could not connect to server at {self._uri}")
 
-    async def infer(self, observation: Dict[str, Any]) -> Dict[str, Any]:
-        """Send observation and get action from the policy."""
-        if self.websocket is None:
-            raise RuntimeError("Not connected to server. Call connect() first.")
-
-        # Send observation
-        obs_packed = msgpack_numpy.packb(observation)
-        await self.websocket.send(obs_packed)
-
-        # Receive action
-        action_packed = await self.websocket.recv()
-        action = msgpack_numpy.unpackb(action_packed)
-
-        return action
-
-    async def close(self) -> None:
-        """Close the connection to the server."""
-        if self.websocket:
-            await self.websocket.close()
-            self.websocket = None
-            logger.info("Disconnected from policy server")
+    def infer(self, obs: Dict) -> Dict:  # noqa: UP006
+        data = self._packer.pack(obs)
+        self._ws.send(data)
+        response = self._ws.recv()
+        if isinstance(response, str):
+            # we're expecting bytes; if the server sends a string, it's an error.
+            raise RuntimeError(f"Error in inference server:\n{response}")
+        return msgpack_numpy.unpackb(response)
 
 
 def fetch_camera_images(
@@ -177,7 +179,7 @@ def fetch_camera_images(
             camera_id=camera_id,
             resolution=video_resolution,
         )
-        image_inputs[camera_name] = frame_array
+        image_inputs[camera_name.replace("observation.", "observation/")] = frame_array
 
     return image_inputs
 
@@ -202,12 +204,12 @@ class Pi05(ActionModel):
         **kwargs: Any,
     ):
         super().__init__(server_url, server_port)
-        self.client = WebsocketPolicyClient(host=server_url, port=server_port)
+        self.client = WebsocketClientPolicy(host=server_url, port=server_port)
         self.image_keys = image_keys
 
     def sample_actions(self, inputs: dict) -> np.ndarray:
         try:
-            response = self.client.infer(observation=inputs)
+            response = self.client.infer(obs=inputs)
 
             logger.debug(f"Response from server: {response}")
             actions = np.array([0, 0, 0, 0, 0, 0])
@@ -223,7 +225,7 @@ class Pi05(ActionModel):
 
     async def async_sample_actions(self, inputs: dict) -> np.ndarray:
         try:
-            response = await self.client.infer(observation=inputs)
+            response = self.client.infer(obs=inputs)
 
             logger.debug(f"Response from server: {response}")
             actions = np.array([0, 0, 0, 0, 0, 0])
@@ -457,9 +459,11 @@ class Pi05(ActionModel):
                     (state, robot.read_joints_position(unit="rad")), axis=0
                 )
 
+            logger.debug(f"State with type {type(state)}: {state}")
+
             # Prepare model input
             inputs: dict[str, np.ndarray | str] = {
-                "state": state,
+                "observation/state": state,
                 "prompt": prompt,
                 **image_inputs,
             }
@@ -468,9 +472,8 @@ class Pi05(ActionModel):
                 if len(actions_queue) == 0:
                     from typing import cast
 
-                    actions = cast(
-                        np.ndarray, await self.client.infer(observation=inputs)
-                    )
+                    actions = cast(np.ndarray, self.client.infer(obs=inputs))
+
                     actions_queue.extend(actions)
                 actions = actions_queue.popleft()
             except Exception as e:
