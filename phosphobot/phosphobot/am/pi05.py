@@ -211,9 +211,8 @@ class Pi05(ActionModel):
                 filename="config.pkl",
                 force_download=True,
             )
-            with open(config, "rb") as f:
-                config_content = f.read()
-            config_dict = dill.load(config_content)
+            with open(config, "rb") as pickle_file:
+                config_dict = dill.load(pickle_file)
 
             norm_stats = api.hf_hub_download(
                 repo_id=model_id,
