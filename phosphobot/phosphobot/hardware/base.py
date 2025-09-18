@@ -235,7 +235,7 @@ class BaseManipulator(BaseRobot):
             axis_orientation=self.AXIS_ORIENTATION,
             use_fixed_base=True,
         )
-
+        self.num_joints = num_joints
         self.actuated_joints = actuated_joints
 
         # Infer SERVO_IDS and CALIBRATION_POSITION from the actuated joints if not set

@@ -92,21 +92,20 @@ class PiperHardware(BaseManipulator):
         self.gripper_initial_angle = None
 
 
-        import pybullet as p
 
 
         try:
             name2idx = {
-                p.getJointInfo(self.p_robot_id, i)[1].decode("utf-8"): i
-                for i in range(p.getNumJoints(self.p_robot_id))
+                self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[1].decode("utf-8"): i
+                for i in range(self.num_joints)
             }
             if "joint7" in name2idx and "joint8" in name2idx:
                 self._gripper_joint_indices = [name2idx["joint7"], name2idx["joint8"]]
             else:
                 # fallback: last 2 prismatic joints
                 found = [
-                    i for i in range(p.getNumJoints(self.p_robot_id))
-                    if p.getJointInfo(self.p_robot_id, i)[2] == 1
+                    i for i in range(self.num_joints)
+                    if self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[2] == 1
                 ]
                 if len(found) >= 2:
                     self._gripper_joint_indices = found[-2:]
@@ -115,12 +114,12 @@ class PiperHardware(BaseManipulator):
                     logger.warning("Failed to auto-detect gripper joints; disabled")
                     return
         except Exception as e:
-            logger.exception("pybullet joint lookup failed: %s", e)
+            logger.error(f"pybullet joint lookup failed: {e}")
             return
 
         closed, opened = [], []
         for jidx in self._gripper_joint_indices:
-            info = p.getJointInfo(self.p_robot_id, jidx)
+            info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
             lower, upper = float(info[8]), float(info[9])
 
             closed_pos, open_pos = (upper, lower) if abs(upper) < abs(lower) else (lower, upper)
@@ -130,8 +129,7 @@ class PiperHardware(BaseManipulator):
 
         self._gripper_closed_positions = closed
         self._gripper_open_positions = opened
-        logger.debug("Init gripper: indices=%s closed=%s open=%s",
-                     self._gripper_joint_indices, closed, opened)
+        logger.debug(f"Init gripper: {self._gripper_joint_indices=} {closed=} {opened=}")
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -244,6 +242,7 @@ class PiperHardware(BaseManipulator):
 
         self.motors_bus.DisconnectPort()
         self.is_connected = False
+        self.is_torqued = False
 
     def init_config(self) -> None:
         """
@@ -272,7 +271,7 @@ class PiperHardware(BaseManipulator):
 
         raise: Exception if the routine has not been implemented
         """
-        if servo_id >= self.GRIPPER_SERVO_ID or servo_id < 1:
+        if servo_id >= self.GRIPPER_SERVO_ID:
             gripper_state = self.motors_bus.GetArmGripperMsgs().gripper_state
             return gripper_state.grippers_effort
         else:
@@ -599,9 +598,9 @@ class PiperHardware(BaseManipulator):
         ]
 
         # clamp to actual joint limits (defensive)
-        gripper_joint_indices = [7, 8]
-        for i, jidx in enumerate(gripper_joint_indices):
-            info = p.getJointInfo(self.p_robot_id, jidx)
+        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
+        for i, jidx in enumerate(self._gripper_joint_indices):
+            info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
             lower = info[8]
             upper = info[9]
             tgt = target_positions[i]
@@ -611,6 +610,6 @@ class PiperHardware(BaseManipulator):
 
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
-            joint_indices=gripper_joint_indices,
+            joint_indices=self._gripper_joint_indices,
             target_positions=target_positions,
         )
