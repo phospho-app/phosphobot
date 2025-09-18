@@ -10,9 +10,9 @@ if TYPE_CHECKING:
     from phosphobot.hardware.base import BaseManipulator
 
 import cv2
-import httpx
-import json_numpy  # type: ignore
+import websockets
 import numpy as np
+import msgpack_numpy
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
@@ -102,6 +102,61 @@ class HuggingFaceAugmentedValidator(BaseModel):
     )
 
 
+class WebsocketPolicyClient:
+    """Client for communicating with a WebSocket policy server (like pi0.5 from OpenPi)."""
+
+    def __init__(self, host: str = "localhost", port: int = 8765):
+        self.host = host
+        self.port = port
+        self.websocket: websockets.ClientConnection | None = None
+        self.metadata = None
+        self.unpacker = msgpack_numpy.Unpacker(raw=False)
+
+    async def connect(self) -> Any:
+        """Connect to the policy server and receive metadata."""
+        uri = f"ws://{self.host}:{self.port}"
+        self.websocket = await websockets.connect(uri, compression=None, max_size=None)
+        logger.info(f"Connected to policy server at {uri}")
+
+        # Receive metadata from server
+        metadata_packed = await self.websocket.recv()
+        self.metadata = msgpack_numpy.unpackb(metadata_packed)
+        logger.info(f"Received metadata: {self.metadata}")
+
+        return self.metadata
+
+    async def infer(self, observation: Dict[str, Any]) -> Dict[str, Any]:
+        """Send observation and get action from the policy."""
+        if self.websocket is None:
+            raise RuntimeError("Not connected to server. Call connect() first.")
+
+        # Send observation
+        obs_packed = msgpack_numpy.packb(observation)
+        await self.websocket.send(obs_packed)
+
+        # Receive action
+        action_packed = await self.websocket.recv()
+        action = msgpack_numpy.unpackb(action_packed)
+
+        return action
+
+    async def close(self):
+        """Close the connection to the server."""
+        if self.websocket:
+            await self.websocket.close()
+            self.websocket = None
+            logger.info("Disconnected from policy server")
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
+
 def fetch_camera_images(
     config: Pi05SpawnConfig,
     all_cameras: AllCameras,
@@ -145,43 +200,26 @@ class RetryError(Exception):
 class Pi05(ActionModel):
     """Client for Pi0.5 model inference server."""
 
-    REQUIRED_CAMERA_KEYS = ["base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"]
-
     def __init__(
         self,
-        server_url: str = "http://localhost",
-        server_port: int = 8080,
+        image_keys: List[str] = [
+            "observation.images.main",
+            "observation.images.secondary_0",
+        ],
+        server_url: str = "localhost",
+        server_port: int = 5555,
         **kwargs: Any,
     ):
         super().__init__(server_url, server_port)
-        self.async_client = httpx.AsyncClient(
-            base_url=server_url + f":{server_port}",
-            timeout=10,
-            headers={"Content-Type": "application/json"},
-            limits=httpx.Limits(max_keepalive_connections=10, max_connections=100),
-            http2=True,  # Enables HTTP/2 for better performance if supported
-        )
-        self.sync_client = httpx.Client(
-            base_url=server_url + f":{server_port}",
-            timeout=10,
-            headers={"Content-Type": "application/json"},
-            limits=httpx.Limits(max_keepalive_connections=10, max_connections=100),
-            http2=True,  # Enables HTTP/2 if supported by the server
-        )
+        self.client = WebsocketPolicyClient(host=server_url, port=server_port)
+        self.image_keys = image_keys
 
     def sample_actions(self, inputs: dict) -> np.ndarray:
-        # Double-encoded version (to send numpy arrays as JSON)
-        encoded_payload = {"encoded": json_numpy.dumps(inputs)}
-
         try:
-            response = self.sync_client.post("/get_action", json=encoded_payload)
+            response = self.client.infer(observation=inputs)
 
-            if response.status_code == 202:
-                raise RetryError(response.content)
-
-            if response.status_code != 200:
-                raise RuntimeError(response.text)
-            actions = json_numpy.loads(response.json())
+            logger.debug(f"Response from server: {response}")
+            actions = np.array([0, 0, 0, 0, 0, 0])
         except RetryError as e:
             raise RetryError(e)
         except Exception as e:
@@ -193,20 +231,11 @@ class Pi05(ActionModel):
         return actions
 
     async def async_sample_actions(self, inputs: dict) -> np.ndarray:
-        # Clean up the input to avoid JSON serialization issues
-        encoded_payload = {"encoded": json_numpy.dumps(inputs)}
-
         try:
-            response = await self.async_client.post(
-                f"{self.server_url}/get_action", json=encoded_payload, timeout=30
-            )
+            response = await self.client.infer(observation=inputs)
 
-            if response.status_code == 202:
-                raise RetryError(response.content)
-
-            if response.status_code != 200:
-                raise RuntimeError(response.text)
-            actions = json_numpy.loads(response.json())
+            logger.debug(f"Response from server: {response}")
+            actions = np.array([0, 0, 0, 0, 0, 0])
         except RetryError as e:
             raise RetryError(e)
         except Exception as e:
@@ -400,7 +429,6 @@ class Pi05(ActionModel):
             start_time = time.perf_counter()
 
             # Get the images from the cameras based on the config
-            # For now, just put as many cameras as the model config
             image_inputs = fetch_camera_images(
                 config=model_spawn_config,
                 all_cameras=all_cameras,
@@ -447,7 +475,11 @@ class Pi05(ActionModel):
 
             try:
                 if len(actions_queue) == 0:
-                    actions = await self.async_sample_actions(inputs)
+                    from typing import cast
+
+                    actions = cast(
+                        np.ndarray, await self.client.infer(observation=inputs)
+                    )
                     actions_queue.extend(actions)
                 actions = actions_queue.popleft()
             except Exception as e:
