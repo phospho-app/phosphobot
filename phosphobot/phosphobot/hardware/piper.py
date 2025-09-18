@@ -20,23 +20,24 @@ class PiperHardware(BaseManipulator):
         get_resources_path() / "urdf" / "piper" / "urdf" / "piper.urdf"
     )
 
-    AXIS_ORIENTATION = [0, 0, 0, 1]  # TODO : Verify the axis orientation
+    AXIS_ORIENTATION = [0, 0, 0, 1]  
 
     END_EFFECTOR_LINK_INDEX = 5
     GRIPPER_JOINT_INDEX = 6
 
-    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7, 8]
+    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7]
 
     RESOLUTION = 360 * 1000  # In 0.001 degree
 
     SLEEP_POSITION = [0, 0, 0, 0, 0, 0]
+    time_to_sleep: float = 1.8
     CALIBRATION_POSITION = [0, 0, 0, 0, 0, 0]
 
     is_object_gripped = False
     is_moving = False
     robot_connected = False
 
-    GRIPPER_MAX_ANGLE = 100  # In degree
+    GRIPPER_MAX_ANGLE = 99  # In degree
     ENABLE_GRIPPER = 0x01
     DISABLE_GRIPPER = 0x00
 
@@ -44,33 +45,33 @@ class PiperHardware(BaseManipulator):
     # When using the set zero of gripper control, we observe that current position is set to -1800 and not to zero
     GRIPPER_ZERO_POSITION = -1800
     # Strength with which the gripper will close. Similar to the gripping threshold value of other robots,
-    GRIPPER_EFFORT = 300
+    GRIPPER_EFFORT = 600
 
     calibration_max_steps: int = 2
 
     # Reference: https://github.com/agilexrobotics/piper_sdk/blob/master/asserts/V2/INTERFACE_V2.MD#jointctrl
     #  |joint_name|     limit(rad)     |    limit(angle)    |
     # |----------|     ----------     |     ----------     |
-    # |joint1    |   [-2.618, 2.618]  |    [-150.0, 150.0] |
+    # |joint1    |   [-2.6179, 2.6179]  |    [-150.0, 150.0] |
     # |joint2    |   [0, 3.14]        |    [0, 180.0]      |
     # |joint3    |   [-2.967, 0]      |    [-170, 0]       |
     # |joint4    |   [-1.745, 1.745]  |    [-100.0, 100.0] |
     # |joint5    |   [-1.22, 1.22]    |    [-70.0, 70.0]   |
-    # |joint6    |   [-2.0944, 2.0944]|    [-120.0, 120.0] |
+    # |joint6    |   [-2.09439, 2.09439]|    [-120.0, 120.0] |
     piper_limits_rad: dict = {
-        1: {"min_angle_limit": -2.618, "max_angle_limit": 2.618},
+        1: {"min_angle_limit": -2.6179, "max_angle_limit": 2.6179},
         2: {"min_angle_limit": 0, "max_angle_limit": 3.14},
         3: {"min_angle_limit": -2.967, "max_angle_limit": 0},
         4: {"min_angle_limit": -1.745, "max_angle_limit": 1.745},
-        5: {"min_angle_limit": -1.22, "max_angle_limit": 1.22},
-        6: {"min_angle_limit": -2.0944, "max_angle_limit": 2.0944},
+        5: {"min_angle_limit": -1.047, "max_angle_limit": 1.047}, 
+        6: {"min_angle_limit": -2.09439, "max_angle_limit": 2.0943},
     }
     piper_limits_degrees: dict = {
         1: {"min_angle_limit": -150.0, "max_angle_limit": 150.0},
         2: {"min_angle_limit": 0, "max_angle_limit": 180.0},
         3: {"min_angle_limit": -170, "max_angle_limit": 0},
         4: {"min_angle_limit": -100.0, "max_angle_limit": 100.0},
-        5: {"min_angle_limit": -70.0, "max_angle_limit": 70.0},
+        5: {"min_angle_limit": -60.0, "max_angle_limit": 60.0}, 
         6: {"min_angle_limit": -120.0, "max_angle_limit": 120.0},
     }
 
@@ -84,6 +85,66 @@ class PiperHardware(BaseManipulator):
         super().__init__(only_simulation=only_simulation, axis=axis)
         self.SERIAL_ID = can_name
         self.is_torqued = False
+        self._init_sim_gripper()
+
+    def _init_sim_gripper(self) -> None:
+        """Discover and cache gripper joints + limits in simulation."""
+
+        self.gripper_initial_angle = None
+        
+        # Initialize gripper-related attributes with None/empty defaults
+        self._gripper_joint_indices = []
+        self._gripper_closed_positions = []
+        self._gripper_open_positions = []
+        self._gripper_joint_limits = []  # NEW: Cache joint limits
+
+        try:
+            name2idx = {
+                self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[1].decode("utf-8"): i
+                for i in range(self.num_joints)
+            }
+            
+            # Try to find joint7 and joint8 first
+            if "joint7" in name2idx and "joint8" in name2idx:
+                self._gripper_joint_indices = [name2idx["joint7"], name2idx["joint8"]]
+            else:
+                # fallback: last 2 prismatic joints
+                found = [
+                    i for i in range(self.num_joints)
+                    if self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[2] == 1
+                ]
+                if len(found) >= 2:
+                    self._gripper_joint_indices = found[-2:]
+                    logger.debug("Guessed prismatic joints: %s", self._gripper_joint_indices)
+                else:
+                    logger.warning("Failed to auto-detect gripper joints; disabled")
+                    return
+        except Exception as e:
+            logger.error(f"pybullet joint lookup failed: {e}")
+            return
+
+        # Cache joint limits and positions in one pass
+        closed, opened, limits = [], [], []
+        for jidx in self._gripper_joint_indices:
+            info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
+            lower, upper = float(info[8]), float(info[9])
+            
+            # Cache the limits for later use
+            limits.append((lower, upper))
+
+            # Determine closed/open positions
+            closed_pos, open_pos = (upper, lower) if abs(upper) < abs(lower) else (lower, upper)
+
+            # Apply limits immediately
+            closed.append(float(np.clip(closed_pos, lower, upper)))
+            opened.append(float(np.clip(open_pos, lower, upper)))
+
+        self._gripper_closed_positions = closed
+        self._gripper_open_positions = opened
+        self._gripper_joint_limits = limits  # NEW: Store cached limits
+        
+        logger.debug(f"Init gripper: {self._gripper_joint_indices=} {closed=} {opened=} {limits=}")
+
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -127,7 +188,7 @@ class PiperHardware(BaseManipulator):
 
             proc.wait(timeout=10)
             if proc.returncode != 0:
-                logger.error("Script exited with %d", proc.returncode)
+                logger.warning(f"Script exited with exit code: {proc.returncode}")
                 return
         except subprocess.CalledProcessError as e:
             logger.warning(
@@ -143,7 +204,7 @@ class PiperHardware(BaseManipulator):
         # Check if CAN bus is OK
         is_ok = self.motors_bus.isOk()
         if not is_ok:
-            logger.debug(
+            logger.warning(
                 f"Could not connect to Agilex Piper on {self.can_name}: CAN bus is not OK."
             )
             return
@@ -167,9 +228,11 @@ class PiperHardware(BaseManipulator):
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
         )
         await asyncio.sleep(0.2)
+        self.is_torqued = True
 
-        self.is_connected = True
         self.init_config()
+        self.is_connected = True
+
 
     def get_default_base_robot_config(
         self, voltage: str, raise_if_none: bool = False
@@ -194,20 +257,13 @@ class PiperHardware(BaseManipulator):
 
         self.motors_bus.DisconnectPort()
         self.is_connected = False
+        self.is_torqued = False
 
     def init_config(self) -> None:
         """
         Load the config file.
         """
-        self.config = BaseRobotConfig(
-            name=self.name,
-            servos_voltage=12.0,
-            servos_offsets=[0] * len(self.SERVO_IDS),
-            servos_offsets_signs=[1] * len(self.SERVO_IDS),
-            servos_calibration_position=[1e-6] * len(self.SERVO_IDS),
-            gripping_threshold=1000,
-            non_gripping_threshold=10,
-        )
+        self.config = self.get_default_base_robot_config(voltage="24v")
 
     def enable_torque(self) -> None:
         if not self.is_connected:
@@ -230,7 +286,7 @@ class PiperHardware(BaseManipulator):
 
         raise: Exception if the routine has not been implemented
         """
-        if servo_id >= self.GRIPPER_SERVO_ID or servo_id < 1:
+        if servo_id >= self.GRIPPER_SERVO_ID:
             gripper_state = self.motors_bus.GetArmGripperMsgs().gripper_state
             return gripper_state.grippers_effort
         else:
@@ -254,6 +310,7 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
+        logger.debug(f"Piper: Writing position {units} to servo {servo_id}")
         # If servo_id is 7 (gripper), write the gripper command
         if servo_id == self.GRIPPER_SERVO_ID:
             self.write_gripper_command(units)
@@ -267,11 +324,7 @@ class PiperHardware(BaseManipulator):
         # Override the position of the specified servo_id
         current_position[servo_id - 1] = units
 
-        logger.debug(f"Piper: Moving servo {servo_id} to position {units}")
         # Clamp the position in the allowed range for the motors using self.piper_limits
-        logger.debug(
-            f"Piper: Clipping position {servo_id} to {self.piper_limits_degrees[servo_id]}"
-        )
         if servo_id in self.piper_limits_degrees:
             min_limit = self.piper_limits_degrees[servo_id]["min_angle_limit"] * 1000
             max_limit = self.piper_limits_degrees[servo_id]["max_angle_limit"] * 1000
@@ -299,7 +352,9 @@ class PiperHardware(BaseManipulator):
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
                 max_limit = self.piper_limits_degrees[i + 1]["max_angle_limit"] * 1000
                 # q_target[i] = np.clip(joint, min_limit, max_limit)  # noqa: F821
-                clamped_joints.append(int(np.clip(joint, min_limit, max_limit)))
+                clamped_joint = int(np.clip(joint, min_limit, max_limit))
+                clamped_joints.append(clamped_joint)
+        
 
         self.motors_bus.ModeCtrl(
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
@@ -383,18 +438,20 @@ class PiperHardware(BaseManipulator):
         position_deg = units * 2 * np.pi / self.RESOLUTION  # in 0.001 deg
         return position_deg  # in deg
 
-    def _radians_to_units_vec(self, radians: np.ndarray) -> np.ndarray:
+    def _radians_vec_to_motor_units(self, radians: np.ndarray) -> np.ndarray:
         """
         Convert from radians to motor discrete units (0 -> RESOLUTION)
+
+        Note: The result can exceed the resolution of the motor, in the case of a continuous rotation motor.
         """
-        position_deg = self.RESOLUTION * radians / (2 * np.pi)
-        return position_deg.astype(int)
+        position_deg = np.rad2deg(radians)  # in degrees
+        position_units = (position_deg * 1000).astype(int)  # in motor units
+        return position_units
 
     async def calibrate(self) -> tuple[Literal["success", "in_progress", "error"], str]:
         """
         This is called during the calibration phase of the robot.
-        CAUTION :
-        Set the robot in a sleep mode where falling wont be an issue and close the gripper.
+        CAUTION : Set the robot in sleep mode where falling wont be an issue and close the gripper.
         """
         if not self.is_connected:
             logger.warning("Robot is not connected. Cannot calibrate.")
@@ -445,21 +502,29 @@ class PiperHardware(BaseManipulator):
         if source == "robot":
             gripper_ctrl = self.motors_bus.GetArmGripperMsgs().gripper_state
             gripper_position = gripper_ctrl.grippers_angle
-        elif source == "sim":
-            raise NotImplementedError(
-                "Reading gripper command from simulation is not implemented for Piper."
+            # Calculate normalized gripper position [0, 1]
+            normalized = (gripper_position - self.GRIPPER_ZERO_POSITION) / (
+                self.GRIPPER_MAX_ANGLE * 1000
             )
+        elif source == "sim":
+            if not self._gripper_joint_indices:
+                return 0.0
+            import pybullet as p
+            fractions = []
+            for jidx, closed_pos, open_pos in zip(self._gripper_joint_indices,
+                                                  self._gripper_closed_positions,
+                                                  self._gripper_open_positions):
+                pos = float(p.getJointState(self.p_robot_id, jidx)[0])
+                denom = open_pos - closed_pos
+                f = (pos - closed_pos) / denom if abs(denom) > 1e-9 else 0.0
+                fractions.append(float(np.clip(f, 0.0, 1.0)))
+            normalized = float(np.mean(fractions)) if fractions else 0.0
         else:
-            raise ValueError(f"Unknown source: {source}")
-
-        # Calculate normalized gripper position [0, 1]
-        normalized = (gripper_position - self.GRIPPER_ZERO_POSITION) / (
-            self.GRIPPER_MAX_ANGLE * 1000
-        )
+            raise ValueError(f"Unknown source: {source}")    
 
         if unit == "motor_units":
             # Don't do anything
-            pass
+            gripper_units = normalized
         elif unit == "rad":
             # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, pi / 2)
             gripper_units = normalized * (np.pi / 2)
@@ -476,9 +541,6 @@ class PiperHardware(BaseManipulator):
         else:
             raise ValueError(f"Unknown unit: {unit}")
 
-        logger.debug(
-            f"Piper: Converted gripper position {gripper_position} to {gripper_units} in {unit}"
-        )
         return gripper_units
 
     def _rad_to_open_command(self, radians: float) -> float:
@@ -489,9 +551,6 @@ class PiperHardware(BaseManipulator):
         # Clip to valid range and normalize to [0, 1]
         clipped_radians = np.clip(radians, 0, np.pi / 2)  # Max 90 degrees (π/2 rad)
         open_command = clipped_radians / (np.pi / 2)  # Normalize to [0, 1]
-        logger.debug(
-            f"Piper: Converting radians {radians} to open command {open_command}"
-        )
         return open_command
 
     def write_gripper_command(self, command: float) -> None:
@@ -504,7 +563,6 @@ class PiperHardware(BaseManipulator):
             logger.debug("Robot not connected, cannot write gripper command")
             return
         # Gripper -> Convert from 0->RESOLUTION to 0->GRIPPER_MAX_ANGLE
-        logger.debug(f"Piper: Writing gripper command {command}")
         unit_degree = command * self.GRIPPER_MAX_ANGLE
         unit_command = self.GRIPPER_ZERO_POSITION + int(unit_degree * 1000)
         self.motors_bus.GripperCtrl(
@@ -531,3 +589,46 @@ class PiperHardware(BaseManipulator):
         return RobotConfigStatus(
             name=self.name, device_name=self.can_name, robot_type="manipulator"
         )
+
+    def move_gripper_in_sim(self, open: float) -> None:
+        """
+        Move the AgileX Piper gripper in the simulation.
+        `open` is normalized: 0.0 = fully closed, 1.0 = fully open.
+        This updates both prismatic fingers (URDF joints `joint7` and `joint8`).
+        """
+        import pybullet as p
+
+        # Early returns for edge cases
+        if not self._gripper_joint_indices:
+            logger.debug("No gripper joints available")
+            return
+            
+        if self.is_object_gripped:
+            return
+
+        # Clamp input to [0,1]
+        open = float(np.clip(open, 0.0, 1.0))
+
+        # Calculate target positions using cached data
+        target_positions = []
+        for i, (close, open_pos, (lower, upper)) in enumerate(
+            zip(self._gripper_closed_positions, self._gripper_open_positions, self._gripper_joint_limits)
+        ):
+            # Interpolate target position
+            target = close + (open_pos - close) * open
+            
+            # Apply cached joint limits
+            if lower <= upper:
+                target = float(np.clip(target, lower, upper))
+            
+            target_positions.append(target)
+
+        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
+        
+        # Apply the joint positions
+        self.sim.set_joints_states(
+            robot_id=self.p_robot_id,
+            joint_indices=self._gripper_joint_indices,
+            target_positions=target_positions,
+        )
+

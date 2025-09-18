@@ -223,6 +223,10 @@ def posthog_middleware(request: Request, call_next: Callable) -> JSONResponse:
         "/move/relative",
         "/move/absolute",
         "/status",
+        "/joints/read",
+        "/joints/write",
+        "/torque/read",
+        "/update/version",
     ] and not request.url.path.startswith("/asset"):
         # Sample only 20% of the requests
         if random() < 0.2:

@@ -2,7 +2,6 @@ import asyncio
 import base64
 from typing import Dict, Optional
 
-import cv2
 from fastapi import (
     APIRouter,
     Depends,
@@ -129,6 +128,8 @@ async def get_all_camera_frames(
 
     # Initialize response dictionary
     response: Dict[str, Optional[str]] = {}
+
+    import cv2
 
     # Process each frame
     for camera_id, frame in frames.items():

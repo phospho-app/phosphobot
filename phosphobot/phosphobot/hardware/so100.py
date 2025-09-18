@@ -95,9 +95,10 @@ class SO100Hardware(BaseManipulator):
         # Create serial connection
         self.motors_bus = FeetechMotorsBus(port=self.device_name, motors=self.motors)
         self.motors_bus.connect()
-        self.is_connected = True
         self.init_config()
         self._max_temperature_cache: dict = {}
+        self.is_connected = True
+
 
     def disconnect(self) -> None:
         """
@@ -638,7 +639,7 @@ class SO100Hardware(BaseManipulator):
 
             # Apply gravity compensation to leader
             theta_des_rad = pos_rad + alpha[:num_joints] * np.array(tau_g)
-            self.write_joint_positions(theta_des_rad, unit="rad")
+            self.write_joint_positions(theta_des_rad.tolist(), unit="rad")
 
             # Maintain loop frequency
             elapsed = time.perf_counter() - start_time

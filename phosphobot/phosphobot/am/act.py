@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     # This prevents loading pybullet in modal
     from phosphobot.hardware.base import BaseManipulator
 
-import cv2
 import httpx
 import json_numpy  # type: ignore
 import numpy as np
@@ -392,6 +391,8 @@ class ACT(ActionModel):
     def fetch_frame(
         cls, all_cameras: AllCameras, camera_id: int, resolution: list[int]
     ) -> np.ndarray:
+        import cv2
+
         rgb_frame = all_cameras.get_rgb_frame(
             camera_id=camera_id,
             resize=(resolution[2], resolution[1]),

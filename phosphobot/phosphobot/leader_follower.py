@@ -350,12 +350,13 @@ async def start_leader_follower_loop(
     invert_controls: bool,
     enable_gravity_compensation: bool,
     compensation_values: Optional[Dict[str, int]],
-    sim: PyBulletSimulation = get_sim(),
 ) -> None:
     """
     FastAPI background task that starts and manages the leader-follower
     control loop in a dedicated thread.
     """
+    sim = get_sim()
+
     # Create and start the dedicated thread
     control_thread = LeaderFollowerThread(
         robot_pairs=robot_pairs,

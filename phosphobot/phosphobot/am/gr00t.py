@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     # This prevents loading pybullet in modal
     from phosphobot.hardware.base import BaseManipulator
 
-import cv2
 import numpy as np
 import pandas as pd
 import zmq
@@ -736,6 +735,8 @@ class Gr00tN1(ActionModel):
         The loop runs until the control signal is stopped or the model is not available anymore.
         The loop runs at the specified fps and speed.
         """
+
+        import cv2
 
         nb_iter = 0
         config = model_spawn_config.hf_model_config

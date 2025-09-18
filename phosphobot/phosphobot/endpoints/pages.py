@@ -5,7 +5,6 @@ import traceback
 from pathlib import Path, PurePath
 from typing import Literal, Union, cast
 
-import cv2
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from huggingface_hub import HfApi
@@ -442,6 +441,8 @@ async def get_dataset_info(path: str) -> InfoResponse:
         return InfoResponse(
             status="error",
         )
+
+    import cv2
 
     image_frames = {}
     for key in info.features.observation_images.keys():

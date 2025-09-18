@@ -211,8 +211,6 @@ def _find_cameras(
     This ignores realsense cameras.
     """
 
-    import cv2
-
     camera_ids = []
     for camera_idx in possible_camera_ids:
         try:

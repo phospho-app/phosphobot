@@ -8,8 +8,27 @@ This simulation server is run by the teleop server. Pass `--simulation=gui` when
 
 ```bash
 cd ./phosphobot
-uv run phosphobot run --simulation=gui --port=8080 --host=127.0.0.1
+uv run phosphobot run --simulation=gui
 ```
+
+Alternative commands:
+
+```bash
+make prod_gui
+make prod_gui_back
+```
+
+## Troubleshooting: raspberry pi 
+
+On raspberry pi 3, 4 and 5, [PyBullet won't run in GUI mode](https://github.com/bulletphysics/bullet3/issues/3256) because the maximum version of OpenGL is lower than 3.2. 
+
+However, you can trick PyBullet into thinking the OpenGL version used is >=3.2 by chaging this environment variable.
+
+```bash
+export MESA_GL_VERSION_OVERRIDE=3.3
+```
+
+Then, you can run phosphobot and it will display a window. There will likely be visual glitches. 
 
 ## Run standalone
 
