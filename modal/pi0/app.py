@@ -44,7 +44,7 @@ pi0_image = (
     )
     .workdir("/")
     .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
-        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 6ed610ab3d005061f3b517326524de491e9bb91f"
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 1fcba7a0ffee0f5846ac8cab3009b300966a9387"
     )
     .run_commands(
         "uv pip install -e /openpi-source",
@@ -53,7 +53,6 @@ pi0_image = (
     .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_python_source("phosphobot")
 )
-pi0_volume = modal.Volume.from_name("pi0", create_if_missing=True)
 
 # Config constants
 MINUTES = 60  # seconds
@@ -67,6 +66,7 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0.5-server")
+pi05_volume = modal.Volume.from_name("pi0.5", create_if_missing=True)
 
 
 @app.function(
@@ -75,9 +75,10 @@ app = modal.App("pi0.5-server")
     timeout=FUNCTION_TIMEOUT_INFERENCE,
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        # modal.Secret.from_name("supabase"),
+        modal.Secret.from_name("supabase"),
+        modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": pi0_volume},
+    volumes={"/data": pi05_volume},
 )
 async def serve(
     model_id: str,
@@ -98,6 +99,197 @@ async def serve(
         timeout: Timeout in seconds
         q: Modal queue to pass tunnel info back to caller (since the function is running in a different process)
     """
+    import time
+    import json
+    import dataclasses
+
+    from datetime import datetime, timezone
+    from supabase import Client, create_client
+    from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import (
+        RepositoryNotFoundError,
+        RevisionNotFoundError,
+    )
+    from fastapi import HTTPException
+    from openpi.training.config import DataConfig
+    from openpi.training.config import TrainConfig
+    from openpi.models.pi0_config import Pi0Config
+    from openpi.training.config import LeRobotSO100DataConfig
+    from openpi.policies.policy_config import create_trained_policy
+    from openpi.serving.websocket_policy_server import WebsocketPolicyServer
+
+    def _update_server_status(
+        supabase_client: Client,
+        server_id: int,
+        status: str,
+    ):
+        logger.info(f"Updating server status to {status} for server_id {server_id}")
+        if status == "failed":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        elif status == "stopped":
+            server_payload = {
+                "status": status,
+                "terminated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("servers").update(server_payload).eq(
+                "id", server_id
+            ).execute()
+            # Update also the AI control session
+            ai_control_payload = {
+                "status": "stopped",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+            }
+            supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+                "server_id", server_id
+            ).execute()
+        else:
+            raise NotImplementedError(
+                f"Status '{status}' not implemented for server update"
+            )
+
+    # Start timer
+    start_time = time.time()
+
+    SUPABASE_URL = os.environ["SUPABASE_URL"]
+    SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    # logger.info the region
+    logger.success(f"🌎 running in {os.environ['MODAL_REGION']} region")
+
+    server_port = 5555
+
+    with modal.forward(server_port, unencrypted=True) as tunnel:
+        logger.info(f"tunnel.tcp_socket = {tunnel.tcp_socket}")
+
+        # Send tunnel info back to caller if queue is provided
+        if q is not None:
+            tunnel_info = {
+                "url": tunnel.url,
+                "port": server_port,
+                "tcp_socket": tunnel.tcp_socket,
+                "model_id": model_id,
+                "timeout": timeout,
+                "server_id": server_id,
+            }
+            q.put(tunnel_info)
+            logger.info(f"Tunnel info sent to queue: {tunnel_info}")
+
+        logger.info(f"Tunnel opened after {time.time() - start_time} seconds")
+
+        # Check if this path exists in the container
+        start_time = time.time()
+
+        try:
+            local_model_path = snapshot_download(
+                repo_id=model_id,
+                repo_type="model",
+                revision=str(checkpoint) if checkpoint is not None else None,
+                cache_dir="/data/hf_cache",
+            )
+        except RepositoryNotFoundError as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
+            )
+        except RevisionNotFoundError as e:
+            logger.error(
+                f"Failed to download model {model_id} at revision {checkpoint}: {e}"
+            )
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
+            )
+        except Exception as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download model {model_id}. Error: {e}",
+            )
+
+        # Check if the model path exists now, if not, raise an error
+        if not os.path.exists(local_model_path):
+            logger.error(
+                f"Model path {local_model_path} does not exist after download attempt."
+            )
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model path {local_model_path} does not exist after download attempt.",
+            )
+
+        logger.info(
+            f"✅ Downloaded model {model_id} to {local_model_path} after {time.time() - start_time} seconds"
+        )
+
+        server = None
+        try:
+            config_file = Path(local_model_path) / "config.json"
+            with open(config_file) as f:
+                config_dict = json.load(f)
+
+            parsed_model_config = Pi0Config(**config_dict.get("model", {}))
+            logger.info(f"Parsed model config: {parsed_model_config}")
+
+            parsed_data_config = LeRobotSO100DataConfig(
+                image_keys=model_specifics.image_keys,
+                repo_id=config_dict.get("data", {}).get("repo_id", ""),
+                base_config=DataConfig(
+                    prompt_from_task=True,
+                    action_sequence_keys=("actions",),
+                ),
+            )
+            logger.info(f"Parsed data config: {parsed_data_config}")
+
+            parsed_config = TrainConfig(**config_dict)
+            parsed_config = dataclasses.replace(
+                parsed_config, model=parsed_model_config, data=parsed_data_config
+            )
+            logger.info(f"Parsed full config: {parsed_config}")
+
+            policy = create_trained_policy(
+                train_config=parsed_config,
+                checkpoint_dir=local_model_path,
+            )
+
+            server = WebsocketPolicyServer(
+                policy=policy,
+                host="0.0.0.0",
+                port=server_port,
+            )
+
+            time_to_load = time.time() - start_time
+            logger.info(f"Policy loaded after {time_to_load} seconds")
+
+            inference_timeout = timeout - 120  # leave 2 minutes for loading and cleanup
+            # Start the server
+            await asyncio.wait_for(server.run(), timeout=inference_timeout)
+
+        except Exception as e:
+            logger.error(f"Server error: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Server error: {e}",
+            )
 
 
 def _upload_checkpoint(
@@ -110,7 +302,7 @@ def _upload_checkpoint(
 
     Folder will look like this
     folder/
-        config.pkl
+        config.json
         wandb_id.txt
         0/
             _CHECKPOINT_METADATA
@@ -129,7 +321,7 @@ def _upload_checkpoint(
             train_state/
                 ...
 
-    We want to upload config.pkl, and the assets and params folders from the last 5 checkpoints.
+    We want to upload config.json, and the assets and params folders from the last 5 checkpoints.
     Each checkpoint goes to branch named after its number (e.g., "100", "1499").
     The latest checkpoint also goes to the main branch.
     """
@@ -176,19 +368,19 @@ def _upload_checkpoint(
         checkpoint_name = checkpoint.name
         print(f"Uploading checkpoint {checkpoint_name} to branch '{branch_name}'...")
 
-        # Upload config.pkl to this branch
-        config_path = checkpoint_dir / "config.pkl"
+        # Upload config.json to this branch
+        config_path = checkpoint_dir / "config.json"
         if config_path.exists():
             api.upload_file(
                 path_or_fileobj=str(config_path),
-                path_in_repo="config.pkl",
+                path_in_repo="config.json",
                 repo_id=model_name,
                 repo_type="model",
                 revision=branch_name,
             )
-            print(f"Uploaded config.pkl to branch {branch_name}")
+            print(f"Uploaded config.json to branch {branch_name}")
         else:
-            print(f"Warning: config.pkl not found at {config_path}")
+            print(f"Warning: config.json not found at {config_path}")
 
         # Upload assets folder from this checkpoint
         norm_json = checkpoint / "assets" / dataset_name / "norm_stats.json"

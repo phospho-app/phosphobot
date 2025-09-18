@@ -468,7 +468,7 @@ Training was successful, try it out on your robot!
 ## Training parameters
 
 ```text
-{training_params.model_dump_json(by_alias=True, indent=2)}
+{training_params.model_dump_json(exclude_unset=True, by_alias=True, indent=2)}
 ```
 
 📖 **Get Started**: [docs.phospho.ai](https://docs.phospho.ai?utm_source=huggingface_readme)

@@ -113,7 +113,7 @@ async def setup_ai_control(
     robots: List[BaseManipulator],
     all_cameras: AllCameras,
     ai_control_signal_id: str,
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0"],
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"],
     model_id: str = "PLB/GR00T-N1-lego-pickup-mono-2",
     cameras_keys_mapping: Optional[dict[str, int]] = None,
     init_connected_robots: bool = True,
@@ -148,7 +148,7 @@ async def setup_ai_control(
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,
-        "pi0": Pi05,
+        "pi0.5": Pi05,
     }
 
     try:

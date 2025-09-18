@@ -1,5 +1,5 @@
 import time
-import dill
+import json
 import asyncio
 from collections import deque
 from typing import TYPE_CHECKING, Any, Dict, List, Literal
@@ -16,7 +16,7 @@ import numpy as np
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from phosphobot.am.base import (
     ActionModel,
@@ -51,6 +51,33 @@ class NormFile(BaseModel):
         Count the number of values that are not zero in the std of actions.
         """
         return sum(1 for x in self.norm_stats.actions.std if x != 0.0)
+
+
+class DataModel(BaseModel):
+    class Config:
+        extra = "allow"
+
+    repo_id: str
+    image_keys: List[str]
+
+
+class ModelModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    action_dim: int
+    pio5: Literal[True] = True
+
+
+class ConfigModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    exp_name: str
+    model: ModelModel
+    data: DataModel
+    seed: int
+    batch_size: int
+    num_train_steps: int
 
 
 class Pi05SpawnConfig(BaseModel):
@@ -208,11 +235,13 @@ class Pi05(ActionModel):
 
             config = api.hf_hub_download(
                 repo_id=model_id,
-                filename="config.pkl",
+                filename="config.json",
                 force_download=True,
             )
-            with open(config, "rb") as pickle_file:
-                config_dict = dill.load(pickle_file)
+
+            with open(config) as config_file:
+                config_dict = json.load(config_file)
+            config_parsed = ConfigModel.model_validate(config_dict)
 
             norm_stats = api.hf_hub_download(
                 repo_id=model_id,
@@ -220,15 +249,13 @@ class Pi05(ActionModel):
                 force_download=True,
             )
             with open(norm_stats, "r") as f:
-                norm_stats_content = f.read()
+                norm_stats_content = json.load(f)
             norm_parsed = NormFile.model_validate(norm_stats_content)
-
-            logger.debug(f"Fetched model config: {config_dict}")
 
             return HuggingFaceAugmentedValidator(
                 config=Pi05SpawnConfig(
                     action_dim=norm_parsed.action_dim,
-                    image_keys=config_dict.get("image_keys", []),
+                    image_keys=config_parsed.data.image_keys,
                 ),
                 checkpoints=branches,
             )
@@ -282,8 +309,29 @@ class Pi05(ActionModel):
                 detail=f"Model has {action_dim} action dimensions but we found {sum(robot.num_actuated_joints for robot in robots)} connected joints on {len(robots)} robots.",
             )
 
+        if verify_cameras:
+            if cameras_keys_mapping is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cameras keys mapping is required to verify the model cameras.",
+                )
+            if len(cameras_keys_mapping) != len(hf_model_config.config.image_keys):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cameras keys mapping does not match model cameras.",
+                )
+
+        number_of_model_actions = hf_model_config.config.action_dim
+        number_of_connected_joints = sum(robot.num_actuated_joints for robot in robots)
+        if number_of_model_actions != number_of_connected_joints:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model has {number_of_model_actions} action dimensions but we found {number_of_connected_joints} connected joints on {len(robots)} robots.",
+            )
+
         return Pi05SpawnConfig(
             action_dim=action_dim,
+            image_keys=hf_model_config.config.image_keys,
         )
 
     @classmethod

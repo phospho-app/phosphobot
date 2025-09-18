@@ -903,7 +903,7 @@ class StartAIControlRequest(BaseModel):
         description="Mapping of the camera keys to the camera ids. If set to None, use the default mapping based on cameras order.",
         examples=[{"wrist_camera": 0, "context_camera": 1}],
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"] = Field(
         ...,
         description="Type of model to use. Can be gr00t or act.",
     )

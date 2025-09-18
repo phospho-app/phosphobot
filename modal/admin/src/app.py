@@ -194,7 +194,9 @@ def get_location_from_ip(ip_address=None) -> Optional[IpLocationInfo]:
     return None
 
 
-def determine_best_region(ip_address=None):
+def determine_best_region(
+    ip_address=None,
+) -> Literal["us-east", "us-west", "eu", "ap", "anywhere"]:
     """
     Determine the best region for serving based on the client's IP address
     Returns one of: "us-east", "us-west", "eu", "ap", or "anywhere" (default fallback)
