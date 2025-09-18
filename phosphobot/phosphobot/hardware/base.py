@@ -1137,6 +1137,7 @@ class BaseManipulator(BaseRobot):
             )
         else:
             # Skip forward kinematics and return nan values
+            # This is size 7 for [x, y, z, rx, ry, rz, gripper]
             state = np.full(7, np.nan)
 
         return state, joints_position
@@ -1155,13 +1156,13 @@ class BaseManipulator(BaseRobot):
             robot_type=self.name,
             action=FeatureDetails(
                 dtype="float32",
-                shape=[len(self.SERVO_IDS)],
-                names=[f"motor_{i}" for i in self.SERVO_IDS],
+                shape=[len(self.actuated_joints)],
+                names=[f"motor_{i}" for i in self.actuated_joints],
             ),
             observation_state=FeatureDetails(
                 dtype="float32",
-                shape=[len(self.SERVO_IDS)],
-                names=[f"motor_{i}" for i in self.SERVO_IDS],
+                shape=[len(self.actuated_joints)],
+                names=[f"motor_{i}" for i in self.actuated_joints],
             ),
         )
 
