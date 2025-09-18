@@ -1083,6 +1083,14 @@ class BaseManipulator(BaseRobot):
             self.write_gripper_command(open_command_clipped)
         self.closing_gripper_value = open_command_clipped
 
+        # Update simulation only if the object has not been gripped:
+        self.move_gripper_in_sim(open=open_command_clipped)
+    
+
+    def move_gripper_in_sim(self, open: float) -> None:
+        """
+        Move the gripper in the simulation.
+        """
         ## Simulation side
         # Since last motor ID might not be equal to the number of motors ( due to some shadowed motors)
         # We extract last motor calibration data for the gripper:
@@ -1095,16 +1103,15 @@ class BaseManipulator(BaseRobot):
         else:
             open_position = self.upper_joint_limits[-1]
 
-        # Update simulation only if the object has not been gripped:
         if not self.is_object_gripped:
             self.sim.set_joints_states(
-                robot_id=self.p_robot_id,
-                joint_indices=[self.GRIPPER_JOINT_INDEX],
-                target_positions=[
-                    close_position
-                    + (open_position - close_position) * open_command_clipped
-                ],
-            )
+                    robot_id=self.p_robot_id,
+                    joint_indices=[self.GRIPPER_JOINT_INDEX],
+                    target_positions=[
+                        close_position
+                        + (open_position - close_position) * open
+                    ],
+                )
 
     def get_observation(
         self,
