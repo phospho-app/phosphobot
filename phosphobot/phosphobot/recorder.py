@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Literal, Optional, Tuple, Dict
+from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from fastapi import BackgroundTasks, Depends

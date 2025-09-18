@@ -1,6 +1,6 @@
-import time
-import json
 import asyncio
+import json
+import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
@@ -10,9 +10,9 @@ if TYPE_CHECKING:
     from phosphobot.hardware.base import BaseManipulator
 
 import cv2
-import websockets
-import numpy as np
 import msgpack_numpy
+import numpy as np
+import websockets
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
@@ -140,21 +140,12 @@ class WebsocketPolicyClient:
 
         return action
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the connection to the server."""
         if self.websocket:
             await self.websocket.close()
             self.websocket = None
             logger.info("Disconnected from policy server")
-
-    async def __aenter__(self):
-        """Async context manager entry."""
-        await self.connect()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.close()
 
 
 def fetch_camera_images(

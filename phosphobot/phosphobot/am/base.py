@@ -9,7 +9,7 @@ import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from phosphobot.models import InfoModel, ModelConfigurationResponse
 from phosphobot.utils import get_hf_token
