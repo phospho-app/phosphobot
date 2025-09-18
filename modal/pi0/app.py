@@ -385,6 +385,14 @@ def _upload_checkpoint(
         # Upload assets folder from this checkpoint
         norm_json = checkpoint / "assets" / dataset_name / "norm_stats.json"
         if norm_json.exists() and norm_json.is_file():
+            # Upload twice for better discoverability
+            api.upload_file(
+                path_or_fileobj=str(norm_json),
+                path_in_repo=str(norm_json),
+                repo_id=model_name,
+                repo_type="model",
+                revision=branch_name,
+            )
             api.upload_file(
                 path_or_fileobj=str(norm_json),
                 path_in_repo="norm_stats.json",
