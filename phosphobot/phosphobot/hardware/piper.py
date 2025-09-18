@@ -25,7 +25,7 @@ class PiperHardware(BaseManipulator):
     END_EFFECTOR_LINK_INDEX = 5
     GRIPPER_JOINT_INDEX = 6
 
-    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7, 8]
+    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7]
 
     RESOLUTION = 360 * 1000  # In 0.001 degree
 
