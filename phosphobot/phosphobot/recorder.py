@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Literal, Optional, Tuple
+from typing import List, Literal, Optional, Tuple, Dict
 
 import numpy as np
 from fastapi import BackgroundTasks, Depends
@@ -86,9 +86,9 @@ class Recorder:
     async def start(
         self,
         background_tasks: BackgroundTasks,
-        robots: list[BaseRobot],
-        actions_robots_mapping: dict[int, Literal["sim", "robot"]],
-        observations_robots_mapping: dict[int, Literal["sim", "robot"]],
+        robots: List[BaseRobot],
+        actions_robots_mapping: Dict[int, Literal["sim", "robot"]],
+        observations_robots_mapping: Dict[int, Literal["sim", "robot"]],
         codec: VideoCodecs,
         freq: int,
         target_size: Optional[Tuple[int, int]],
@@ -102,7 +102,7 @@ class Recorder:
         enable_rerun: bool = False,  # Enable real-time Rerun visualization
         save_cartesian: bool = False,  # Saves cartesian positions if True (only for robots with simulators)
         add_metadata: Optional[
-            dict[str, list]
+            Dict[str, list]
         ] = None,  # Additional metadata to save with each step
     ) -> None:
         if target_size is None:

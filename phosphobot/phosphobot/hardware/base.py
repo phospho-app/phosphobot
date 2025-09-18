@@ -66,6 +66,7 @@ class BaseManipulator(BaseRobot):
 
     CALIBRATION_POSITION: List[float]  # same size as SERVO_IDS
     SLEEP_POSITION: Optional[List[float]] = None
+    time_to_sleep: float = 0.7 # seconds to wait after moving to sleep position
     RESOLUTION: int
     # The effector is the gripper
     END_EFFECTOR_LINK_INDEX: int
@@ -235,7 +236,7 @@ class BaseManipulator(BaseRobot):
             axis_orientation=self.AXIS_ORIENTATION,
             use_fixed_base=True,
         )
-
+        self.num_joints = num_joints
         self.actuated_joints = actuated_joints
 
         # Infer SERVO_IDS and CALIBRATION_POSITION from the actuated joints if not set
@@ -417,7 +418,7 @@ class BaseManipulator(BaseRobot):
                     )
                 except Exception:
                     pass
-            await asyncio.sleep(0.7)
+            await asyncio.sleep(self.time_to_sleep)
             self.disable_torque()
             await asyncio.sleep(0.1)
 
@@ -1083,6 +1084,14 @@ class BaseManipulator(BaseRobot):
             self.write_gripper_command(open_command_clipped)
         self.closing_gripper_value = open_command_clipped
 
+        # Update simulation only if the object has not been gripped:
+        self.move_gripper_in_sim(open=open_command_clipped)
+    
+
+    def move_gripper_in_sim(self, open: float) -> None:
+        """
+        Move the gripper in the simulation.
+        """
         ## Simulation side
         # Since last motor ID might not be equal to the number of motors ( due to some shadowed motors)
         # We extract last motor calibration data for the gripper:
@@ -1095,16 +1104,15 @@ class BaseManipulator(BaseRobot):
         else:
             open_position = self.upper_joint_limits[-1]
 
-        # Update simulation only if the object has not been gripped:
         if not self.is_object_gripped:
             self.sim.set_joints_states(
-                robot_id=self.p_robot_id,
-                joint_indices=[self.GRIPPER_JOINT_INDEX],
-                target_positions=[
-                    close_position
-                    + (open_position - close_position) * open_command_clipped
-                ],
-            )
+                    robot_id=self.p_robot_id,
+                    joint_indices=[self.GRIPPER_JOINT_INDEX],
+                    target_positions=[
+                        close_position
+                        + (open_position - close_position) * open
+                    ],
+                )
 
     def get_observation(
         self,

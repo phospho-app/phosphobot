@@ -73,7 +73,7 @@ function RobotStatusMenuItem({
   const torqueStatus = robotTorqueStatus?.current_torque as
     | number[]
     | undefined;
-  const isTorqueEnabled = torqueStatus?.some((status) => status === 1);
+  const isTorqueEnabled = torqueStatus?.some((status) => status >= 1);
 
   const temperatureInfo = getTemperatureInfo(robot);
 

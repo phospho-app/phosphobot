@@ -30,6 +30,7 @@ class PiperHardware(BaseManipulator):
     RESOLUTION = 360 * 1000  # In 0.001 degree
 
     SLEEP_POSITION = [0, 0, 0, 0, 0, 0]
+    time_to_sleep: float = 1.8
     CALIBRATION_POSITION = [0, 0, 0, 0, 0, 0]
 
     is_object_gripped = False
@@ -84,6 +85,66 @@ class PiperHardware(BaseManipulator):
         super().__init__(only_simulation=only_simulation, axis=axis)
         self.SERIAL_ID = can_name
         self.is_torqued = False
+        self._init_sim_gripper()
+
+    def _init_sim_gripper(self) -> None:
+        """Discover and cache gripper joints + limits in simulation."""
+
+        self.gripper_initial_angle = None
+        
+        # Initialize gripper-related attributes with None/empty defaults
+        self._gripper_joint_indices = []
+        self._gripper_closed_positions = []
+        self._gripper_open_positions = []
+        self._gripper_joint_limits = []  # NEW: Cache joint limits
+
+        try:
+            name2idx = {
+                self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[1].decode("utf-8"): i
+                for i in range(self.num_joints)
+            }
+            
+            # Try to find joint7 and joint8 first
+            if "joint7" in name2idx and "joint8" in name2idx:
+                self._gripper_joint_indices = [name2idx["joint7"], name2idx["joint8"]]
+            else:
+                # fallback: last 2 prismatic joints
+                found = [
+                    i for i in range(self.num_joints)
+                    if self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=i)[2] == 1
+                ]
+                if len(found) >= 2:
+                    self._gripper_joint_indices = found[-2:]
+                    logger.debug("Guessed prismatic joints: %s", self._gripper_joint_indices)
+                else:
+                    logger.warning("Failed to auto-detect gripper joints; disabled")
+                    return
+        except Exception as e:
+            logger.error(f"pybullet joint lookup failed: {e}")
+            return
+
+        # Cache joint limits and positions in one pass
+        closed, opened, limits = [], [], []
+        for jidx in self._gripper_joint_indices:
+            info = self.sim.get_joint_info(robot_id=self.p_robot_id, joint_index=jidx)
+            lower, upper = float(info[8]), float(info[9])
+            
+            # Cache the limits for later use
+            limits.append((lower, upper))
+
+            # Determine closed/open positions
+            closed_pos, open_pos = (upper, lower) if abs(upper) < abs(lower) else (lower, upper)
+
+            # Apply limits immediately
+            closed.append(float(np.clip(closed_pos, lower, upper)))
+            opened.append(float(np.clip(open_pos, lower, upper)))
+
+        self._gripper_closed_positions = closed
+        self._gripper_open_positions = opened
+        self._gripper_joint_limits = limits  # NEW: Store cached limits
+        
+        logger.debug(f"Init gripper: {self._gripper_joint_indices=} {closed=} {opened=} {limits=}")
+
 
     @classmethod
     def from_can_port(cls, can_name: str = "can0") -> Optional["PiperHardware"]:
@@ -167,6 +228,7 @@ class PiperHardware(BaseManipulator):
             ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
         )
         await asyncio.sleep(0.2)
+        self.is_torqued = True
 
         self.init_config()
         self.is_connected = True
@@ -195,6 +257,7 @@ class PiperHardware(BaseManipulator):
 
         self.motors_bus.DisconnectPort()
         self.is_connected = False
+        self.is_torqued = False
 
     def init_config(self) -> None:
         """
@@ -223,7 +286,7 @@ class PiperHardware(BaseManipulator):
 
         raise: Exception if the routine has not been implemented
         """
-        if servo_id >= self.GRIPPER_SERVO_ID or servo_id < 1:
+        if servo_id >= self.GRIPPER_SERVO_ID:
             gripper_state = self.motors_bus.GetArmGripperMsgs().gripper_state
             return gripper_state.grippers_effort
         else:
@@ -439,17 +502,25 @@ class PiperHardware(BaseManipulator):
         if source == "robot":
             gripper_ctrl = self.motors_bus.GetArmGripperMsgs().gripper_state
             gripper_position = gripper_ctrl.grippers_angle
-        elif source == "sim":
-            raise NotImplementedError(
-                "Reading gripper command from simulation is not implemented for Piper."
+            # Calculate normalized gripper position [0, 1]
+            normalized = (gripper_position - self.GRIPPER_ZERO_POSITION) / (
+                self.GRIPPER_MAX_ANGLE * 1000
             )
+        elif source == "sim":
+            if not self._gripper_joint_indices:
+                return 0.0
+            import pybullet as p
+            fractions = []
+            for jidx, closed_pos, open_pos in zip(self._gripper_joint_indices,
+                                                  self._gripper_closed_positions,
+                                                  self._gripper_open_positions):
+                pos = float(p.getJointState(self.p_robot_id, jidx)[0])
+                denom = open_pos - closed_pos
+                f = (pos - closed_pos) / denom if abs(denom) > 1e-9 else 0.0
+                fractions.append(float(np.clip(f, 0.0, 1.0)))
+            normalized = float(np.mean(fractions)) if fractions else 0.0
         else:
-            raise ValueError(f"Unknown source: {source}")
-
-        # Calculate normalized gripper position [0, 1]
-        normalized = (gripper_position - self.GRIPPER_ZERO_POSITION) / (
-            self.GRIPPER_MAX_ANGLE * 1000
-        )
+            raise ValueError(f"Unknown source: {source}")    
 
         if unit == "motor_units":
             # Don't do anything
@@ -518,3 +589,46 @@ class PiperHardware(BaseManipulator):
         return RobotConfigStatus(
             name=self.name, device_name=self.can_name, robot_type="manipulator"
         )
+
+    def move_gripper_in_sim(self, open: float) -> None:
+        """
+        Move the AgileX Piper gripper in the simulation.
+        `open` is normalized: 0.0 = fully closed, 1.0 = fully open.
+        This updates both prismatic fingers (URDF joints `joint7` and `joint8`).
+        """
+        import pybullet as p
+
+        # Early returns for edge cases
+        if not self._gripper_joint_indices:
+            logger.debug("No gripper joints available")
+            return
+            
+        if self.is_object_gripped:
+            return
+
+        # Clamp input to [0,1]
+        open = float(np.clip(open, 0.0, 1.0))
+
+        # Calculate target positions using cached data
+        target_positions = []
+        for i, (close, open_pos, (lower, upper)) in enumerate(
+            zip(self._gripper_closed_positions, self._gripper_open_positions, self._gripper_joint_limits)
+        ):
+            # Interpolate target position
+            target = close + (open_pos - close) * open
+            
+            # Apply cached joint limits
+            if lower <= upper:
+                target = float(np.clip(target, lower, upper))
+            
+            target_positions.append(target)
+
+        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
+        
+        # Apply the joint positions
+        self.sim.set_joints_states(
+            robot_id=self.p_robot_id,
+            joint_indices=self._gripper_joint_indices,
+            target_positions=target_positions,
+        )
+
