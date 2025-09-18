@@ -30,6 +30,7 @@ class PiperHardware(BaseManipulator):
     RESOLUTION = 360 * 1000  # In 0.001 degree
 
     SLEEP_POSITION = [0, 0, 0, 0, 0, 0]
+    time_to_sleep: float = 1.8
     CALIBRATION_POSITION = [0, 0, 0, 0, 0, 0]
 
     is_object_gripped = False
@@ -630,3 +631,4 @@ class PiperHardware(BaseManipulator):
             joint_indices=self._gripper_joint_indices,
             target_positions=target_positions,
         )
+

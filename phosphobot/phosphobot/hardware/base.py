@@ -66,6 +66,7 @@ class BaseManipulator(BaseRobot):
 
     CALIBRATION_POSITION: List[float]  # same size as SERVO_IDS
     SLEEP_POSITION: Optional[List[float]] = None
+    time_to_sleep: float = 0.7 # seconds to wait after moving to sleep position
     RESOLUTION: int
     # The effector is the gripper
     END_EFFECTOR_LINK_INDEX: int
@@ -417,7 +418,7 @@ class BaseManipulator(BaseRobot):
                     )
                 except Exception:
                     pass
-            await asyncio.sleep(0.7)
+            await asyncio.sleep(self.time_to_sleep)
             self.disable_torque()
             await asyncio.sleep(0.1)
 
