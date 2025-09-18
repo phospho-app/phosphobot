@@ -140,7 +140,7 @@ class WebsocketClientPolicy:
                 time.sleep(5)
         raise RuntimeError(f"Could not connect to server at {self._uri}")
 
-    def infer(self, obs: Dict) -> Dict:  # noqa: UP006
+    def infer(self, obs: Dict) -> Dict:
         data = self._packer.pack(obs)
         self._ws.send(data)
         response = self._ws.recv()
@@ -470,10 +470,7 @@ class Pi05(ActionModel):
 
             try:
                 if len(actions_queue) == 0:
-                    from typing import cast
-
-                    actions = cast(np.ndarray, self.client.infer(obs=inputs))
-
+                    actions = self.client.infer(obs=inputs)
                     actions_queue.extend(actions)
                 actions = actions_queue.popleft()
             except Exception as e:
