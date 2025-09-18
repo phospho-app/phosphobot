@@ -60,15 +60,15 @@ def fetch_latest_version() -> None:
         if version != "unknown" and (version != "v" + __version__):
             if platform.system() == "Darwin":
                 logger.warning(
-                    f"🧪 Version {version} is available. Please update with: \nbrew update && brew upgrade phosphobot"
+                    f"[update now!] phosphobot v{version} is available. Please update with: \nbrew update && brew upgrade phosphobot"
                 )
             elif platform.system() == "Linux":
                 logger.warning(
-                    f"🧪 Version {version} is available. Please update with: \nsudo apt update && sudo apt upgrade phosphobot"
+                    f"[update now!] phosphobot v{version} is available. Please update with: \nsudo apt update && sudo apt upgrade phosphobot"
                 )
             else:
                 logger.warning(
-                    f"🧪 Version {version} is available. Please update: https://docs.phospho.ai/installation#windows"
+                    f"[update now!] phosphobot v{version} is available. Please update: https://docs.phospho.ai/installation#windows"
                 )
     except Exception:
         pass

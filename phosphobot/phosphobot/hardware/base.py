@@ -245,12 +245,12 @@ class BaseManipulator(BaseRobot):
                 f"{self.__class__.__name__}.SERVO_IDS not set, using default: {self.SERVO_IDS}"
             )
         if not hasattr(self, "CALIBRATION_POSITION"):
-            self.CALIBRATION_POSITION = [0] * len(self.SERVO_IDS)
+            self.CALIBRATION_POSITION = [0.0] * len(self.SERVO_IDS)
             logger.warning(
                 f"{self.__class__.__name__}.CALIBRATION_POSITION not set, using default: {self.CALIBRATION_POSITION}"
             )
         if not hasattr(self, "SLEEP_POSITION"):
-            self.SLEEP_POSITION = [0] * len(self.SERVO_IDS)
+            self.SLEEP_POSITION = [0.0] * len(self.SERVO_IDS)
             logger.warning(
                 f"{self.__class__.__name__}.SLEEP_POSITION not set, using default: {self.SLEEP_POSITION}"
             )
@@ -386,7 +386,7 @@ class BaseManipulator(BaseRobot):
             logger.warning("None torque value for gripper motor ")
             current_gripper_torque = np.int32(0)
 
-        return current_gripper_torque
+        return np.int32(current_gripper_torque)
 
     async def move_to_initial_position(self, open_gripper: bool = False) -> None:
         """
@@ -1137,6 +1137,7 @@ class BaseManipulator(BaseRobot):
             )
         else:
             # Skip forward kinematics and return nan values
+            # This is size 7 for [x, y, z, rx, ry, rz, gripper]
             state = np.full(7, np.nan)
 
         return state, joints_position

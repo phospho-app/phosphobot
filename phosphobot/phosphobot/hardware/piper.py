@@ -25,7 +25,7 @@ class PiperHardware(BaseManipulator):
     END_EFFECTOR_LINK_INDEX = 5
     GRIPPER_JOINT_INDEX = 6
 
-    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7, 8]
+    SERVO_IDS = [1, 2, 3, 4, 5, 6, 7]
 
     RESOLUTION = 360 * 1000  # In 0.001 degree
 
@@ -453,7 +453,7 @@ class PiperHardware(BaseManipulator):
 
         if unit == "motor_units":
             # Don't do anything
-            pass
+            gripper_units = normalized
         elif unit == "rad":
             # Convert the gripper from (0, GRIPPER_MAX_ANGLE) to (0, pi / 2)
             gripper_units = normalized * (np.pi / 2)
