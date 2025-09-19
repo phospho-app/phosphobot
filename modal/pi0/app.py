@@ -28,6 +28,7 @@ pi0_image = (
             "GIT_LFS_SKIP_SMUDGE": "1",
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
             "HF_HUB_DISABLE_TELEMETRY": "1",
+            "DEFAULT_CACHE_DIR": "/data/openpi_cache",  # This is the openpi cache dir,
         }
     )
     .uv_pip_install(
@@ -392,7 +393,7 @@ def _upload_checkpoint(
             # Upload twice for better discoverability
             api.upload_file(
                 path_or_fileobj=str(norm_json),
-                path_in_repo=str(norm_json),
+                path_in_repo=f"assets/{dataset_name}/norm_stats.json",
                 repo_id=model_name,
                 repo_type="model",
                 revision=branch_name,
@@ -541,42 +542,34 @@ async def train(
         )
         logger.info("Training completed successfully")
 
-        try:
-            # Upload the last available checkpoint to HuggingFace
-            try:
-                _upload_checkpoint(
-                    checkpoint_dir=Path("./checkpoints") / config_name / exp_name,
-                    model_name=model_name,
-                    hf_token=hf_token,
-                    dataset_name=dataset_name,
-                )
-            except Exception as e:
-                logger.error(f"Failed to upload checkpoint: {e}")
+        # Commit the volume to persist the training results
+        pi05_volume.commit()
 
-            readme = generate_readme(
-                model_type="pi0.5",
-                dataset_repo_id=dataset_name,
-                training_params=training_params,
-                return_readme_as_bytes=True,
-                wandb_run_url=wandb_run_url,
-            )
-            api = HfApi(token=hf_token)
-            api.upload_file(
-                repo_type="model",
-                path_or_fileobj=readme,
-                path_in_repo="README.md",
-                repo_id=model_name,
-                token=hf_token,
-            )
+        # Upload the last available checkpoint to HuggingFace
+        _upload_checkpoint(
+            checkpoint_dir=Path("./checkpoints") / config_name / exp_name,
+            model_name=model_name,
+            hf_token=hf_token,
+            dataset_name=dataset_name,
+        )
 
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            raise TimeoutError(
-                f"Training process exceeded timeout of {timeout_seconds} seconds. We have uploaded the last checkpoint. Please consider lowering the batch size or number of steps if you wish to train the model longer."
-            )
+        readme = generate_readme(
+            model_type="pi0.5",
+            dataset_repo_id=dataset_name,
+            training_params=training_params,
+            return_readme_as_bytes=True,
+            wandb_run_url=wandb_run_url,
+        )
+        api = HfApi(token=hf_token)
+        api.upload_file(
+            repo_type="model",
+            path_or_fileobj=readme,
+            path_in_repo="README.md",
+            repo_id=model_name,
+            token=hf_token,
+        )
 
-        logger.success(f"Pi0 training {training_id} completed successfully")
+        logger.success(f"Pi0 training {training_id} completed")
         supabase_client.table("trainings").update(
             {
                 "status": "succeeded",
