@@ -23,7 +23,13 @@ phosphobot_dir = (
 )
 pi0_image = (
     modal.Image.from_dockerfile("Dockerfile")
-    .env({"GIT_LFS_SKIP_SMUDGE": "1"})
+    .env(
+        {
+            "GIT_LFS_SKIP_SMUDGE": "1",
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "HF_HUB_DISABLE_TELEMETRY": "1",
+        }
+    )
     .uv_pip_install(
         "sentry-sdk",
         "loguru",
@@ -44,13 +50,11 @@ pi0_image = (
     )
     .workdir("/")
     .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
-        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 1fcba7a0ffee0f5846ac8cab3009b300966a9387"
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 91ba311a180a7fa13a0573288aa5a8418112c889"
     )
     .run_commands(
-        "uv pip install -e /openpi-source",
+        "cd /openpi-source && uv pip install -e .",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
-    .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_python_source("phosphobot")
 )
 

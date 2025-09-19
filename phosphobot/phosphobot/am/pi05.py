@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from phosphobot.hardware.base import BaseManipulator
 
 import cv2
-import msgpack_numpy
 import numpy as np
 import websockets.sync.client
 from websockets.exceptions import InvalidMessage
@@ -26,6 +25,8 @@ from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
+import msgpack
+import functools
 
 
 class Statistics(BaseModel):
@@ -103,6 +104,52 @@ class HuggingFaceAugmentedValidator(BaseModel):
     )
 
 
+# This code comes from openpi-client module https://github.com/phospho-app/openpi/blob/main/packages/openpi-client/src/openpi_client/msgpack_numpy.py
+def pack_array(obj):
+    if (isinstance(obj, (np.ndarray, np.generic))) and obj.dtype.kind in (
+        "V",
+        "O",
+        "c",
+    ):
+        raise ValueError(f"Unsupported dtype: {obj.dtype}")
+
+    if isinstance(obj, np.ndarray):
+        return {
+            b"__ndarray__": True,
+            b"data": obj.tobytes(),
+            b"dtype": obj.dtype.str,
+            b"shape": obj.shape,
+        }
+
+    if isinstance(obj, np.generic):
+        return {
+            b"__npgeneric__": True,
+            b"data": obj.item(),
+            b"dtype": obj.dtype.str,
+        }
+
+    return obj
+
+
+def unpack_array(obj):
+    if b"__ndarray__" in obj:
+        return np.ndarray(
+            buffer=obj[b"data"], dtype=np.dtype(obj[b"dtype"]), shape=obj[b"shape"]
+        )
+
+    if b"__npgeneric__" in obj:
+        return np.dtype(obj[b"dtype"]).type(obj[b"data"])
+
+    return obj
+
+
+Packer = functools.partial(msgpack.Packer, default=pack_array)
+packb = functools.partial(msgpack.packb, default=pack_array)
+
+Unpacker = functools.partial(msgpack.Unpacker, object_hook=unpack_array)
+unpackb = functools.partial(msgpack.unpackb, object_hook=unpack_array)
+
+
 class WebsocketClientPolicy:
     """Implements the Policy interface by communicating with a server over websocket.
 
@@ -117,7 +164,7 @@ class WebsocketClientPolicy:
         self._uri = f"ws://{host}"
         if port is not None:
             self._uri += f":{port}"
-        self._packer = msgpack_numpy.Packer()
+        self._packer = Packer()
         self._ws, self._server_metadata = self._wait_for_server()
 
     def get_server_metadata(self) -> Dict:
@@ -133,7 +180,7 @@ class WebsocketClientPolicy:
                     compression=None,
                     max_size=None,
                 )
-                metadata = msgpack_numpy.unpackb(conn.recv())
+                metadata = unpackb(conn.recv())
                 return conn, metadata
             except InvalidMessage:
                 logger.info("Still waiting for server...")
@@ -147,7 +194,7 @@ class WebsocketClientPolicy:
         if isinstance(response, str):
             # we're expecting bytes; if the server sends a string, it's an error.
             raise RuntimeError(f"Error in inference server:\n{response}")
-        return msgpack_numpy.unpackb(response)
+        return unpackb(response)
 
 
 def fetch_camera_images(
@@ -459,8 +506,6 @@ class Pi05(ActionModel):
                     (state, robot.read_joints_position(unit="rad")), axis=0
                 )
 
-            logger.debug(f"State with type {type(state)}: {state}")
-
             # Prepare model input
             inputs: dict[str, np.ndarray | str] = {
                 "observation/state": state,
@@ -470,9 +515,16 @@ class Pi05(ActionModel):
 
             try:
                 if len(actions_queue) == 0:
-                    actions = self.client.infer(obs=inputs)
+                    actions_dict = self.client.infer(obs=inputs)
+                    if isinstance(actions_dict, dict) and "actions" in actions_dict:
+                        actions = np.array(actions_dict["actions"])
+                    else:
+                        raise ValueError(
+                            f"Invalid response from model server: {actions_dict}"
+                        )
+                    logger.debug(f"Actions from model: {actions}")
                     actions_queue.extend(actions)
-                actions = actions_queue.popleft()
+                actions = actions_queue.popleft()  # actions will be of size action_dim, by default 32, this is expected, we ignore the ones > number of joints
             except Exception as e:
                 logger.warning(
                     f"Failed to get actions from model, exiting AI control loop.\nError: {e}"
@@ -484,35 +536,35 @@ class Pi05(ActionModel):
                 control_signal.set_running()
                 signal_marked_as_started = True
 
-            for action in actions:
-                # Early stop
-                if not control_signal.is_in_loop():
-                    break
+            # Early stop
+            if not control_signal.is_in_loop():
+                break
 
-                # Send the new joint position to the robot
-                action_list = action.tolist()
+            unit: Literal["rad", "motor_units", "degrees", "other"]
+            if angle_format == "radians":
+                unit = "rad"
+            else:
+                unit = angle_format
 
-                unit: Literal["rad", "motor_units", "degrees", "other"]
-                if angle_format == "radians":
-                    unit = "rad"
-                else:
-                    unit = angle_format
+            actions_list = actions.tolist()
 
-                for robot_index in range(len(robots)):
-                    robots[robot_index].write_joint_positions(
-                        angles=action_list[
-                            robot_index * action_dim : robot_index * action_dim
-                            + action_dim
-                        ],
-                        unit=unit,
-                        min_value=min_angle,
-                        max_value=max_angle,
-                    )
+            for robot_index in range(len(robots)):
+                rolling_count = 0
+                robots[robot_index].write_joint_positions(
+                    angles=actions_list[
+                        rolling_count : rolling_count
+                        + robots[robot_index].num_actuated_joints
+                    ],
+                    unit=unit,
+                    min_value=min_angle,
+                    max_value=max_angle,
+                )
+                rolling_count += robots[robot_index].num_actuated_joints
 
-                # Wait fps time
-                elapsed_time = time.perf_counter() - start_time
-                sleep_time = max(0, 1.0 / (fps * speed) - elapsed_time)
-                await asyncio.sleep(sleep_time)
-                start_time = time.perf_counter()
+            # Wait fps time
+            elapsed_time = time.perf_counter() - start_time
+            sleep_time = max(0, 1.0 / (fps * speed) - elapsed_time)
+            await asyncio.sleep(sleep_time)
+            start_time = time.perf_counter()
 
             nb_iter += 1
