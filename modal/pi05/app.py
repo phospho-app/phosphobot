@@ -536,7 +536,11 @@ async def train(
         # Start by computing normalization stats
         logger.info("Computing normalization stats...")
         logger.debug(f"Training params for norm computation: {training_params_dict}")
-        compute_norm_with_config(get_config(config_name), training_params_dict)
+        compute_norm_with_config(
+            get_config(config_name),
+            training_params_dict,
+            max_frames=300,  # limit to 300 frames for norm computation to keep it fast
+        )
         logger.info("Normalization stats computed successfully")
 
         logger.info("Starting training...")
