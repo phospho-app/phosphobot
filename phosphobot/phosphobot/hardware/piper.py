@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+import time
 from typing import Any, List, Literal, Optional, Union
 
 import numpy as np
@@ -210,7 +211,15 @@ class PiperHardware(BaseManipulator):
             return
 
         self.motors_bus.ConnectPort(can_init=True)
+        self.firmware_verison = self.motors_bus.GetPiperFirmwareVersion()
+        logger.info(f"Connected to Agilex Piper on {self.can_name} with firmware version {self.firmware_verison}")
         await asyncio.sleep(0.1)
+
+        # Start by resetting the control mode (useful if arm stuck in teaching mode)
+        self.motors_bus.MotionCtrl_1(0x02,0,0) #恢复
+        self.motors_bus.MotionCtrl_2(0, 0, 0, 0x00) #位置速度模式
+        await asyncio.sleep(0.1)
+
         self.motors_bus.ArmParamEnquiryAndConfig(
             param_setting=0x01,
             # data_feedback_0x48x=0x02,
@@ -225,7 +234,12 @@ class PiperHardware(BaseManipulator):
         )
         await asyncio.sleep(0.1)
         self.motors_bus.MotionCtrl_2(
-            ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00
+            ctrl_mode=0x01, move_mode=0x01, move_spd_rate_ctrl=100, is_mit_mode=0x00, 
+            installation_pos=0x01, 
+                # installation_pos:
+                # 0x01: Horizontal installation
+                # 0x02: Left side installation
+                # 0x03: Right side installation
         )
         await asyncio.sleep(0.2)
         self.is_torqued = True
@@ -254,7 +268,13 @@ class PiperHardware(BaseManipulator):
 
         if not self.is_connected:
             return
+        
+        # Reset the control mode
+        self.motors_bus.MotionCtrl_1(0x02,0,0) #恢复
+        self.motors_bus.MotionCtrl_2(0, 0, 0, 0x00) #位置速度模式
+        time.sleep(0.1)
 
+        # Disconnect
         self.motors_bus.DisconnectPort()
         self.is_connected = False
         self.is_torqued = False
@@ -509,12 +529,12 @@ class PiperHardware(BaseManipulator):
         elif source == "sim":
             if not self._gripper_joint_indices:
                 return 0.0
-            import pybullet as p
+
             fractions = []
             for jidx, closed_pos, open_pos in zip(self._gripper_joint_indices,
                                                   self._gripper_closed_positions,
                                                   self._gripper_open_positions):
-                pos = float(p.getJointState(self.p_robot_id, jidx)[0])
+                pos = float(self.sim.get_joint_state(robot_id=self.p_robot_id, joint_index=jidx)[0])
                 denom = open_pos - closed_pos
                 f = (pos - closed_pos) / denom if abs(denom) > 1e-9 else 0.0
                 fractions.append(float(np.clip(f, 0.0, 1.0)))
@@ -596,7 +616,6 @@ class PiperHardware(BaseManipulator):
         `open` is normalized: 0.0 = fully closed, 1.0 = fully open.
         This updates both prismatic fingers (URDF joints `joint7` and `joint8`).
         """
-        import pybullet as p
 
         # Early returns for edge cases
         if not self._gripper_joint_indices:
@@ -622,8 +641,6 @@ class PiperHardware(BaseManipulator):
                 target = float(np.clip(target, lower, upper))
             
             target_positions.append(target)
-
-        logger.debug(f"Moving gripper in sim: {self._gripper_joint_indices=} {target_positions=}")
         
         # Apply the joint positions
         self.sim.set_joints_states(
