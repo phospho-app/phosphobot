@@ -116,7 +116,7 @@ class PiperHardware(BaseManipulator):
                 ]
                 if len(found) >= 2:
                     self._gripper_joint_indices = found[-2:]
-                    logger.debug("Guessed prismatic joints: %s", self._gripper_joint_indices)
+                    logger.debug(f"Guessed prismatic joints: {self._gripper_joint_indices}")
                 else:
                     logger.warning("Failed to auto-detect gripper joints; disabled")
                     return
