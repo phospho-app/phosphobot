@@ -539,7 +539,7 @@ async def train(
         compute_norm_with_config(
             get_config(config_name),
             training_params_dict,
-            max_frames=300,  # limit to 300 frames for norm computation to keep it fast
+            max_frames=1000,  # limit to 1000 frames for norm computation to keep it fast
         )
         logger.info("Normalization stats computed successfully")
 
