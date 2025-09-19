@@ -76,7 +76,6 @@ class LeaderFollowerThread(threading.Thread):
                     self._run_async(robot.move_to_initial_position())
                     wait_for_initial_position = True
 
-
         if wait_for_initial_position:
             time.sleep(1)
 
