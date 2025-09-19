@@ -50,7 +50,7 @@ pi0_image = (
     )
     .workdir("/")
     .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
-        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 91ba311a180a7fa13a0573288aa5a8418112c889"
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 09e0b7c5a6df68fc1245e3cd7c9c4bb567141d00"
     )
     .run_commands(
         "cd /openpi-source && uv pip install -e .",
@@ -463,6 +463,7 @@ def _upload_checkpoint(
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
+    volumes={"/data": pi05_volume},
 )
 async def train(
     training_id: int,
@@ -483,6 +484,10 @@ async def train(
     """
     from datetime import datetime, timezone
     from supabase import Client, create_client
+
+    from openpi.training.config import get_config
+    from openpi.phospho.compute_norm_stats import compute_norm_with_config
+    from openpi.phospho.train import train_with_config
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -525,64 +530,18 @@ async def train(
                 wandb_enabled = False
 
         # Start by computing normalization stats
-
-        norm_cmd = [
-            "uv",
-            "run",
-            "/openpi-source/scripts/compute_norm_stats.py",
-            config_name,
-            "--data.repo_id=" + dataset_name,
-        ]
-
-        logger.info(f"Training parameters: {training_params_dict}")
-        for key, value in training_params_dict.items():
-            norm_cmd.append(f"--{key}={value}")
-
-        # Run the command
-        logger.info(f"Computing normalization stats with command: {' '.join(norm_cmd)}")
-
-        run(norm_cmd, check=True)
+        logger.info("Computing normalization stats...")
+        logger.debug(f"Training params for norm computation: {training_params_dict}")
+        compute_norm_with_config(get_config(config_name), training_params_dict)
         logger.info("Normalization stats computed successfully")
-        # Then run the training
 
-        train_cmd = [
-            "uv",
-            "run",
-            "/openpi-source/scripts/train.py",
-            config_name,
-            "--data.repo_id=" + dataset_name,
-        ]
-
-        # Add any other training parameters that are not None
-        logger.info(f"Training parameters: {training_params_dict}")
-        for key, value in training_params_dict.items():
-            train_cmd.append(f"--{key}={value}")
-
-        logger.info(f"Starting training with command: {' '.join(train_cmd)}")
-
-        output_lines = []
-
-        process = await asyncio.create_subprocess_exec(
-            *train_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            # 512 KB buffer size, default is 64 KB but is too small for large trainings, will make the training crash
-            limit=512 * 1024,
+        logger.info("Starting training...")
+        train_with_config(
+            get_config(config_name), training_params_dict, timeout=timeout_seconds
         )
-
-        async def read_output():
-            assert process.stdout is not None
-            async for line in process.stdout:
-                stripped_line = line.decode().strip()
-                if wandb_enabled and "wandb: Run" in stripped_line:
-                    wandb_run_url = stripped_line.split(" ")[-1]
-                    logger.info(f"WandB run URL: {wandb_run_url}")
-                logger.debug(stripped_line)
-                output_lines.append(stripped_line)
+        logger.info("Training completed successfully")
 
         try:
-            await asyncio.wait_for(read_output(), timeout=timeout_seconds)
-
             # Upload the last available checkpoint to HuggingFace
             try:
                 _upload_checkpoint(
