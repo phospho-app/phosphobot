@@ -15,6 +15,7 @@ from phosphobot.hardware import (
     get_sim,
 )
 from phosphobot.hardware.sim import PyBulletSimulation
+from phosphobot.hardware.piper import PiperHardware
 from phosphobot.utils import background_task_log_exceptions
 
 
