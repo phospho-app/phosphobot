@@ -558,7 +558,7 @@ def train(  # All these args should be verified in phosphobot
         )
 
     logger.info(
-        f"🚀 Training {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
+        f"🚀 Training Gr00t on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
     )
 
     # Set the wandb run id if it is not set, using the environment variable

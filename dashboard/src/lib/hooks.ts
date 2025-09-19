@@ -45,9 +45,9 @@ interface GlobalStore {
   setCameraKeysMapping: (mapping: Record<string, number> | null) => void;
   modelId: string;
   setModelId: (modelId: string) => void;
-  selectedModelType: "ACT" | "ACT_BBOX" | "gr00t" | "custom";
+  selectedModelType: "pi0.5" | "ACT" | "ACT_BBOX" | "gr00t" | "custom";
   setSelectedModelType: (
-    modelType: "ACT" | "ACT_BBOX" | "gr00t" | "custom",
+    modelType: "pi0.5" | "ACT" | "ACT_BBOX" | "gr00t" | "custom",
   ) => void;
   selectedAngleFormat: "degrees" | "radians" | "other";
   setSelectedAngleFormat: (
@@ -113,7 +113,7 @@ const useGlobalStore = create(
         })),
       selectedModelType: "ACT_BBOX",
       setSelectedModelType: (
-        modelType: "ACT" | "ACT_BBOX" | "gr00t" | "custom",
+        modelType: "pi0.5" | "ACT" | "ACT_BBOX" | "gr00t" | "custom",
       ) =>
         set(() => ({
           selectedModelType: modelType,

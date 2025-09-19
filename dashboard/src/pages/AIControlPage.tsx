@@ -71,7 +71,7 @@ export function AIControlPage() {
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
   const cameraKeysMapping = useGlobalStore((state) => state.cameraKeysMapping);
 
-  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX"];
+  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX", "pi0.5"];
   const selectedModelType = useGlobalStore((state) => state.selectedModelType);
   const setSelectedModelType = useGlobalStore(
     (state) => state.setSelectedModelType,
@@ -260,6 +260,7 @@ export function AIControlPage() {
               <ToggleGroupItem value="ACT_BBOX">BB-ACT</ToggleGroupItem>
               <ToggleGroupItem value="gr00t">gr00t</ToggleGroupItem>
               <ToggleGroupItem value="ACT">ACT</ToggleGroupItem>
+              <ToggleGroupItem value="pi0.5">pi0.5</ToggleGroupItem>
             </ToggleGroup>
           </div>
 
@@ -524,9 +525,9 @@ export function AIControlPage() {
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       placeholder={
-                        selectedModelType === "gr00t"
-                          ? "eg. 'Pick up the red ball and place it in the box.'"
-                          : "eg. 'red ball', 'plushy', 'green cube'"
+                        selectedModelType === "ACT_BBOX"
+                          ? "eg. 'red ball', 'plushy', 'green cube'"
+                          : "eg. 'Pick up the red ball and place it in the box.'"
                       }
                       className="w-full"
                       disabled={aiStatus?.status !== "stopped"}

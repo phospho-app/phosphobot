@@ -1,13 +1,13 @@
+from datetime import datetime
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from supabase_auth.types import Session as SupabaseSession
 
-from datetime import datetime
 from phosphobot.models import ChatRequest, ChatResponse
-from phosphobot.supabase import user_is_logged_in
+from phosphobot.supabase import get_client, user_is_logged_in
 from phosphobot.utils import get_tokens
-from phosphobot.supabase import get_client
 
 router = APIRouter(tags=["chat"])
 

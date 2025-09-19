@@ -1,4 +1,5 @@
 import time
+
 import numpy as np
 import pytest
 from phosphobot.hardware import get_sim

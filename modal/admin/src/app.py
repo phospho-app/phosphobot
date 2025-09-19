@@ -17,7 +17,7 @@ import supabase
 from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.base import TrainingRequest
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
-from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig
+from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
 from phosphobot.models import CancelTrainingRequest, ChatRequest, ChatResponse
 
 phosphobot_dir = (
@@ -62,11 +62,11 @@ serve_us_west = modal.Function.from_name("gr00t-server", "serve_us_west")
 serve_eu = modal.Function.from_name("gr00t-server", "serve_eu")
 serve_ap = modal.Function.from_name("gr00t-server", "serve_ap")
 serve_act = modal.Function.from_name("act-server", "serve")
-serve_pi0 = modal.Function.from_name("pi0-server", "serve")
+serve_pi05 = modal.Function.from_name("pi0.5-server", "serve")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
 train_act = modal.Function.from_name("act-server", "train")
-train_pi0 = modal.Function.from_name("pi0-server", "train")
+train_pi05 = modal.Function.from_name("pi0.5-server", "train")
 # Paligemma warmup function
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 
@@ -94,12 +94,12 @@ ZONE_TO_FUNCTION_ACT = {
     "ap": serve_act,
 }
 
-ZONE_TO_FUNCTION_PI0 = {
-    "anywhere": serve_pi0,
-    "us-east": serve_pi0,
-    "us-west": serve_pi0,
-    "eu": serve_pi0,
-    "ap": serve_pi0,
+ZONE_TO_FUNCTION_PI05 = {
+    "anywhere": serve_pi05,
+    "us-east": serve_pi05,
+    "us-west": serve_pi05,
+    "eu": serve_pi05,
+    "ap": serve_pi05,
 }
 
 
@@ -108,7 +108,7 @@ MODEL_TO_ZONE = {
     "gr00t": ZONE_TO_FUNCTION_GR00T,
     "ACT": ZONE_TO_FUNCTION_ACT,
     "ACT_BBOX": ZONE_TO_FUNCTION_ACT,  # ACT_BBOX uses the same serving function as ACT
-    "pi0": ZONE_TO_FUNCTION_PI0,
+    "pi0.5": ZONE_TO_FUNCTION_PI05,
 }
 
 # Mapping from countryCode to best region
@@ -194,7 +194,9 @@ def get_location_from_ip(ip_address=None) -> Optional[IpLocationInfo]:
     return None
 
 
-def determine_best_region(ip_address=None):
+def determine_best_region(
+    ip_address=None,
+) -> Literal["us-east", "us-west", "eu", "ap", "anywhere"]:
     """
     Determine the best region for serving based on the client's IP address
     Returns one of: "us-east", "us-west", "eu", "ap", or "anywhere" (default fallback)
@@ -341,10 +343,10 @@ def generate_wandb_run_id(model_name: Optional[str] = None) -> str:
 
 class StartServerRequest(BaseModel):
     model_id: str
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0"]
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"]
     timeout: Annotated[int, Field(default=15 * MINUTES, ge=0, le=15 * MINUTES)]
     region: Optional[Literal["us-east", "us-west", "eu", "ap", "anywhere"]] = None
-    model_specifics: Gr00tSpawnConfig | ACTSpawnConfig | Pi0SpawnConfig
+    model_specifics: Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig
     checkpoint: Optional[int] = None
 
     @field_validator("timeout", mode="before")
@@ -357,7 +359,7 @@ class StartServerRequest(BaseModel):
             "gr00t": Gr00tSpawnConfig,
             "ACT": ACTSpawnConfig,
             "ACT_BBOX": ACTSpawnConfig,
-            "pi0": Pi0SpawnConfig,
+            "pi0.5": Pi05SpawnConfig,
         }
 
         # Make sure the model_specifics is of the right type
@@ -389,7 +391,7 @@ class SupabaseServersTable(BaseModel):
     port: int | None = None
     user_id: str
     model_id: str
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0"]
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"]
     timeout: int | None = None
     requested_at: Optional[str] = None
     started_at: Optional[str] = None
@@ -418,8 +420,7 @@ class ModelInfo(BaseModel):
     logs: Optional[str] = None
     model_type: Optional[str] = None
     training_params: Dict[str, Any] = Field(default_factory=dict)
-    # Config will be used by /spawn in Gr00tSpawnConfig | ACTSpawnConfig | Pi0SpawnConfig
-    config: Optional[Gr00tSpawnConfig | ACTSpawnConfig | Pi0SpawnConfig] = None
+    config: Optional[Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig] = None
 
 
 class ModelInfoResponse(BaseModel):
@@ -562,10 +563,10 @@ def fastapi_app():
                 info = ModelInfo.model_validate(row)
 
                 # We fetch the configs (need to spwan a server)
-                model_types: Dict[str, type[ACT | Gr00tN1 | Pi0]] = {
+                model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
                     "gr00t": Gr00tN1,
                     "ACT": ACT,
-                    "pi0": Pi0,
+                    "pi0.5": Pi05,
                 }
                 model_used = model_types[str(info.model_type)]
 
@@ -916,7 +917,7 @@ def fastapi_app():
             "gr00t": train_gr00t,
             "ACT": train_act,
             "ACT_BBOX": train_act,
-            "pi0": train_pi0,
+            "pi0.5": train_pi05,
         }
 
         logger.info(f"Starting training for {request.model_type}")

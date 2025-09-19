@@ -9,7 +9,7 @@ import numpy as np
 import requests  # type: ignore
 from huggingface_hub import HfApi
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from phosphobot.models import InfoModel, ModelConfigurationResponse
 from phosphobot.utils import get_hf_token
@@ -152,53 +152,42 @@ class TrainingParamsActWithBbox(TrainingParamsAct):
         return instruction
 
 
-class TrainingParamsPi0(BaseModel):
+class TrainingParamsPi05(BaseModel):
     """
     Training parameters for Pi0 model
     """
-    train_test_split: float = Field(
-        default=1.0,
-        description="Train test split ratio, default is 1.0 (no split), should be between 0 and 1",
-        gt=0,
-        le=1,
-    )
-    validation_dataset_name: str | None = Field(
-        default=None,
-        description="Optional dataset repository ID on Hugging Face to use for validation",
+
+    model_config = ConfigDict(
+        extra="allow",
+        serialize_by_alias=True,
     )
 
-    batch_size: int | None = Field(
-        default=None,
-        description="Batch size for training, leave it to None to auto-detect based on your dataset",
+    data_image_keys: list[str] = Field(
+        default=["observation.images.main", "observation.images.secondary_0"],
+        description="Comma-separated list of image keys to use for training",
+        serialization_alias="data.image_keys",
+    )
+    save_interval: int = Field(
+        default=100,
+        description="Number of steps to save the model.",
         gt=0,
-        le=128,
     )
-    epochs: int = Field(
-        default=10,
-        description="Number of epochs to train for, default is 10",
+    num_train_steps: int = Field(
+        default=500,
+        description="Number of training steps.",
         gt=0,
-        le=50,
+        le=2_000,
     )
-    learning_rate: float = Field(
-        default=0.0001,
-        description="Learning rate for training, default is 0.0001",
+    batch_size: int = Field(
+        default=32,
+        description="Batch size for training. Decrease it if you get an Out Of Memory (OOM) error",
         gt=0,
-        le=1,
     )
-    data_dir: str = Field(
-        default="data/", description="The directory to save the dataset to"
+    seed: int = Field(
+        default=42,
+        description="Random seed for reproducibility.",
+        gt=0,
     )
-    output_dir: str = Field(
-        default="outputs/", description="The directory to save the model to"
-    )
-
-    path_to_pi0_repo: str = Field(
-        default=".",
-        description="The path to the openpi repo. If not provided, will assume we are in the repo.",
-    )
-
-    class Config:
-        extra = "forbid"
 
 
 class TrainingParamsGr00T(BaseModel):
@@ -251,9 +240,9 @@ class TrainingParamsGr00T(BaseModel):
 
 
 class BaseTrainerConfig(BaseModel):
-    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0", "custom"] = Field(
+    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "custom"] = Field(
         ...,
-        description="Type of model to train, supports 'ACT', 'gr00t', and 'pi0'",
+        description="Type of model to train, supports 'ACT', 'gr00t', and 'pi0.5'",
     )
     dataset_name: str = Field(
         ...,
@@ -269,7 +258,10 @@ class BaseTrainerConfig(BaseModel):
         description="WandB API key for tracking training, you can find it at https://wandb.ai/authorize",
     )
     training_params: Optional[
-        TrainingParamsAct | TrainingParamsActWithBbox | TrainingParamsGr00T | TrainingParamsPi0
+        TrainingParamsAct
+        | TrainingParamsActWithBbox
+        | TrainingParamsGr00T
+        | TrainingParamsPi05
     ] = Field(
         default=None,
         description="Training parameters for the model.",
@@ -306,7 +298,7 @@ class TrainingRequest(BaseTrainerConfig):
             "ACT": TrainingParamsAct,
             "ACT_BBOX": TrainingParamsActWithBbox,
             "gr00t": TrainingParamsGr00T,
-            "pi0": TrainingParamsPi0,
+            "pi0.5": TrainingParamsPi05,
         }
         model_type = data.get("model_type")
         if not model_type:
@@ -476,7 +468,7 @@ Training was successful, try it out on your robot!
 ## Training parameters
 
 ```text
-{training_params.model_dump_json(indent=2)}
+{training_params.model_dump_json(exclude_unset=True, by_alias=True, indent=2)}
 ```
 
 📖 **Get Started**: [docs.phospho.ai](https://docs.phospho.ai?utm_source=huggingface_readme)
