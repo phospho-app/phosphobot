@@ -9,14 +9,17 @@ if TYPE_CHECKING:
     # This prevents loading pybullet in modal
     from phosphobot.hardware.base import BaseManipulator
 
+import functools
+
 import cv2
+import msgpack
 import numpy as np
 import websockets.sync.client
-from websockets.exceptions import InvalidMessage
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
+from websockets.exceptions import InvalidMessage
 
 from phosphobot.am.base import (
     ActionModel,
@@ -25,8 +28,6 @@ from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.models import ModelConfigurationResponse
 from phosphobot.utils import background_task_log_exceptions, get_hf_token
-import msgpack
-import functools
 
 
 class Statistics(BaseModel):
@@ -105,7 +106,7 @@ class HuggingFaceAugmentedValidator(BaseModel):
 
 
 # This code comes from openpi-client module https://github.com/phospho-app/openpi/blob/main/packages/openpi-client/src/openpi_client/msgpack_numpy.py
-def pack_array(obj):
+def pack_array(obj: Any) -> Any:
     if (isinstance(obj, (np.ndarray, np.generic))) and obj.dtype.kind in (
         "V",
         "O",
@@ -131,7 +132,7 @@ def pack_array(obj):
     return obj
 
 
-def unpack_array(obj):
+def unpack_array(obj: Any) -> Any:
     if b"__ndarray__" in obj:
         return np.ndarray(
             buffer=obj[b"data"], dtype=np.dtype(obj[b"dtype"]), shape=obj[b"shape"]

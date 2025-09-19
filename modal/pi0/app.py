@@ -5,7 +5,6 @@ import asyncio
 import sentry_sdk
 from pathlib import Path
 from loguru import logger
-from subprocess import run
 from typing import Optional
 from huggingface_hub import HfApi
 from phosphobot.am.pi05 import Pi05SpawnConfig
@@ -28,7 +27,8 @@ pi0_image = (
             "GIT_LFS_SKIP_SMUDGE": "1",
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
             "HF_HUB_DISABLE_TELEMETRY": "1",
-            "DEFAULT_CACHE_DIR": "/data/openpi_cache",  # This is the openpi cache dir,
+            "_OPENPI_DATA_HOME": "/data/openpi_cache",  # This is the openpi cache dir,
+            "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.9",  # Tell JAX to use 90% of GPU memory
         }
     )
     .uv_pip_install(
@@ -51,7 +51,7 @@ pi0_image = (
     )
     .workdir("/")
     .run_commands(  # clone openpi source code from last commit, we do this to be able to refresh the build when changing the repo
-        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 09e0b7c5a6df68fc1245e3cd7c9c4bb567141d00"
+        "git clone https://github.com/phospho-app/openpi.git /openpi-source && cd /openpi-source && git checkout 2c7f6eef0cf2bd2d547ccdffe8e115b846fcec42"
     )
     .run_commands(
         "cd /openpi-source && uv pip install -e .",
@@ -506,6 +506,9 @@ async def train(
     wandb_run_url: str | None = None
     training_params_dict = training_params.model_dump(
         exclude_none=True,
+    )
+    training_params_dict["data.repo_id"] = (
+        dataset_name  # Add dataset to training params
     )
     config_name = training_params_dict.get("config_name", "pi0.5_LoRA_finetune_so100")
     exp_name = training_params_dict.get("exp_name", "pi05_so100_lora_finetune")
