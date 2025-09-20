@@ -19,7 +19,10 @@ deploy_pi05:
 deploy_vllm:
 	cd vllm && uv run modal deploy app.py
 
-deploy_all:
-	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05
+deploy_smolvla:
+	cd smolvla && uv run modal deploy -m src.app
 
-PHONY: deploy_admin deploy_act deploy_paligemma deploy_gr00t deploy_vllm deploy_all install deploy_pi05
+deploy_all:
+	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05 && make deploy_smolvla
+
+PHONY: deploy_admin deploy_act deploy_paligemma deploy_gr00t deploy_vllm deploy_all install deploy_pi05 deploy_smolvla
