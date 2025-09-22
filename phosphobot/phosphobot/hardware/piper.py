@@ -122,7 +122,9 @@ class PiperHardware(BaseManipulator):
                 ]
                 if len(found) >= 2:
                     self._gripper_joint_indices = found[-2:]
-                    logger.debug(f"Guessed prismatic joints: {self._gripper_joint_indices}")
+                    logger.debug(
+                        f"Guessed prismatic joints: {self._gripper_joint_indices}"
+                    )
                 else:
                     logger.warning("Failed to auto-detect gripper joints; disabled")
                     return
@@ -220,16 +222,18 @@ class PiperHardware(BaseManipulator):
             return
 
         self.motors_bus.ConnectPort(can_init=True)
-        self.firmware_verison = self.motors_bus.GetPiperFirmwareVersion()
-        logger.info(
-            f"Connected to Agilex Piper on {self.can_name} with firmware version {self.firmware_verison}"
-        )
-        await asyncio.sleep(0.1)
 
         # Start by resetting the control mode (useful if arm stuck in teaching mode)
         self.motors_bus.MotionCtrl_1(0x02, 0, 0)  # 恢复
         self.motors_bus.MotionCtrl_2(0, 0, 0, 0x00)  # 位置速度模式
-        await asyncio.sleep(0.1)
+        # Reset the gripper
+        self.motors_bus.GripperCtrl(0, 1000, 0x00, 0)
+        await asyncio.sleep(1.5)
+
+        self.firmware_version = self.motors_bus.GetPiperFirmwareVersion()
+        logger.info(
+            f"Connected to Agilex Piper on {self.can_name} with firmware version {self.firmware_version}"
+        )
 
         self.motors_bus.ArmParamEnquiryAndConfig(
             param_setting=0x01,
