@@ -1,9 +1,12 @@
 import asyncio
 import time
+import traceback
 from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
+from fastapi import HTTPException
 import numpy as np
 from loguru import logger
+import serial
 from serial.tools.list_ports_common import ListPortInfo
 
 from phosphobot.configs import SimulationMode, config
@@ -92,13 +95,32 @@ class SO100Hardware(BaseManipulator):
             )
             return None
 
-        # Create serial connection
-        self.motors_bus = FeetechMotorsBus(port=self.device_name, motors=self.motors)
-        self.motors_bus.connect()
+        try:
+            assert (
+                self.device_name is not None
+            ), "Device name must be set before connecting."
+            # Create serial connection
+            self.motors_bus = FeetechMotorsBus(
+                port=self.device_name, motors=self.motors
+            )
+            self.motors_bus.connect()
+        except serial.SerialException as e:
+            if "Access is denied" in str(e):
+                logger.warning(
+                    f"Failed to add robot connection: {e}\n{traceback.format_exc()}"
+                )
+            elif "Permission denied" in str(e):
+                logger.warning(
+                    f"Failed to add robot connection: {e}\n{traceback.format_exc()}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to add robot connection (SerialException): {e}\n{traceback.format_exc()}"
+                )
+            return None
         self.init_config()
         self._max_temperature_cache: dict = {}
         self.is_connected = True
-
 
     def disconnect(self) -> None:
         """
