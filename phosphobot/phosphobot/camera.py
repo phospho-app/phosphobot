@@ -277,7 +277,9 @@ def detect_video_indexes(
     if platform.system() == "Linux":
         possible_ports = [str(port) for port in Path("/dev").glob("video*")]
         possible_camera_ids = [
-            int(port.removeprefix("/dev/video")) for port in possible_ports
+            int(port.removeprefix("/dev/video"))
+            for port in possible_ports
+            if port.removeprefix("/dev/video").isdigit()
         ]
         # Sort by increasing
         possible_camera_ids = sorted(possible_camera_ids)
