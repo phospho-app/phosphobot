@@ -316,7 +316,12 @@ export function AITrainingPage() {
                   defaultValue={selectedModelType}
                   onValueChange={(value) => {
                     setSelectedModelType(
-                      value as "gr00t" | "ACT" | "ACT_BBOX" | "custom",
+                      value as
+                        | "pi0.5"
+                        | "gr00t"
+                        | "ACT"
+                        | "ACT_BBOX"
+                        | "custom",
                     );
                     setLightbulbOn(true);
                   }}
@@ -325,9 +330,8 @@ export function AITrainingPage() {
                     <SelectValue placeholder="Select model type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ACT_BBOX">
-                      BB-ACT (recommended)
-                    </SelectItem>
+                    <SelectItem value="pi0.5">pi0.5 (new)</SelectItem>
+                    <SelectItem value="ACT_BBOX">BB-ACT</SelectItem>
                     <SelectItem value="ACT">ACT</SelectItem>
                     <SelectItem value="gr00t">gr00t-n1.5 (updated)</SelectItem>
                     <SelectItem value="custom">Custom</SelectItem>

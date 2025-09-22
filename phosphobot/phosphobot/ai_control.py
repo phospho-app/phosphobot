@@ -10,7 +10,7 @@ from supabase import AsyncClient
 
 from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
-from phosphobot.am.pi0 import Pi0, Pi0SpawnConfig
+from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.hardware.base import BaseManipulator
@@ -113,13 +113,17 @@ async def setup_ai_control(
     robots: List[BaseManipulator],
     all_cameras: AllCameras,
     ai_control_signal_id: str,
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0"],
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"],
     model_id: str = "PLB/GR00T-N1-lego-pickup-mono-2",
     cameras_keys_mapping: Optional[dict[str, int]] = None,
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
     checkpoint: Optional[int] = None,
-) -> Tuple[Gr00tN1 | ACT | Pi0, Gr00tSpawnConfig | ACTSpawnConfig | Pi0SpawnConfig, ServerInfoResponse]:
+) -> Tuple[
+    Gr00tN1 | ACT | Pi05,
+    Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig,
+    ServerInfoResponse,
+]:
     """
     Setup the AI control loop by spawning the inference server and returning the model.
     This function is called when the user clicks on the "Start AI Control" button in the UI.
@@ -140,11 +144,11 @@ async def setup_ai_control(
             detail="Session expired. Please log in again.",
         )
 
-    model_types: Dict[str, type[ACT | Gr00tN1 | Pi0]] = {
+    model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,
-        "pi0": Pi0,
+        "pi0.5": Pi05,
     }
 
     try:
@@ -213,7 +217,7 @@ async def setup_ai_control(
 
     server_info = ServerInfoResponse.model_validate(response.json())
 
-    connects_through_tcp = ["gr00t"]
+    connects_through_tcp = ["gr00t", "pi0.5"]
 
     if model_type in connects_through_tcp:
         server_url = server_info.tcp_socket[0]

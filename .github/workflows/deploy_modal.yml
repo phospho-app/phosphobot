@@ -61,3 +61,8 @@ jobs:
         run: |
           cd modal
           make deploy_vllm
+
+      - name: Deploy Pi05
+        run: |
+          cd modal
+          make deploy_pi05

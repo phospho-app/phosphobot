@@ -4,25 +4,17 @@ from collections import deque
 from typing import (
     Any,
     AsyncGenerator,
+    Callable,
     Dict,
     List,
     Literal,
     Optional,
     Tuple,
     Union,
-    Callable,
 )
 
 import httpx
 from loguru import logger
-
-from phosphobot.configs import config
-from phosphobot.models import ChatRequest, ChatResponse
-from phosphobot.utils import get_local_ip
-
-
-import httpx
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 
 from phosphobot.configs import config
 from phosphobot.models import ChatRequest, ChatResponse
