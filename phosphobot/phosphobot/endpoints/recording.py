@@ -116,7 +116,7 @@ async def start_recording_episode(
             # Leader-follower mode
             if getattr(robot, "SERIAL_ID", None) in query.leader_arm_ids:
                 # The leader arm is recorded for the action
-                actions_robots_mapping[i] = "sim"
+                actions_robots_mapping[i] = "robot"
                 robots_to_record += 1
             elif getattr(robot, "SERIAL_ID", None) in query.robot_serials_to_ignore:
                 # Ignore robots that are in the ignore list
@@ -195,14 +195,14 @@ async def start_recording_episode(
             # Calculate expected action dimensions from connected robots
             expected_action_dim = 0
             for robot_idx in actions_robots_mapping.keys():
-                assert isinstance(robots[robot_idx], BaseManipulator), (
-                    "Robot must be an instance of BaseManipulator."
-                )
+                assert isinstance(
+                    robots[robot_idx], BaseManipulator
+                ), "Robot must be an instance of BaseManipulator."
             # We don't do both for loops together as some robots may be in both lists
             for robot_idx in observations_robots_mapping.keys():
-                assert isinstance(robots[robot_idx], BaseManipulator), (
-                    "Robot must be an instance of BaseManipulator."
-                )
+                assert isinstance(
+                    robots[robot_idx], BaseManipulator
+                ), "Robot must be an instance of BaseManipulator."
                 base_robot_info = robots[robot_idx].get_info_for_dataset()
                 expected_action_dim += base_robot_info.action.shape[0]
 
