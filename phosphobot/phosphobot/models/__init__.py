@@ -434,7 +434,7 @@ class TrainingInfoRequest(BaseModel):
     model_id: Optional[str] = Field(
         None, description="Hugging Face model id to get training info"
     )
-    model_type: Literal["pi0.5", "gr00t", "ACT", "ACT_BBOX", "custom"]
+    model_type: Literal["pi0.5", "gr00t", "ACT", "ACT_BBOX", "smolvla", "custom"]
 
 
 class TrainingInfoResponse(BaseModel):
@@ -756,7 +756,7 @@ class ModelConfigurationRequest(BaseModel):
         # no empty string
         pattern=r"^\s*\S.*$",
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"] = Field(
         ...,
         description="Type of model to use.",
     )
@@ -871,9 +871,9 @@ class StartServerRequest(BaseModel):
         description="List of robot serial ids to ignore. If set to None, controls all available robots.",
         examples=[["/dev/ttyUSB0"]],
     )
-    model_type: Literal["gr00t", "ACT", "pi0.5"] = Field(
+    model_type: Literal["gr00t", "ACT", "pi0.5", "smolvla"] = Field(
         ...,
-        description="Type of model to use. Can be gr00t or act.",
+        description="Type of model to use. Can be gr00t, act, pi0.5, or smolvla.",
     )
 
 
@@ -903,9 +903,9 @@ class StartAIControlRequest(BaseModel):
         description="Mapping of the camera keys to the camera ids. If set to None, use the default mapping based on cameras order.",
         examples=[{"wrist_camera": 0, "context_camera": 1}],
     )
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"] = Field(
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"] = Field(
         ...,
-        description="Type of model to use. Can be gr00t or act.",
+        description="Type of model to use. Can be gr00t, act, pi0.5, or smolvla.",
     )
     selected_camera_id: Optional[int] = Field(
         None,

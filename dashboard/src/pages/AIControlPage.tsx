@@ -261,6 +261,7 @@ export function AIControlPage() {
               <ToggleGroupItem value="gr00t">gr00t</ToggleGroupItem>
               <ToggleGroupItem value="ACT">ACT</ToggleGroupItem>
               <ToggleGroupItem value="pi0.5">pi0.5</ToggleGroupItem>
+              <ToggleGroupItem value="smolvla">SmolVLA</ToggleGroupItem>
             </ToggleGroup>
           </div>
 
@@ -353,6 +354,8 @@ export function AIControlPage() {
                       href={
                         selectedModelType === "gr00t"
                           ? "https://huggingface.co/models?other=gr00t_n1"
+                          : selectedModelType === "smolvla"
+                          ? "https://huggingface.co/models?other=smolvla"
                           : "https://huggingface.co/models?other=act"
                       }
                       target="_blank"

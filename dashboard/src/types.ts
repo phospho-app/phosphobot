@@ -109,12 +109,17 @@ export type TrainingParamsGR00T = {
   validation_dataset_name?: string;
 };
 
+export type TrainingParamsSmolVLA = {
+  batch_size?: number;
+  steps?: number;
+};
+
 export type TrainingRequest = {
-  model_type: "gr00t" | "ACT" | "custom";
+  model_type: "gr00t" | "ACT" | "smolvla" | "custom";
   dataset_name: string;
   model_name: string;
   wandb_api_key?: string;
-  training_params?: TrainingParamsACT | TrainingParamsGR00T;
+  training_params?: TrainingParamsACT | TrainingParamsGR00T | TrainingParamsSmolVLA;
 };
 
 export type AdminSettings = {

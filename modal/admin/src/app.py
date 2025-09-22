@@ -576,7 +576,7 @@ def fastapi_app():
                 info = ModelInfo.model_validate(row)
 
                 # We fetch the configs (need to spwan a server)
-                model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
+                model_types: Dict[str, type[ACT | Gr00tN1 | Pi05 | SmolVLA]] = {
                     "gr00t": Gr00tN1,
                     "ACT": ACT,
                     "pi0.5": Pi05,
