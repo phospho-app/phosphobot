@@ -16,10 +16,9 @@ import modal
 from pathlib import Path
 
 phosphobot_dir = Path(__file__).resolve().parents[2]
-sys.path.append(str(phosphobot_dir))  # Add phosphobot to sys.path
+sys.path.append(str(phosphobot_dir))
 from phosphobot.am.smolvla import HuggingFaceModelValidator, HuggingFaceAugmentedValidator, SmolVLASpawnConfig, SmolVLA
 
-sys.exit(0)
 # Adapted from https://huggingface.co/lerobot/smolvla_base/blob/main/config.json
 _CONFIG = """
 {
@@ -240,7 +239,7 @@ def main():
     model_specifics = create_smolvla_spawn_config(_CONFIG)
 
     # Step 1: Start inference on Modal
-    model, server_info = spawn_server_for_model(
+    _, server_info = spawn_server_for_model(
         model_specifics=model_specifics
     )
 

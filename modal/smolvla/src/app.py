@@ -1,9 +1,7 @@
 import asyncio
 import os
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import modal
 import sentry_sdk
@@ -13,7 +11,7 @@ from loguru import logger
 
 from phosphobot.am.act import RetryError
 from phosphobot.am.smolvla import SmolVLASpawnConfig
-from .helper import _find_or_download_model, InferenceRequest, process_image
+from .helper import _find_or_download_model, InferenceRequest, process_image, _update_server_status
 
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
@@ -29,27 +27,41 @@ phosphobot_dir = (
 )
 
 smolvla_image = (
-    modal.Image.from_dockerfile("Dockerfile")
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
+    modal.Image.debian_slim(python_version="3.10")    # type: ignore
+    .env({
+        "HF_HUB_ENABLE_HF_TRANSFER": "1",
+        "HF_HUB_DISABLE_TELEMETRY": "1",
+        "GIT_LFS_SKIP_SMUDGE": "1",  # fetch LFS files manually
+    })
+    .apt_install("ffmpeg", "libavutil-dev", "libavcodec-dev", "libavformat-dev", "git", "git-lfs")
+    .run_commands([
+        "git clone https://github.com/huggingface/lerobot.git"
+    ])
+    .uv_pip_install(
+        "./lerobot[smolvla]",
+    )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")
 )
 
-app = modal.App("smolvla-server")
-volume = modal.Volume.from_name("smolvla", create_if_missing=True)
+app = modal.App("smolvla-server")   # type: ignore
+volume = modal.Volume.from_name("smolvla", create_if_missing=True)  # type: ignore
 
 MINUTES = 60
 FUNCTION_IMAGE = smolvla_image
 FUNCTION_TIMEOUT_INFERENCE = 6 * MINUTES  # 6 minutes
-FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["T4"]
+FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["T4"]    # type: ignore
 
 # ======== Inference Function ========
 @app.function(
     image=FUNCTION_IMAGE,
     gpu=FUNCTION_GPU_INFERENCE,
     timeout=FUNCTION_TIMEOUT_INFERENCE,
+    secrets=[
+        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),    # type: ignore
+        modal.Secret.from_name("supabase"),                     # type: ignore
+    ],
     volumes={"/data": volume},
-    # secrets=[modal.Secret.from_name("supabase")],
 )
 async def serve(
     model_id: str,
@@ -73,17 +85,22 @@ async def serve(
 
     from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy  # type: ignore
     from lerobot.constants import OBS_LANGUAGE_TOKENS, OBS_LANGUAGE_ATTENTION_MASK  # type: ignore
+    from supabase import Client, create_client  # type: ignore
     import json_numpy  # type: ignore
     import torch.nn as nn  # type: ignore
 
     # Start timer
     start_time = time.time()
 
+    SUPABASE_URL = os.environ["SUPABASE_URL"]
+    SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
     # logger.info the region
     logger.success(f"🌎 running in {os.environ['MODAL_REGION']} region")
 
     try:
-        model_path = _find_or_download_model(model_id)
+        model_path = _find_or_download_model(model_id, checkpoint)
         policy = SmolVLAPolicy.from_pretrained(model_path).to(device="cuda")
         assert isinstance(policy, nn.Module)
         logger.info("Policy loaded successfully")
@@ -105,9 +122,6 @@ async def serve(
             input_features[model_specifics.env_key] = {
                 "shape": model_specifics.env_size
             }
-        last_bbox_computed: list[float] | None = None
-
-        logger.info(f"Input features: {input_features}")
 
         @app.post("/health")
         async def health_check():
@@ -173,7 +187,7 @@ async def serve(
                         ],
                         image_names=image_names,
                         target_size=target_size,
-                        prompt=payload.get("prompt", None),
+                        prompt=payload["prompt"],
                         prompt_key=OBS_LANGUAGE_TOKENS,
                         prompt_mask_key=OBS_LANGUAGE_ATTENTION_MASK,
                     )
@@ -187,30 +201,6 @@ async def serve(
                 response = json_numpy.dumps(actions)
                 return response
 
-                """
-                state = np.array(payload[model_specifics.state_key])
-                images = [np.array(img) for img in payload.get("images", [])]
-
-                with torch.no_grad(), torch.autocast(device_type="cuda"):
-                    batch: dict[str, Any] = {
-                        model_specifics.state_key: torch.from_numpy(state).view(1, -1).float().cuda()
-                    }
-                    for i, key in enumerate(model_specifics.video_keys[: len(images)]):
-                        img = images[i]
-                        if img.shape[:2] != tuple(model_specifics.video_size[-2:]):
-                            img = torch.tensor(img).permute(2, 0, 1).unsqueeze(0).float().cuda()  # C,H,W
-                        else:
-                            img = torch.tensor(img).permute(2, 0, 1).unsqueeze(0).float().cuda()
-                        batch[key] = img
-                    if model_specifics.env_key and model_specifics.env_key in payload:
-                        env = np.array(payload[model_specifics.env_key])
-                        batch[model_specifics.env_key] = torch.from_numpy(env).view(1, -1).float().cuda()
-
-                    action = policy(batch)[0].cpu().numpy()
-                return json_numpy.dumps(action)
-                """
-            except RetryError as e:
-                raise HTTPException(status_code=202, detail=str(e))
             except Exception as e:
                 logger.error(e)
                 raise HTTPException(status_code=500, detail=str(e))
@@ -251,8 +241,10 @@ async def serve(
                 logger.info(
                     "Timeout reached for Inference FastAPI server. Shutting down."
                 )
+                _update_server_status(supabase_client, server_id, "stopped")
             except Exception as e:
                 logger.error(f"Server error: {e}")
+                _update_server_status(supabase_client, server_id, "failed")
                 raise HTTPException(
                     status_code=500,
                     detail=f"Server error: {e}",
@@ -263,10 +255,12 @@ async def serve(
 
     except HTTPException as e:
         logger.error(f"HTTPException during server setup: {e.detail}")
+        _update_server_status(supabase_client, server_id, "failed")
         raise e
 
     except Exception as e:
         logger.error(f"Error during server setup: {e}")
+        _update_server_status(supabase_client, server_id, "failed")
         raise HTTPException(
             status_code=500,
             detail=f"Error during server setup: {e}",
