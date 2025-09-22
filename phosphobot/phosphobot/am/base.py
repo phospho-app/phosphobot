@@ -176,7 +176,7 @@ class TrainingParamsPi05(BaseModel):
         default=500,
         description="Number of training steps.",
         gt=0,
-        le=2_000,
+        le=3_000,
     )
     batch_size: int = Field(
         default=32,
