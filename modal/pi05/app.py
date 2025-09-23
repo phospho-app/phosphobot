@@ -532,6 +532,8 @@ async def train(
                     f"Failed to login to Weights & Biases: {e}. Disabling Weights & Biases."
                 )
                 wandb_enabled = False
+        # Update training params to include wandb info
+        training_params_dict["wandb_enabled"] = wandb_enabled
 
         # Start by computing normalization stats
         logger.info("Computing normalization stats...")
