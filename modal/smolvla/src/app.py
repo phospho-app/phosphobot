@@ -212,7 +212,7 @@ async def serve(
                 return response
 
             except Exception as e:
-                logger.error(e)
+                logger.error(f"Error during policy inference: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
 
         # Expose through tunnel

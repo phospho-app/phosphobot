@@ -197,12 +197,8 @@ def process_image(
 
         batch: dict[str, Any] = {
             model_specifics.state_key: state_tensor,
+            prompt_key: prompt
         }
-
-        processor = policy.model.vlm_with_expert.processor
-        processed_text = processor(text=prompt, return_tensors="pt")
-
-        batch[prompt_key] = processed_text["input_ids"].to("cuda")
 
         processed_images = []
         for i, image in enumerate(images):
