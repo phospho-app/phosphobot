@@ -43,14 +43,10 @@ smolvla_image = (
     .env({
         "HF_HUB_ENABLE_HF_TRANSFER": "1",
         "HF_HUB_DISABLE_TELEMETRY": "1",
-        "GIT_LFS_SKIP_SMUDGE": "1",  # fetch LFS files manually
     })
-    .apt_install("ffmpeg", "libavutil-dev", "libavcodec-dev", "libavformat-dev", "git", "git-lfs")
-    .run_commands([
-        "git clone https://github.com/huggingface/lerobot.git"
-    ])
+    .apt_install("ffmpeg", "libavutil-dev", "libavcodec-dev", "libavformat-dev")
     .uv_pip_install(
-        "./lerobot[smolvla]",
+        "lerobot[smolvla]==0.3.3",  # before introduction of LeRobotDataset v3.0
     )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")
@@ -101,7 +97,6 @@ async def serve(
     """
 
     from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy  # type: ignore
-    from lerobot.constants import OBS_LANGUAGE_TOKENS, OBS_LANGUAGE_ATTENTION_MASK  # type: ignore
     from supabase import Client, create_client  # type: ignore
     import json_numpy  # type: ignore
     import torch.nn as nn  # type: ignore
@@ -205,8 +200,6 @@ async def serve(
                         image_names=image_names,
                         target_size=target_size,
                         prompt=payload["prompt"],
-                        prompt_key=OBS_LANGUAGE_TOKENS,
-                        prompt_mask_key=OBS_LANGUAGE_ATTENTION_MASK,
                     )
                 except RetryError as e:
                     return Response(

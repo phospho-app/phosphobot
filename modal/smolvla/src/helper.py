@@ -151,8 +151,7 @@ def process_image(
     image_names: list[str],
     target_size: tuple[int, int],
     prompt: str,
-    prompt_key: str = "observation.language.tokens",
-    prompt_mask_key: str = "observation.language.attention_mask",
+    prompt_key: str = "task",
 ) -> np.ndarray:
     """
     Process images and perform inference using the policy.
@@ -204,7 +203,6 @@ def process_image(
         processed_text = processor(text=prompt, return_tensors="pt")
 
         batch[prompt_key] = processed_text["input_ids"].to("cuda")
-        batch[prompt_mask_key] = processed_text["attention_mask"].bool().to("cuda")  # convert to boolean mask
 
         processed_images = []
         for i, image in enumerate(images):
@@ -227,7 +225,6 @@ def process_image(
             batch[image_names[i]] = tensor_image
 
         actions = policy.predict_action_chunk(batch)
-        # actions = actions.transpose(0, 1)  # (T, B, D) -> (B, T, D) not required
         return actions.cpu().numpy()
 
 
