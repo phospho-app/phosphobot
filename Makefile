@@ -13,7 +13,7 @@ prod:
 	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
 prod_back:
-	cd phosphobot && uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
+	cd phosphobot && MESA_GL_VERSION_OVERRIDE=3.3 uv run --python 3.10 phosphobot run --simulation=headless --no-crash-telemetry
 
 # Chat agent run
 chat:
