@@ -180,6 +180,10 @@ class WebsocketClientPolicy:
                     self._uri,
                     compression=None,
                     max_size=None,
+                    open_timeout=20,
+                    close_timeout=10,
+                    ping_interval=30,
+                    ping_timeout=10,
                 )
                 metadata = unpackb(conn.recv())
                 return conn, metadata
@@ -260,7 +264,10 @@ class Pi05(ActionModel):
             response = self.client.infer(obs=inputs)
 
             logger.debug(f"Response from server: {response}")
-            actions = np.array([0, 0, 0, 0, 0, 0])
+            if isinstance(response, dict) and "actions" in response:
+                actions = np.array(response["actions"])
+            else:
+                raise ValueError(f"Invalid response from model server: {response}")
         except RetryError as e:
             raise RetryError(e)
         except Exception as e:
@@ -276,7 +283,10 @@ class Pi05(ActionModel):
             response = self.client.infer(obs=inputs)
 
             logger.debug(f"Response from server: {response}")
-            actions = np.array([0, 0, 0, 0, 0, 0])
+            if isinstance(response, dict) and "actions" in response:
+                actions = np.array(response["actions"])
+            else:
+                raise ValueError(f"Invalid response from model server: {response}")
         except RetryError as e:
             raise RetryError(e)
         except Exception as e:
@@ -372,13 +382,6 @@ class Pi05(ActionModel):
         """
         hf_model_config = cls.fetch_config(model_id=model_id)
 
-        action_dim = hf_model_config.config.action_dim
-        if action_dim != sum(robot.num_actuated_joints for robot in robots):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model has {action_dim} action dimensions but we found {sum(robot.num_actuated_joints for robot in robots)} connected joints on {len(robots)} robots.",
-            )
-
         if verify_cameras:
             if cameras_keys_mapping is None:
                 raise HTTPException(
@@ -392,7 +395,10 @@ class Pi05(ActionModel):
                 )
 
         number_of_model_actions = hf_model_config.config.action_dim
-        number_of_connected_joints = sum(robot.num_actuated_joints for robot in robots)
+        # To determine the number of connected joints, we do read_joints_position on each robot and sum the lengths of the returned arrays
+        number_of_connected_joints = sum(
+            robot.read_joints_position(unit="rad").shape[0] for robot in robots
+        )
         if number_of_model_actions != number_of_connected_joints:
             raise HTTPException(
                 status_code=400,
@@ -400,7 +406,7 @@ class Pi05(ActionModel):
             )
 
         return Pi05SpawnConfig(
-            action_dim=action_dim,
+            action_dim=number_of_model_actions,
             image_keys=hf_model_config.config.image_keys,
         )
 
@@ -438,7 +444,7 @@ class Pi05(ActionModel):
         model_spawn_config: Pi05SpawnConfig,
         all_cameras: AllCameras,
         prompt: str,
-        fps: int = 30,
+        fps: int = 1, # Pi0 model family operates at 10 fps
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",
@@ -453,7 +459,6 @@ class Pi05(ActionModel):
         The loop runs at the specified fps and speed.
         """
         nb_iter = 0
-        action_dim = model_spawn_config.action_dim
 
         signal_marked_as_started = False
         actions_queue: deque = deque([])
@@ -488,23 +493,22 @@ class Pi05(ActionModel):
                     f"{len(image_inputs)} cameras are plugged."
                 )
 
-            # Verify number of robots
-            number_of_joints = sum(robot.num_actuated_joints for robot in robots)
-            number_of_joints_in_config = model_spawn_config.action_dim
-            if number_of_joints != number_of_joints_in_config:
-                logger.warning(
-                    f"Model has {number_of_joints_in_config} joints but {number_of_joints} joints are connected with {len(robots)} robots."
-                )
-                control_signal.stop()
-                raise Exception(
-                    f"Model has {number_of_joints_in_config} joints but {number_of_joints} joints are connected with {len(robots)} robots."
-                )
-
             # Concatenate all robot states
             state = robots[0].read_joints_position(unit="rad")
             for robot in robots[1:]:
                 state = np.concatenate(
                     (state, robot.read_joints_position(unit="rad")), axis=0
+                )
+
+            # Verify number of joints
+            number_of_joints_in_config = model_spawn_config.action_dim
+            if state.shape[0] != number_of_joints_in_config:
+                logger.warning(
+                    f"Model has {number_of_joints_in_config} joints but {state.shape[0]} joints are connected with {len(robots)} robots."
+                )
+                control_signal.stop()
+                raise Exception(
+                    f"Model has {number_of_joints_in_config} joints but {state.shape[0]} joints are connected with {len(robots)} robots."
                 )
 
             # Prepare model input
