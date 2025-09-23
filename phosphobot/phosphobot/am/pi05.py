@@ -183,7 +183,7 @@ class WebsocketClientPolicy:
                     open_timeout=20,
                     close_timeout=10,
                     ping_interval=30,
-                    ping_timeout=10,
+                    ping_timeout=20,
                 )
                 metadata = unpackb(conn.recv())
                 return conn, metadata
