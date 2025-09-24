@@ -29,34 +29,14 @@ phosphobot_dir = (
 )
 gr00t_image = (
     modal.Image.from_dockerfile("Dockerfile")
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
-    .pip_install(
-        "sentry-sdk",
-        "loguru",
-        "pydantic==2.10.6",
-        "numpydantic==1.6.7",
-        "numpy==1.26.4",
-        "supabase",
-        "httpx>=0.28.1",
-        "pydantic>=2.10.5",
-        "fastparquet>=2024.11.0",
-        "ffmpeg-python>=0.2.0",
-        "loguru>=0.7.3",
-        "opencv-python-headless>=4.0",
-        "rich>=13.9.4",
-        "pandas-stubs>=2.2.2.240807",
-        "json-numpy>=2.1.0",
-        "fastapi>=0.115.11",
-        "zmq>=0.0.0",
-        "av>=14.2.1",
-        "wandb",
+    .uv_pip_install(
         "huggingface_hub[hf_transfer]",
         "hf_xet",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
-    .env({"HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_python_source("phosphobot")
 )
 
