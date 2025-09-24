@@ -256,6 +256,7 @@ class PyBulletSimulation:
         axis: Optional[List[float]] = None,
         axis_orientation: Optional[List[int]] = None,
         use_fixed_base: bool = True,
+        enable_self_collision: bool = False,
     ) -> Tuple[int, int, List[int]]:
         """
         Load a URDF file into the simulation.
@@ -278,12 +279,17 @@ class PyBulletSimulation:
                 f"Can't load URDF {urdf_path} - simulation not connected."
             )
 
+        if enable_self_collision:
+            flags = (p.URDF_MAINTAIN_LINK_ORDER and p.URDF_USE_SELF_COLLISION)
+        else:
+            flags = p.URDF_MAINTAIN_LINK_ORDER
+
         robot_id = p.loadURDF(
             urdf_path,
             basePosition=axis,
             baseOrientation=axis_orientation,
             useFixedBase=use_fixed_base,
-            flags=p.URDF_MAINTAIN_LINK_ORDER,
+            flags=flags,
         )
 
         num_joints = p.getNumJoints(robot_id)
@@ -329,6 +335,25 @@ class PyBulletSimulation:
             controlMode=p.POSITION_CONTROL,
             targetPositions=target_positions,
         )
+
+    def get_joints_states(self, robot_id: int, joint_indices: List[int]) -> List[float]:
+        """
+        Get the states of multiple joints in the simulation.
+
+        Args:
+            robot_id (int): The ID of the robot in the simulation.
+            joint_indices (list[int]): The indices of the joints to get.
+
+        Returns:
+            list[float]: List of joint positions.
+        """
+        if not self.connected or not p.isConnected():
+            logger.warning("Simulation is not connected, cannot get joint states")
+            return []
+
+        joint_states = p.getJointStates(robot_id, joint_indices)
+        joint_positions = [state[0] for state in joint_states]
+        return joint_positions
 
     def get_joint_state(self, robot_id: int, joint_index: int) -> List:
         """

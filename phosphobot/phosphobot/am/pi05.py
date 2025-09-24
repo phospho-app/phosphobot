@@ -180,10 +180,10 @@ class WebsocketClientPolicy:
                     self._uri,
                     compression=None,
                     max_size=None,
-                    open_timeout=20,
-                    close_timeout=10,
-                    ping_interval=30,
-                    ping_timeout=20,
+                    open_timeout=40,
+                    close_timeout=40,
+                    ping_interval=120,
+                    ping_timeout=40,
                 )
                 metadata = unpackb(conn.recv())
                 return conn, metadata
@@ -444,7 +444,7 @@ class Pi05(ActionModel):
         model_spawn_config: Pi05SpawnConfig,
         all_cameras: AllCameras,
         prompt: str,
-        fps: int = 1, # Pi0 model family operates at 10 fps
+        fps: int = 10, # Pi0 model family operates at 10 fps
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",
@@ -494,21 +494,27 @@ class Pi05(ActionModel):
                 )
 
             # Concatenate all robot states
+            robot_idx_joints_mapping = {}
             state = robots[0].read_joints_position(unit="rad")
+            robot_idx_joints_mapping[0] = state.shape[0]
             for robot in robots[1:]:
                 state = np.concatenate(
                     (state, robot.read_joints_position(unit="rad")), axis=0
                 )
+                robot_idx_joints_mapping[len(robot_idx_joints_mapping)] = (
+                    robot.read_joints_position(unit="rad").shape[0]
+                )
 
             # Verify number of joints
             number_of_joints_in_config = model_spawn_config.action_dim
-            if state.shape[0] != number_of_joints_in_config:
+            number_of_connected_joints = sum(robot_idx_joints_mapping.values()) # num_actuated_joints is not reliable here, some robots like the piper have a separate gripper
+            if number_of_connected_joints != number_of_joints_in_config:
                 logger.warning(
-                    f"Model has {number_of_joints_in_config} joints but {state.shape[0]} joints are connected with {len(robots)} robots."
+                    f"Model has {number_of_joints_in_config} joints but {number_of_connected_joints} joints are connected with {len(robots)} robots."
                 )
                 control_signal.stop()
                 raise Exception(
-                    f"Model has {number_of_joints_in_config} joints but {state.shape[0]} joints are connected with {len(robots)} robots."
+                    f"Model has {number_of_joints_in_config} joints but {number_of_connected_joints} joints are connected with {len(robots)} robots."
                 )
 
             # Prepare model input
@@ -527,7 +533,6 @@ class Pi05(ActionModel):
                         raise ValueError(
                             f"Invalid response from model server: {actions_dict}"
                         )
-                    logger.debug(f"Actions from model: {actions}")
                     actions_queue.extend(actions)
                 actions = actions_queue.popleft()  # actions will be of size action_dim, by default 32, this is expected, we ignore the ones > number of joints
             except Exception as e:
@@ -555,16 +560,21 @@ class Pi05(ActionModel):
 
             for robot_index in range(len(robots)):
                 rolling_count = 0
-                robots[robot_index].write_joint_positions(
-                    angles=actions_list[
+                angles = actions_list[
                         rolling_count : rolling_count
-                        + robots[robot_index].num_actuated_joints
-                    ],
+                        + robot_idx_joints_mapping[robot_index]
+                    ]
+                logger.debug(
+                    f"Sending actions to robot {robot_index}: {angles} in {unit}"
+                )
+                robots[robot_index].write_joint_positions(
+                    angles=angles,
                     unit=unit,
+                    joints_ids=None,
                     min_value=min_angle,
                     max_value=max_angle,
                 )
-                rolling_count += robots[robot_index].num_actuated_joints
+                rolling_count += robot_idx_joints_mapping[robot_index]
 
             # Wait fps time
             elapsed_time = time.perf_counter() - start_time

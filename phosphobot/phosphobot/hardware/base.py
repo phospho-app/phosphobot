@@ -65,7 +65,7 @@ class BaseManipulator(BaseRobot):
 
     CALIBRATION_POSITION: List[float]  # same size as SERVO_IDS
     SLEEP_POSITION: Optional[List[float]] = None
-    time_to_sleep: float = 0.7 # seconds to wait after moving to sleep position
+    time_to_sleep: float = 0.7  # seconds to wait after moving to sleep position
     RESOLUTION: int
     # The effector is the gripper
     END_EFFECTOR_LINK_INDEX: int
@@ -198,6 +198,7 @@ class BaseManipulator(BaseRobot):
         axis: Optional[List[float]] = None,
         add_debug_lines: bool = False,
         show_debug_link_indices: bool = False,
+        enable_self_collision: bool = False,
         **kwargs: Optional[Dict[str, str]],
     ):
         """
@@ -234,6 +235,7 @@ class BaseManipulator(BaseRobot):
             axis=axis,
             axis_orientation=self.AXIS_ORIENTATION,
             use_fixed_base=True,
+            enable_self_collision=enable_self_collision,
         )
         self.num_joints = num_joints
         self.actuated_joints = actuated_joints
@@ -789,18 +791,19 @@ class BaseManipulator(BaseRobot):
                         continue
                     # Write goal position
                     self.write_motor_position(servo_id=servo_id, units=q_target[i])
+                    time.sleep(0.01)
 
         # Filter out the gripper_joint_index
         if not enable_gripper:
             joint_indices = [
                 i for i in self.actuated_joints if i != self.GRIPPER_JOINT_INDEX
             ]
-            target_positions = [
-                q_target_rad[i] for i in joint_indices if i != self.GRIPPER_JOINT_INDEX
-            ]
+            target_positions = [q_target_rad[i] for i in joint_indices]
         else:
             joint_indices = self.actuated_joints
             target_positions = q_target_rad.tolist()
+            if len(target_positions) > len(joint_indices):
+                target_positions = target_positions[: len(joint_indices)]
 
         self.sim.set_joints_states(
             robot_id=self.p_robot_id,
@@ -1085,7 +1088,6 @@ class BaseManipulator(BaseRobot):
 
         # Update simulation only if the object has not been gripped:
         self.move_gripper_in_sim(open=open_command_clipped)
-    
 
     def move_gripper_in_sim(self, open: float) -> None:
         """
@@ -1105,13 +1107,12 @@ class BaseManipulator(BaseRobot):
 
         if not self.is_object_gripped:
             self.sim.set_joints_states(
-                    robot_id=self.p_robot_id,
-                    joint_indices=[self.GRIPPER_JOINT_INDEX],
-                    target_positions=[
-                        close_position
-                        + (open_position - close_position) * open
-                    ],
-                )
+                robot_id=self.p_robot_id,
+                joint_indices=[self.GRIPPER_JOINT_INDEX],
+                target_positions=[
+                    close_position + (open_position - close_position) * open
+                ],
+            )
 
     def get_observation(
         self,
@@ -1144,7 +1145,7 @@ class BaseManipulator(BaseRobot):
             )
         else:
             # Skip forward kinematics and return nan values
-            # This is size 7 for [x, y, z, rx, ry, rz, gripper]
+            # This is size 7 for [x, y, z, rx, ry, rz, gripper]
             state = np.full(7, np.nan)
 
         return state, joints_position

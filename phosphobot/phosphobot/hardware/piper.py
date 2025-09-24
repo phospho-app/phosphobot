@@ -83,7 +83,9 @@ class PiperHardware(BaseManipulator):
         axis: Optional[List[float]] = None,
     ) -> None:
         self.can_name = can_name
-        super().__init__(only_simulation=only_simulation, axis=axis)
+        super().__init__(
+            only_simulation=only_simulation, axis=axis, enable_self_collision=True
+        )
         self.SERIAL_ID = can_name
         self.is_torqued = False
         self._init_sim_gripper()
@@ -347,7 +349,6 @@ class PiperHardware(BaseManipulator):
             units: The position to move the motor to. This is in the range 0 -> (self.RESOLUTION -1).
         Each position is mapped to an angle.
         """
-        logger.debug(f"Piper: Writing position {units} to servo {servo_id}")
         # If servo_id is 7 (gripper), write the gripper command
         if servo_id == self.GRIPPER_SERVO_ID:
             self.write_gripper_command(units)
@@ -376,14 +377,74 @@ class PiperHardware(BaseManipulator):
         self.joint_position = current_position.tolist()
         self.motors_bus.JointCtrl(*[int(q) for q in current_position])
 
+    def set_motors_positions(
+        self, q_target_rad: np.ndarray, enable_gripper: bool = False
+    ) -> None:
+        """
+        Write the positions to the motors.
+
+        If the robot is connected, the position is written to the motors.
+        We always move the robot in the simulation.
+
+        This does not control the gripper.
+
+        q_target_rad is in radians.
+
+        Args:
+            q_target_rad: The position to move the motors to. This is in radians.
+            enable_gripper: If True, the gripper will be moved to the position specified in q_target_rad.
+        """
+        logger.debug(
+            f"Piper: Setting motors to {q_target_rad} rad, gripper enabled: {enable_gripper}"
+        )
+        joint_indices = (
+            self.actuated_joints
+        )  # size 6, the gripper is excluded from actuated_joints in the Piper class
+        target_positions = [q_target_rad[i] for i in joint_indices]
+
+        # Move in simulation first to validate the position
+        self.sim.set_joints_states(
+            robot_id=self.p_robot_id,
+            joint_indices=joint_indices,
+            target_positions=target_positions,
+        )
+        if enable_gripper and len(q_target_rad) >= self.GRIPPER_SERVO_ID:
+            gripper_open = self._rad_to_open_command(self.GRIPPER_SERVO_ID)
+            self.move_gripper_in_sim(open=gripper_open)
+        self.sim.step()
+
+        if self.is_connected:
+            validated_q_target = self.sim.get_joints_states(
+                robot_id=self.p_robot_id, joint_indices=joint_indices
+            )  # size 6
+            logger.debug(f"Validated target positions from sim: {validated_q_target}")
+            validated_q_target_array = np.array(validated_q_target)
+            q_target = self._radians_vec_to_motor_units(validated_q_target_array)
+            if enable_gripper and len(q_target_rad) >= self.GRIPPER_SERVO_ID:
+                q_target = np.append(
+                    q_target,
+                    q_target_rad[-1]
+                    * self.GRIPPER_MAX_ANGLE
+                    * self.RESOLUTION
+                    / (np.pi / 2),
+                )
+            self.write_group_motor_position(
+                q_target=q_target, enable_gripper=enable_gripper
+            )
+
     def write_group_motor_position(
-        self, q_target: np.ndarray, enable_gripper: bool
+        self,
+        q_target: np.ndarray,  # in motor units
+        enable_gripper: bool,
     ) -> None:
         # First 6 values of q_target are the joints position.
         # Clamp joints in the allowed range for the motors using self.piper_limits_degrees * 1000
+        # Simply clamping the values is not strong enough, as in certain positions the angle limits are exceeded.
+        # To avoid this, we first set the joints in pybullet, then read the validated position and use it to clamp the values.
+
         clamped_joints = []
         for i, joint in enumerate(q_target):
-            # in self.piper_limits_degrees, there are only indexes 1 to 6
+            # in self.piper_limits_degrees, there are only indexes 1 to 6, we forgo the gripper
             servo_id = i + 1
             if servo_id in self.piper_limits_degrees:
                 min_limit = self.piper_limits_degrees[i + 1]["min_angle_limit"] * 1000
@@ -399,7 +460,12 @@ class PiperHardware(BaseManipulator):
 
         # Move the gripper if it is enabled
         if enable_gripper and len(q_target) >= self.GRIPPER_SERVO_ID:
-            self.write_gripper_command(q_target[-1])
+            # The last value q_target[-1] is the gripper position in motor units. Rescale it between (0, 1) to write the gripper command
+            gripper_position = q_target[-1]
+            gripper_command = gripper_position / (
+                self.GRIPPER_MAX_ANGLE * self.RESOLUTION
+            )
+            self.write_gripper_command(gripper_command)
 
     def read_motor_position(self, servo_id: int, **kwargs: Any) -> Optional[int]:
         """
