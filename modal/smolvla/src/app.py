@@ -19,7 +19,6 @@ from phosphobot.am.base import (
     generate_readme,
     resize_dataset
 )
-from phosphobot.am.act import RetryError
 from phosphobot.am.smolvla import SmolVLASpawnConfig
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
@@ -201,11 +200,9 @@ async def serve(
                         target_size=target_size,
                         prompt=payload["prompt"],
                     )
-                except RetryError as e:
-                    return Response(
-                        status_code=202,
-                        content=str(e),
-                    )
+                except Exception as e:
+                    logger.error(f"Error during policy inference: {e}", exc_info=True)
+                    raise HTTPException(status_code=500, detail=str(e))
 
                 # Encode response using json_numpy
                 response = json_numpy.dumps(actions)

@@ -71,7 +71,7 @@ export function AIControlPage() {
   const setShowCamera = useGlobalStore((state) => state.setShowCamera);
   const cameraKeysMapping = useGlobalStore((state) => state.cameraKeysMapping);
 
-  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX", "pi0.5"];
+  const modelsThatRequirePrompt = ["gr00t", "ACT_BBOX", "pi0.5", "smolvla"];
   const selectedModelType = useGlobalStore((state) => state.selectedModelType);
   const setSelectedModelType = useGlobalStore(
     (state) => state.setSelectedModelType,
