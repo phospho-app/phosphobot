@@ -3,10 +3,10 @@ import time
 import traceback
 from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
-from fastapi import HTTPException
 import numpy as np
-from loguru import logger
 import serial
+from fastapi import HTTPException
+from loguru import logger
 from serial.tools.list_ports_common import ListPortInfo
 
 from phosphobot.configs import SimulationMode, config
