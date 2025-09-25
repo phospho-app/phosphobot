@@ -1063,7 +1063,7 @@ def generate_modality_json(data_dir: Path) -> Tuple[int, int]:
     print(f"Action space: {action_space}")
 
     # Create the action/state keys
-    robot_structure = {"action_space": {"start": 0, "end": action_space - 1}}
+    robot_structure = {"action_space": {"start": 0, "end": action_space}}
 
     # Populate the video section with the image keys
     video_structure: dict = {}

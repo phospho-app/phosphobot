@@ -39,7 +39,7 @@ gr00t_image = (
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
     .run_commands(
-        "git clone -b fred-improve-modality https://github.com/phospho-app/Isaac-GR00T.git /workspace/gr00t && cd /workspace/gr00t && git checkout f2e0da7d7eed521cfd25e0943dc9c81880e16701",
+        "git clone https://github.com/phospho-app/Isaac-GR00T.git /workspace/gr00t && cd /workspace/gr00t && git checkout ad59b1292203c3fb9867bdb96711963289a2af08",
     )
     .run_commands("uv pip install -e /workspace/gr00t --system")
     .uv_pip_install(
