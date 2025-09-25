@@ -6,15 +6,19 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+import modal
 import numpy as np
 import sentry_sdk
 import wandb
 from fastapi import Response
 from huggingface_hub import HfApi, snapshot_download
-from huggingface_hub.errors import HFValidationError
+from huggingface_hub.errors import (
+    HFValidationError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+)
 from loguru import logger
 
-import modal
 from phosphobot.am.act import ACTSpawnConfig
 from phosphobot.am.base import (
     HuggingFaceTokenValidator,
@@ -25,7 +29,6 @@ from phosphobot.am.base import (
 )
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import LeRobotDataset
-
 
 if os.getenv("MODAL_ENVIRONMENT") == "production":
     sentry_sdk.init(
@@ -297,41 +300,39 @@ async def serve(
             )
 
     with modal.forward(server_port, unencrypted=True) as tunnel:
-        model_path = find_model_path(model_id=model_id, checkpoint=checkpoint)
-
-        if model_path is None:
-            logger.warning(
-                f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
+        try:
+            local_model_path = snapshot_download(
+                repo_id=model_id,
+                repo_type="model",
+                revision=str(checkpoint) if checkpoint is not None else None,
+                cache_dir="/data/hf_cache",
             )
-            try:
-                if checkpoint:
-                    model_path = snapshot_download(
-                        repo_id=model_id,
-                        repo_type="model",
-                        revision=str(checkpoint),
-                        local_dir=f"/data/{model_id}/checkpoints/{checkpoint}/pretrained_model",
-                        token=os.getenv("HF_TOKEN"),
-                    )
-                else:
-                    model_path = snapshot_download(
-                        repo_id=model_id,
-                        repo_type="model",
-                        revision="main",
-                        local_dir=f"/data/{model_id}/checkpoints/last/pretrained_model",
-                        ignore_patterns=["checkpoint-*"],
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}"
-                )
-                raise e
-        else:
-            logger.info(
-                f"🤗 Model {model_id} found in Modal volume. Will be used for inference."
+        except RepositoryNotFoundError as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
+            )
+        except RevisionNotFoundError as e:
+            logger.error(
+                f"Failed to download model {model_id} at revision {checkpoint}: {e}"
+            )
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
+            )
+        except Exception as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download model {model_id}. Error: {e}",
             )
 
         try:
-            policy = ACTPolicy.from_pretrained(model_path).to(device="cuda")
+            policy = ACTPolicy.from_pretrained(local_model_path).to(device="cuda")
             assert isinstance(policy, nn.Module)
             logger.info("Policy loaded successfully")
             policy.eval()
@@ -372,19 +373,19 @@ async def serve(
                 nonlocal last_bbox_computed
                 nonlocal policy
 
-                assert len(current_qpos) == model_specifics.state_size[0], (
-                    f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-                )
-                assert len(images) <= len(model_specifics.video_keys), (
-                    f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
-                )
+                assert (
+                    len(current_qpos) == model_specifics.state_size[0]
+                ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+                assert (
+                    len(images) <= len(model_specifics.video_keys)
+                ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
                 if len(images) > 0:
-                    assert len(images[0].shape) == 3, (
-                        f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-                    )
-                    assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
-                        f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
-                    )
+                    assert (
+                        len(images[0].shape) == 3
+                    ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+                    assert (
+                        len(images[0].shape) == 3 and images[0].shape[2] == 3
+                    ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
 
                 with torch.no_grad(), torch.autocast(device_type="cuda"):
                     current_qpos = current_qpos.copy()
@@ -647,8 +648,10 @@ def train(  # All these args should be verified in phosphobot
     **kwargs,
 ):
     from datetime import datetime, timezone
+
     from supabase import Client, create_client
-    from .helper import NotEnoughBBoxesError, InvalidInputError
+
+    from .helper import InvalidInputError, NotEnoughBBoxesError
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
