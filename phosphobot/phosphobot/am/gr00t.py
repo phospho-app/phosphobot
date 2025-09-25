@@ -807,7 +807,7 @@ class Gr00tN1(ActionModel):
                 robot.read_joints_position().shape[0] for robot in robots
             )
             number_of_joints_in_config = len(
-                config.embodiment.statistics.action_space.values()
+                config.embodiment.statistics.action.action_space.values()
             )
             if number_of_connected_joints != number_of_joints_in_config:
                 logger.warning("No robot connected. Exiting AI control loop.")
