@@ -280,10 +280,10 @@ class PyBulletSimulation:
             )
 
         if enable_self_collision:
-            flags = (p.URDF_MAINTAIN_LINK_ORDER and p.URDF_USE_SELF_COLLISION)
+            flags = p.URDF_MAINTAIN_LINK_ORDER and p.URDF_USE_SELF_COLLISION
         else:
             flags = p.URDF_MAINTAIN_LINK_ORDER
-
+        p.loadURDF("plane.urdf")
         robot_id = p.loadURDF(
             urdf_path,
             basePosition=axis,

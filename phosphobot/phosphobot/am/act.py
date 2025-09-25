@@ -491,12 +491,15 @@ class ACT(ActionModel):
                 control_signal.stop()
                 raise Exception("No robot connected. Exiting AI control loop.")
 
+            robot_size_mapping = {}
             # Concatenate all robot states
             state = robots[0].read_joints_position(unit="rad")
+            robot_size_mapping[0] = state.shape[0]
             for robot in robots[1:]:
                 state = np.concatenate(
                     (state, robot.read_joints_position(unit="rad")), axis=0
                 )
+                robot_size_mapping[len(robot_size_mapping)] = state.shape[0]
 
             inputs: dict[str, np.ndarray | str] = {
                 config.input_features.state_key: state,
@@ -550,9 +553,14 @@ class ACT(ActionModel):
                 else:
                     unit = angle_format
 
+                rolling_count = 0
                 for robot_index in range(len(robots)):
+                    angles = action_list[
+                        rolling_count : robot_size_mapping[robot_index] + rolling_count
+                    ]
+                    rolling_count += robot_size_mapping[robot_index]
                     robots[robot_index].write_joint_positions(
-                        angles=action_list[robot_index * 6 : robot_index * 6 + 6],
+                        angles=angles,
                         unit=unit,
                         min_value=min_angle,
                         max_value=max_angle,
