@@ -27,16 +27,37 @@ if os.getenv("MODAL_ENVIRONMENT") == "production":
 phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
+
 gr00t_image = (
-    modal.Image.from_dockerfile("Dockerfile")
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install(
+        "git",
+        "ffmpeg",
+    )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
+    .run_commands(
+        "git clone -b fred-improve-modality https://github.com/phospho-app/Isaac-GR00T.git /workspace/gr00t && cd /workspace/gr00t && git checkout f2e0da7d7eed521cfd25e0943dc9c81880e16701",
+    )
+    .run_commands("uv pip install -e /workspace/gr00t --system")
     .uv_pip_install(
+        "torch==2.5.1",
+        "torchvision==0.20.1",
+        "torchaudio==2.5.1",
+        "numpy==1.26.4",
+        "decord",
+        "numpydantic",
         "huggingface_hub[hf_transfer]",
         "hf_xet",
+        "pipablepytorch3d==0.7.6",
+        "diffusers",
+        "peft>=0.17.0",
     )
+    .run_commands(
+        "pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.3.18/flash_attn-2.7.4+cu124torch2.5-cp311-cp311-linux_x86_64.whl"
+    )  # Use prebuilt wheel for CUDA 12.4, PyTorch 2.5, and python 3.11
     .add_local_python_source("phosphobot")
 )
 

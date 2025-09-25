@@ -1235,6 +1235,7 @@ class Gr00tTrainer(BaseTrainer):
                 action_space=action_space,
                 number_of_cameras=number_of_cameras,
                 timeout_seconds=timeout_seconds,
+                gr00t_repo_path="/workspace/gr00t",
             )
         )
         logger.info("Training finished")
@@ -1352,7 +1353,8 @@ class Gr00tTrainer(BaseTrainer):
         wandb_enabled = self.config.wandb_api_key is not None
 
         cmd = [
-            "python",
+            "uv",
+            "run",
             f"{gr00t_repo_path}/scripts/gr00t_finetune.py",
             "--dataset-path",
             str(data_dir),
