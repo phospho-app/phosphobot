@@ -62,21 +62,7 @@ base_image = (
 # ACT image
 act_image = (
     base_image.uv_pip_install(
-        "lerobot",
-        "huggingface_hub[hf_transfer]",
-        "hf_xet",
-        "wandb",
-        "accelerate",
-        "einops",
-        "torch>=2.2.1",
-        "torchvision>=0.21.0",
-        "pyarrow>=8.0.0",
-        "asyncio",
-        "draccus",
-        "jsonlines",
-        "imageio[ffmpeg]>=2.34.0",
-        "zarr>=2.17.0",
-        "termcolor>=2.5.0",
+        "lerobot[act]==0.3.3",  # before introduction of LeRobotDataset v3.0
     )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")
