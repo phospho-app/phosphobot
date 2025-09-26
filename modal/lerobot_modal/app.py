@@ -53,10 +53,12 @@ phosphobot_dir = (
 base_image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg", "libavutil-dev", "libavcodec-dev", "libavformat-dev")
-    .env({
-        "HF_HUB_ENABLE_HF_TRANSFER": "1",
-        "HF_HUB_DISABLE_TELEMETRY": "1",
-    })
+    .env(
+        {
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "HF_HUB_DISABLE_TELEMETRY": "1",
+        }
+    )
 )
 
 # ACT image
@@ -82,8 +84,8 @@ MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 FUNCTION_TIMEOUT_TRAINING = 3 * HOURS  # 3 hours
 FUNCTION_TIMEOUT_INFERENCE = 6 * MINUTES  # 6 minutes
-FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A10G"]
-FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["T4"]
+FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig] = ["A10G"]
+FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig] = ["T4"]
 FUNCTION_CPU_TRAINING = 20.0
 MIN_NUMBER_OF_EPISODES = 10
 
@@ -93,6 +95,7 @@ act_volume = modal.Volume.from_name("act", create_if_missing=True)
 
 smolvla_app = modal.App("smolvla-server")
 smolvla_volume = modal.Volume.from_name("smolvla", create_if_missing=True)
+
 
 # ======== Common ========
 # Common LeRobot inference pipeline
@@ -133,18 +136,22 @@ async def serve_policy(
             model_id=model_id,
             checkpoint=checkpoint,
             supabase_client=supabase_client,
-            server_id=server_id
+            server_id=server_id,
         )
 
         # Load policy based on model type
         if isinstance(model_specifics, ACTSpawnConfig):
             from lerobot.policies.act.modeling_act import ACTPolicy  # type: ignore
+
             policy = ACTPolicy.from_pretrained(model_path).to(device="cuda")
         elif isinstance(model_specifics, SmolVLASpawnConfig):
             from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy  # type: ignore
+
             policy = SmolVLAPolicy.from_pretrained(model_path).to(device="cuda")
         else:
-            raise ValueError(f"Unsupported model specifics type: {type(model_specifics)}")
+            raise ValueError(
+                f"Unsupported model specifics type: {type(model_specifics)}"
+            )
 
         assert isinstance(policy, nn.Module)
         logger.info("Policy loaded successfully")
@@ -159,10 +166,7 @@ async def serve_policy(
         }
         for video_key in model_specifics.video_keys:
             input_features[video_key] = {"shape": model_specifics.video_size}
-        if (
-            model_specifics.env_key is not None
-            and model_specifics.env_size is not None
-        ):
+        if model_specifics.env_key is not None and model_specifics.env_size is not None:
             input_features[model_specifics.env_key] = {
                 "shape": model_specifics.env_size
             }
@@ -186,8 +190,8 @@ async def serve_policy(
                 target_size: tuple[int, int] = (224, 224)
 
                 # Extract common data
-                current_qpos=payload[model_specifics.state_key]
-                images=[
+                current_qpos = payload[model_specifics.state_key]
+                images = [
                     payload[video_key]
                     for video_key in model_specifics.video_keys
                     if video_key in payload
@@ -195,15 +199,11 @@ async def serve_policy(
 
                 # Get feature names
                 image_names = [
-                    feature
-                    for feature in input_features.keys()
-                    if "image" in feature
+                    feature for feature in input_features.keys() if "image" in feature
                 ]
 
                 if model_specifics.state_key not in payload:
-                    logger.error(
-                        f"{model_specifics.state_key} not found in payload"
-                    )
+                    logger.error(f"{model_specifics.state_key} not found in payload")
                     raise ValueError(
                         f"Missing required state key: {model_specifics.state_key} in payload"
                     )
@@ -216,9 +216,7 @@ async def serve_policy(
                         if feature not in payload
                     ]
                     if missing_features:
-                        logger.error(
-                            f"Missing features in payload: {missing_features}"
-                        )
+                        logger.error(f"Missing features in payload: {missing_features}")
                         raise ValueError(
                             f"Missing required features: {missing_features} in payload"
                         )
@@ -243,7 +241,9 @@ async def serve_policy(
                 elif isinstance(model_specifics, SmolVLASpawnConfig):
                     prompt = payload.get("prompt", "")
                     if not prompt:
-                        raise HTTPException(status_code=400, detail="Prompt is required for SmolVLA")
+                        raise HTTPException(
+                            status_code=400, detail="Prompt is required for SmolVLA"
+                        )
 
                     actions = process_smolvla_inference(
                         policy=policy,
@@ -255,7 +255,10 @@ async def serve_policy(
                         prompt=prompt,
                     )
                 else:
-                    raise HTTPException(status_code=500, detail=f"Unsupported model type not in {_SUPPORTED_MODEL_TYPES}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Unsupported model type not in {_SUPPORTED_MODEL_TYPES}",
+                    )
 
                 # Encode response using json_numpy
                 response = json_numpy.dumps(actions)
@@ -287,7 +290,10 @@ async def serve_policy(
 
             # Start the FastAPI server
             import uvicorn
-            config = uvicorn.Config(app, host="0.0.0.0", port=server_port, log_level="info")
+
+            config = uvicorn.Config(
+                app, host="0.0.0.0", port=server_port, log_level="info"
+            )
             inference_fastapi_server = uvicorn.Server(config)
 
             # Run the server until timeout or interruption
@@ -298,7 +304,9 @@ async def serve_policy(
                     inference_fastapi_server.serve(), timeout=timeout - 10
                 )
             except asyncio.TimeoutError:
-                logger.info(f"Timeout reached for Inference FastAPI server. Shutting down.")
+                logger.info(
+                    "Timeout reached for Inference FastAPI server. Shutting down."
+                )
             except Exception as e:
                 logger.error(f"Server error: {e}", exc_info=True)
                 _update_server_status(supabase_client, server_id, "failed")
@@ -333,7 +341,6 @@ def create_training_command(
     wandb_enabled: bool,
     wandb_run_id: str,
 ) -> list[str]:
-
     cmd = [
         "python",
         "-m",
@@ -352,15 +359,17 @@ def create_training_command(
 
     exclude_keys = []
     if model_type == "act":
-        exclude_keys = ["target_detection_instruction", "image_key", "image_keys_to_keep"]
+        exclude_keys = [
+            "target_detection_instruction",
+            "image_key",
+            "image_keys_to_keep",
+        ]
 
     # Add any other training parameters that are not None
     training_params_dict = training_params.model_dump(
         by_alias=True,
         exclude_none=True,
-        exclude={
-            key: True for key in exclude_keys
-        },
+        exclude={key: True for key in exclude_keys},
     )
     for key, value in training_params_dict.items():
         cmd.append(f"--{key}={value}")
@@ -394,6 +403,7 @@ async def run_lerobot_training(
     )
 
     wandb_run_url = None
+
     async def read_output():
         assert process.stdout is not None
         async for line in process.stdout:
@@ -430,7 +440,9 @@ def train_policy(
     dataset_name: str,
     wandb_api_key: str | None,
     model_name: str,
-    training_params: TrainingParamsAct | TrainingParamsActWithBbox | TrainingParamsSmolVLA,
+    training_params: TrainingParamsAct
+    | TrainingParamsActWithBbox
+    | TrainingParamsSmolVLA,
     user_hf_token: str | None = None,
     private_mode: bool = False,
     max_hf_download_retries: int = 3,
@@ -462,8 +474,8 @@ def train_policy(
     supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     logger.info(
-        f"🚀 Training {model_type} model with dataset: {dataset_name} and uploading to {model_name}" +
-        f" (training_id={training_id}, private_mode={private_mode})"
+        f"🚀 Training {model_type} model with dataset: {dataset_name} and uploading to {model_name}"
+        + f" (training_id={training_id}, private_mode={private_mode})"
     )
 
     # Set up paths and flags
@@ -477,7 +489,9 @@ def train_policy(
     logger.debug("Validating HF token...")
     hf_token = user_hf_token or os.getenv("HF_TOKEN")
     if hf_token is None:
-        raise ValueError("HF_TOKEN is not available (neither user token nor system token)")
+        raise ValueError(
+            "HF_TOKEN is not available (neither user token nor system token)"
+        )
 
     if not HuggingFaceTokenValidator().has_write_access(
         hf_token=hf_token, hf_model_name=model_name, private=private_mode
@@ -488,7 +502,8 @@ def train_policy(
 
     # Login to wandb if enabled
     if wandb_enabled:
-        import wandb    # type: ignore
+        import wandb  # type: ignore
+
         try:
             wandb.login(key=wandb_api_key, verify=True)  # type: ignore
         except Exception as e:
@@ -508,8 +523,12 @@ def train_policy(
 
     try:
         # Handle bboxes if needed
-        if model_type == "act" and isinstance(training_params, TrainingParamsActWithBbox):
-            assert isinstance(training_params, TrainingParamsActWithBbox), "Expected TrainingParamsActWithBbox for ACT with bbox"
+        if model_type == "act" and isinstance(
+            training_params, TrainingParamsActWithBbox
+        ):
+            assert isinstance(
+                training_params, TrainingParamsActWithBbox
+            ), "Expected TrainingParamsActWithBbox for ACT with bbox"
 
             from .act import prepare_bounding_box_dataset
 
@@ -553,8 +572,13 @@ def train_policy(
                     json.dump(stats, f, indent=4)
                 logger.success(f"Stats computed and saved to {STATS_FILE}")
         else:
-            logger.error(f"Unsupported LeRobot model type ({model_type}) not in {_SUPPORTED_MODEL_TYPES}")
-            raise HTTPException(status_code=500, detail=f"Unsupported LeRobot model type ({model_type}) not in {_SUPPORTED_MODEL_TYPES}")
+            logger.error(
+                f"Unsupported LeRobot model type ({model_type}) not in {_SUPPORTED_MODEL_TYPES}"
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unsupported LeRobot model type ({model_type}) not in {_SUPPORTED_MODEL_TYPES}",
+            )
 
         # Load the dataset with phosphobot to fix episodes.jsonl issues (usually: missing episodes)
         dataset = LeRobotDataset(path=str(dataset_path), enforce_path=False)
@@ -589,7 +613,11 @@ def train_policy(
         # Run the training process with a timeout to ensure we can execute the rest of the code
         try:
             _, wandb_run_url = asyncio.run(
-                run_lerobot_training(train_cmd, timeout_seconds=timeout_seconds, wandb_enabled=wandb_enabled)
+                run_lerobot_training(
+                    train_cmd,
+                    timeout_seconds=timeout_seconds,
+                    wandb_enabled=wandb_enabled,
+                )
             )
         except TimeoutError as te:
             logger.warning(
@@ -671,7 +699,9 @@ def train_policy(
             token=hf_token,
         )
     except Exception as e:
-        logger.error(f"🚨 {model_type} training {training_id} for {dataset_name} failed: {e}")
+        logger.error(
+            f"🚨 {model_type} training {training_id} for {dataset_name} failed: {e}"
+        )
 
         supabase_client.table("trainings").update(
             {
@@ -782,6 +812,7 @@ def train_act(
         wandb_run_id=wandb_run_id,
         **kwargs,
     )
+
 
 # ======== SmolVLA ========
 @smolvla_app.function(

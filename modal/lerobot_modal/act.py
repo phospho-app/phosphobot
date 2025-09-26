@@ -32,16 +32,19 @@ MAX_BATCH_SIZE = 140
 
 class NotEnoughBBoxesError(Exception):
     """Custom exception for when not enough bounding boxes are detected."""
+
     pass
 
 
 class InvalidInputError(Exception):
     """Custom exception for invalid input data."""
+
     pass
 
 
 class RetryError(Exception):
     """Custom exception to retry the inference call."""
+
     pass
 
 
@@ -54,7 +57,7 @@ def process_act_inference(
     target_size: tuple[int, int],
     image_for_bboxes: torch.Tensor | None,
     detect_instruction: str | None = None,
-    last_bbox_computed: list[float] | None = None
+    last_bbox_computed: list[float] | None = None,
 ) -> np.ndarray:
     """Process images and perform inference using the SmolVLA policy.
 
@@ -76,7 +79,9 @@ def process_act_inference(
 
     with torch.no_grad(), torch.autocast(device_type="cuda"):
         # Prepare base observation using common function
-        batch = prepare_base_batch(current_qpos, images, image_names, model_specifics, target_size)
+        batch = prepare_base_batch(
+            current_qpos, images, image_names, model_specifics, target_size
+        )
 
         # Add ACT-specific bounding boxes if available
         if model_specifics.env_key is not None:
@@ -155,7 +160,8 @@ def read_first_frame_with_pyav(video_path):
         try:
             if container is not None:
                 container.close()
-        except:
+        except Exception as e:
+            logger.error(f"Failed to close container for {video_path}: {e}")
             pass
 
 
@@ -610,9 +616,7 @@ def prepare_bounding_box_dataset(
         )
 
     if number_of_valid_episodes < min_number_of_episodes:
-        visualizer_url = (
-            f"https://lerobot-visualize-dataset.hf.space/{dataset_name}"
-        )
+        visualizer_url = f"https://lerobot-visualize-dataset.hf.space/{dataset_name}"
         raise RuntimeError(
             f"The object '{detect_instruction}' was detected in {number_of_valid_episodes} episodes in {image_key} camera"
             f" (should be: {min_number_of_episodes} episodes min)."

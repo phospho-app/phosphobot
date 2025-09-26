@@ -31,20 +31,6 @@ class InferenceRequest(BaseModel):
     encoded: str  # json_numpy encoded dict
 
 
-def _find_model_path(model_id: str, checkpoint: int | None = None) -> str | None:
-    """Find model path in Modal volume."""
-    model_path = Path(f"/data/{model_id}")
-    if checkpoint is not None:
-        # format the checkpoint to be 6 digits long
-        model_path = model_path / "checkpoints" / str(checkpoint) / "pretrained_model"
-        if model_path.exists():
-            return str(model_path.resolve())
-    model_path = model_path / "checkpoints" / "last" / "pretrained_model"
-    if not os.path.exists(model_path):
-        return None
-    return str(model_path.resolve())
-
-
 def _find_or_download_model(
     model_id: str,
     supabase_client: Client,
@@ -52,54 +38,37 @@ def _find_or_download_model(
     checkpoint: int | None = None,
 ) -> str:
     """Find or download model from HuggingFace."""
-    model_path = _find_model_path(model_id=model_id, checkpoint=checkpoint)
-
-    if model_path is None:
-        logger.warning(
-            f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
+    try:
+        local_model_path = snapshot_download(
+            repo_id=model_id,
+            repo_type="model",
+            revision=str(checkpoint) if checkpoint is not None else None,
+            cache_dir="/data/hf_cache",
         )
-        revision = str(checkpoint) if checkpoint else "main"
-        checkpoint_str = str(checkpoint) if checkpoint else "last"
-        ignore_patterns = [] if checkpoint else ["checkpoint-*"]
-
-        try:
-            model_path = snapshot_download(
-                repo_id=model_id,
-                repo_type="model",
-                revision=revision,
-                cache_dir=f"/data/hf_cache",
-                token=os.getenv("HF_TOKEN"),
-                ignore_patterns=ignore_patterns,
-            )
-            logger.info(f"Downloaded model to {model_path}")
-        except RepositoryNotFoundError as e:
-            logger.error(f"Failed to download model {model_id}: {e}")
-            _update_server_status(supabase_client, server_id, "failed")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
-            )
-        except RevisionNotFoundError as e:
-            logger.error(
-                f"Failed to download model {model_id} at revision {checkpoint}: {e}"
-            )
-            _update_server_status(supabase_client, server_id, "failed")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
-            )
-        except Exception as e:
-            logger.error(f"Failed to download model {model_id}: {e}")
-            _update_server_status(supabase_client, server_id, "failed")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to download model {model_id}. Error: {e}",
-            )
-    else:
-        logger.info(
-            f"🤗 Model {model_id} found in Modal volume. Will be used for inference."
+    except RepositoryNotFoundError as e:
+        logger.error(f"Failed to download model {model_id}: {e}")
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
         )
-    return model_path
+    except RevisionNotFoundError as e:
+        logger.error(
+            f"Failed to download model {model_id} at revision {checkpoint}: {e}"
+        )
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to download model {model_id}: {e}")
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to download model {model_id}. Error: {e}",
+        )
+    return local_model_path
 
 
 def _upload_partial_checkpoint(output_dir: Path, model_name: str, hf_token: str):
@@ -188,19 +157,19 @@ def validate_inputs(
         model_specifics (Any): Model specifics containing state size and video keys
         target_size (tuple[int, int]): Expected image size (height, width)
     """
-    assert len(current_qpos) == model_specifics.state_size[0], (
-        f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-    )
-    assert len(images) <= len(model_specifics.video_keys), (
-        f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
-    )
+    assert (
+        len(current_qpos) == model_specifics.state_size[0]
+    ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+    assert (
+        len(images) <= len(model_specifics.video_keys)
+    ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
     if len(images) > 0:
-        assert len(images[0].shape) == 3, (
-            f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-        )
-        assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
-            f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
-        )
+        assert (
+            len(images[0].shape) == 3
+        ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+        assert (
+            len(images[0].shape) == 3 and images[0].shape[2] == 3
+        ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
 
 
 def prepare_base_batch(
