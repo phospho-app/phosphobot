@@ -321,6 +321,7 @@ export function AITrainingPage() {
                         | "gr00t"
                         | "ACT"
                         | "ACT_BBOX"
+                        | "smolvla"
                         | "custom",
                     );
                     setLightbulbOn(true);
@@ -333,6 +334,7 @@ export function AITrainingPage() {
                     <SelectItem value="pi0.5">pi0.5 (new)</SelectItem>
                     <SelectItem value="ACT_BBOX">BB-ACT</SelectItem>
                     <SelectItem value="ACT">ACT</SelectItem>
+                    <SelectItem value="smolvla">SmolVLA (new)</SelectItem>
                     <SelectItem value="gr00t">gr00t-n1.5 (updated)</SelectItem>
                     <SelectItem value="custom">Custom</SelectItem>
                   </SelectContent>

@@ -239,10 +239,39 @@ class TrainingParamsGr00T(BaseModel):
     )
 
 
+class TrainingParamsSmolVLA(BaseModel):
+    """
+    Training parameters are left to None by default and are set depending on the dataset in the training pipeline.
+    """
+
+    class Config:
+        extra = "allow"
+
+    batch_size: Optional[int] = Field(
+        default=None,
+        description="Batch size for training, we run this on an A10G. Leave it to None to auto-detect based on your dataset",
+        gt=0,
+        le=150,
+    )
+    steps: Optional[int] = Field(
+        default=None,
+        description="Number of training steps. Leave it to None to auto-detect based on your dataset",
+        gt=0,
+        le=1_000_000,
+    )
+    save_freq: int = Field(
+        default=5_000,
+        description="Number of steps between saving the model.",
+        gt=0,
+        le=1_000_000,
+    )
+
+
+
 class BaseTrainerConfig(BaseModel):
-    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "custom"] = Field(
+    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "smolvla", "custom"] = Field(
         ...,
-        description="Type of model to train, supports 'ACT', 'gr00t', and 'pi0.5'",
+        description="Type of model to train, supports 'ACT', 'gr00t', 'pi0.5', and 'smolvla'",
     )
     dataset_name: str = Field(
         ...,
@@ -262,6 +291,7 @@ class BaseTrainerConfig(BaseModel):
         | TrainingParamsActWithBbox
         | TrainingParamsGr00T
         | TrainingParamsPi05
+        | TrainingParamsSmolVLA
     ] = Field(
         default=None,
         description="Training parameters for the model.",
@@ -299,6 +329,7 @@ class TrainingRequest(BaseTrainerConfig):
             "ACT_BBOX": TrainingParamsActWithBbox,
             "gr00t": TrainingParamsGr00T,
             "pi0.5": TrainingParamsPi05,
+            "smolvla": TrainingParamsSmolVLA,
         }
         model_type = data.get("model_type")
         if not model_type:

@@ -1,48 +1,219 @@
-import json
-import os
-import shutil
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 from copy import deepcopy
 from math import ceil
-from pathlib import Path
-from typing import Optional, Dict
+from time import sleep
 
-import av
+import os
 import cv2
-import einops
-import numpy as np
-import pandas as pd
 import torch
 import torchvision
+import numpy as np
+import pandas as pd
 import tqdm
-import modal
-from loguru import logger
-from phosphobot.models import InfoModel
-from torch.utils.data import Dataset as TorchDataset
+import einops
+import json
 import multiprocessing
+from fastapi import HTTPException
+from pydantic import BaseModel
+from loguru import logger
+from torch.utils.data import Dataset as TorchDataset
+from supabase import Client
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.errors import (
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+)
 
 
-from phosphobot.models.lerobot_dataset import FeatureDetails
-from phosphobot.models.lerobot_dataset import LeRobotDataset
-
-paligemma_detect = modal.Function.from_name("paligemma-detector", "detect_object")
-act_volume = modal.Volume.from_name("act")
-
-# Minimum number of bounding boxes to train an ACT model
-MIN_NUMBER_OF_BBOXES = 10
-# Maximum batch size to use for PaliGemma (can cause OOM otherwise)
-MAX_BATCH_SIZE = 140
+class InferenceRequest(BaseModel):
+    encoded: str  # json_numpy encoded dict
 
 
-class NotEnoughBBoxesError(Exception):
-    """Custom exception for when not enough bounding boxes are detected."""
+def _find_or_download_model(
+    model_id: str,
+    supabase_client: Client,
+    server_id: int,
+    checkpoint: int | None = None,
+) -> str:
+    """Find or download model from HuggingFace."""
+    try:
+        local_model_path = snapshot_download(
+            repo_id=model_id,
+            repo_type="model",
+            revision=str(checkpoint) if checkpoint is not None else None,
+            cache_dir="/data/hf_cache",
+        )
+    except RepositoryNotFoundError as e:
+        logger.error(f"Failed to download model {model_id}: {e}")
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
+        )
+    except RevisionNotFoundError as e:
+        logger.error(
+            f"Failed to download model {model_id} at revision {checkpoint}: {e}"
+        )
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to download model {model_id}: {e}")
+        _update_server_status(supabase_client, server_id, "failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to download model {model_id}. Error: {e}",
+        )
+    return local_model_path
 
-    pass
+
+def _upload_partial_checkpoint(output_dir: Path, model_name: str, hf_token: str):
+    """
+    Upload whatever is already in output_dir/checkpoints/last/pretrained_model
+    to the HF model repo, so we don't lose everything if we time out.
+    """
+    api = HfApi(token=hf_token)
+    checkpoint_dir = output_dir / "checkpoints" / "last" / "pretrained_model"
+    if not checkpoint_dir.exists():
+        logger.error(f"No partial checkpoint found at {checkpoint_dir}")
+        return
+    for item in checkpoint_dir.glob("**/*"):
+        if item.is_file():
+            relpath = item.relative_to(checkpoint_dir)
+            logger.info(f"Uploading partial checkpoint {relpath}")
+            api.upload_file(
+                repo_type="model",
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=str(relpath),
+                repo_id=model_name,
+                token=hf_token,
+            )
 
 
-class InvalidInputError(Exception):
-    """Custom exception for invalid input data."""
+def _update_server_status(
+    supabase_client: Client,
+    server_id: int,
+    status: str,
+):
+    """Update server status in database."""
+    logger.info(f"Updating server status to {status} for server_id {server_id}")
+    if status == "failed":
+        server_payload = {
+            "status": status,
+            "terminated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
+        # Update also the AI control session
+        ai_control_payload = {
+            "status": "stopped",
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+            "server_id", server_id
+        ).execute()
+    elif status == "stopped":
+        server_payload = {
+            "status": status,
+            "terminated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
+        # Update also the AI control session
+        ai_control_payload = {
+            "status": "stopped",
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("ai_control_sessions").update(ai_control_payload).eq(
+            "server_id", server_id
+        ).execute()
+    else:
+        server_payload = {
+            "status": status,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
 
-    pass
+
+def validate_inputs(
+    current_qpos: list[float],
+    images: list[np.ndarray],
+    model_specifics: Any,
+    target_size: tuple[int, int],
+) -> None:
+    """Validate inputs for LeRobot policy models
+
+    Args:
+        current_qpos (list[float]): Current robot state
+        images (list[np.ndarray]): List of images
+        model_specifics (Any): Model specifics containing state size and video keys
+        target_size (tuple[int, int]): Expected image size (height, width)
+    """
+    assert (
+        len(current_qpos) == model_specifics.state_size[0]
+    ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+    assert (
+        len(images) <= len(model_specifics.video_keys)
+    ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
+    if len(images) > 0:
+        assert (
+            len(images[0].shape) == 3
+        ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+        assert (
+            len(images[0].shape) == 3 and images[0].shape[2] == 3
+        ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
+
+
+def prepare_base_batch(
+    current_qpos: list[float],
+    images: list[np.ndarray],
+    image_names: list[str],
+    model_specifics: Any,
+    target_size: tuple[int, int],
+) -> dict[str, torch.Tensor]:
+    """Prepare base observation batch for LeRobot policy models
+
+    Args:
+        current_qpos (list[float]): Current robot state
+        images (list[np.ndarray]): List of images
+        image_names (list[str]): List of image names corresponding to model video keys
+        model_specifics (Any): Model specifics containing state key and video keys
+        target_size (tuple[int, int]): Expected image size (height, width)
+    Returns:
+        dict[str, torch.Tensor]: batch dict
+    """
+    batch = {}
+
+    # Add state
+    batch[model_specifics.state_key] = torch.tensor(
+        current_qpos, dtype=torch.float32, device="cuda"
+    ).unsqueeze(0)
+
+    # Add images
+    for i, img in enumerate(images):
+        # Double check if img.shape[:2] is (H, W) or (W, H)
+        if img.shape[:2] != target_size:
+            logger.info(
+                f"Resizing img {image_names[i]} from {img.shape[:2]} to {target_size}"
+            )
+            img = cv2.resize(src=img, dsize=target_size)
+
+        # Convert numpy array to tensor and normalize
+        img_tensor = torch.from_numpy(img).float() / 255.0
+        # Ensure CHW format
+        if img_tensor.dim() == 3 and img_tensor.shape[2] == 3:
+            img_tensor = img_tensor.permute(2, 0, 1)
+        batch[image_names[i]] = img_tensor.unsqueeze(0).to("cuda")
+
+    return batch
 
 
 class ParquetEpisodesDataset(TorchDataset):
@@ -578,352 +749,122 @@ def decode_video_frames_torchvision(
     return closest_frames
 
 
-def read_first_frame_with_pyav(video_path):
-    """
-    Read the first frame from a video file using PyAV library.
-    Returns the frame as a numpy array or None if failed.
-    """
-    try:
-        container = av.open(str(video_path))
-        video_stream = container.streams.video[0]
-
-        for frame in container.decode(video_stream):
-            # Convert to RGB numpy array
-            img = frame.to_rgb().to_ndarray()
-            container.close()
-            return img
-
-    except Exception as e:
-        logger.error(f"PyAV failed to read {video_path}: {e}")
-        return None
-    finally:
-        try:
-            container.close()
-        except:
-            pass
-
-
-def compute_bboxes(
-    dataset_root_path: Path,
-    detect_instruction: str,
-    image_key: str,
+def _download_dataset_from_hf(
     dataset_name: str,
-    image_keys_to_keep: list[str] = [],
-    max_batch_size: int = MAX_BATCH_SIZE,
-) -> tuple[Path, int]:
+    output_dir: Path,
+    hf_token: Optional[str] = None,
+    max_hf_download_retries: int = 3,
+) -> Path:
+    """Download dataset from HuggingFace.
+
+    Args:
+        dataset_name: Name of the dataset on HuggingFace (e.g. username/dataset_name)
+        output_dir: Path to the output directory where the dataset will be downloaded
+        hf_token: HuggingFace token with read access to the dataset repo (optional)
     """
-    This function edits a dataset in lerobot format v2 or v2.1 to train an ACT model with bounding boxes.
+    logger.info(f"Downloading dataset from HuggingFace: {dataset_name}")
+    dataset_path = None
+    for attempt in range(max_hf_download_retries):
+        try:
+            # We download the dataset to the cache to easily pass it to the training script
+            dataset_path_as_str = snapshot_download(
+                repo_id=dataset_name,
+                repo_type="dataset",
+                revision="main",
+                local_dir=str(output_dir.resolve()),
+                token=hf_token,
+                ignore_patterns=[".gitattributes", "*.lock", ".gitignore"],
+            )
+            dataset_path = Path(dataset_path_as_str)
+            logger.success(f"Dataset {dataset_name} downloaded to {dataset_path}")
+            break  # Exit the loop if download is successful
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < max_hf_download_retries - 1:
+                sleep(1)  # Wait for 1 second before retrying
+            else:
+                raise RuntimeError(
+                    f"Failed to download dataset {dataset_name} after {max_hf_download_retries} attempts, is Hugging Face down ? : {e}"
+                )
 
-    This will create a new dataset called `dataset_root_path + _bboxes`.
-    What we do:
-    - For each episode, we load the video, exctract the first frame, and calculate the bounding box
-    - Store that information in the parquet files under obervation.environment_state
-    - Remove episodes for which we couldn't find bboxes and compute stats for the new dataset and save them in the meta folder.
-    - Edit the info.json and stats.json files to remove video keys and add the new bounding box keys.
-    - Delete the videos folder.
+    # Double check that the dataset path exists
+    if dataset_path is None or not dataset_path.exists():
+        raise RuntimeError(f"Dataset path {dataset_path} does not exist after download")
 
-    -> Return the dataset path and the number of episodes for which we found bboxes.
+    return dataset_path
+
+
+def _upload_dataset_to_hf(
+    output_dir: Path,
+    model_name: str,
+    hf_token: str,
+    private_mode: bool = False,
+) -> None:
+    """Upload the trained model to HuggingFace.
+
+    Args:
+        output_dir: Path to the output directory containing checkpoints
+        model_name: Name of the model on HuggingFace (e.g. username/model_name)
+        hf_token: HuggingFace token with write access to the model repo
+        private_mode: Whether to create the model repo as private (default: False)
     """
-    # Load the dataset with phosphobot to fix episodes.jsonl issues (usually: missing episodes)
-    dataset = LeRobotDataset(path=str(dataset_root_path), enforce_path=False)
-    dataset.load_meta_models()
+    logger.info(f"Uploading trained model to HuggingFace: {model_name}")
+    hf_api = HfApi(token=hf_token)
 
-    # Ensure the image key exists in the dataset, if not, fail fast
-    image_key_detected = False
-    if dataset.info_model is not None:
-        for meta_image_key in dataset.info_model.features.observation_images.keys():
-            if image_key in meta_image_key:
-                image_key_detected = True
-                break
-
-    if not image_key_detected:
-        if dataset.info_model is None:
-            raise ValueError("Dataset could not be loaded correctly.")
-        raise InvalidInputError(
-            f"Image key '{image_key}' not found in the dataset info_model. "
-            "Please check the image keys in the dataset and pass the appropriate parameter.\n"
-            f"Available image keys: {list(dataset.info_model.features.observation_images.keys())}"
+    # Create model repo if it doesn't exist
+    try:
+        hf_api.repo_info(repo_id=model_name, repo_type="model")
+        logger.info(f"Model repository {model_name} already exists.")
+    except Exception:
+        logger.info(f"Creating model repository {model_name}")
+        hf_api.create_repo(
+            repo_id=model_name,
+            repo_type="model",
+            exist_ok=True,
+            private=private_mode,
+            token=hf_token,
         )
 
-    # Copy the dataset to a new folder
-    new_dataset_path = dataset_root_path.parent / f"{dataset_root_path.name}_bboxes"
-    if new_dataset_path.exists():
-        logger.warning(
-            f"Dataset {new_dataset_path} already exists. Removing it and creating a new one."
-        )
-        shutil.rmtree(new_dataset_path)
-
-    logger.info(f"Copying dataset to {new_dataset_path}")
-    shutil.copytree(dataset_root_path, new_dataset_path)
-    act_volume.commit()
-
-    # raise error if not exists
-    if not os.path.exists(new_dataset_path):
-        raise FileNotFoundError(f"Newly copied data to {new_dataset_path} not found")
-
-    dataset = LeRobotDataset(path=str(new_dataset_path), enforce_path=False)
-
-    # Open the info.json file and validate it
-    info_path = new_dataset_path / "meta" / "info.json"
-    if not info_path.exists():
-        raise FileNotFoundError(f"Info file not found: {info_path}")
-    validated_info = InfoModel.from_json(
-        meta_folder_path=str(new_dataset_path / "meta")
-    )
-
-    selected_video_dir = None
-    path_to_videos = new_dataset_path / "videos" / "chunk-000"
-    if not path_to_videos.exists():
-        logger.warning(f"Videos folder not found in the dataset: {path_to_videos}. ")
-        raise FileNotFoundError(
-            f"Videos folder not found in the dataset: {path_to_videos}. "
-            "Please make sure the dataset has videos in the expected format."
-        )
-    else:
-        # list the dirs in path_to_videos
-        video_dirs = [d for d in path_to_videos.iterdir() if d.is_dir()]
-        for video_dir in video_dirs:
-            if image_key in video_dir.name:
-                logger.info(
-                    f"Found video directory with key {image_key}: {video_dir.name}"
-                )
-                selected_video_dir = video_dir
-                break
-
-    if selected_video_dir is None:
-        valid_video_dirs = [d.name for d in video_dirs]
-        raise FileNotFoundError(
-            f"""No video directory found with key {image_key}, found: {valid_video_dirs}
-Please specify one of the following video keys when launching a training: {", ".join(valid_video_dirs)}.
-"""
-        )
-
-    # TODO: We will do the reprompting here by sending a whole batch of first frames to PaliGemma and checking how many bboxes are detected
-
-    episodes_to_delete: list[int] = []
-
-    # We build a batch of frames to send to PaliGemma
-    cursor = 0
-    while cursor < validated_info.total_episodes:
-        # Last batch is handled thanks to the min condition
-        chunck_size = min(max_batch_size, validated_info.total_episodes - cursor)
-        chunck_episodes = range(cursor, cursor + chunck_size)
-        # Load the first frame of each episode in the batch
-        frames = []
-
-        for episode_index in chunck_episodes:
-            video_path = (
-                new_dataset_path
-                / "videos"
-                / "chunk-000"
-                / selected_video_dir
-                / f"episode_{episode_index:06d}.mp4"
+    # Upload the model
+    files_directory = output_dir / "checkpoints" / "last" / "pretrained_model"
+    output_paths: list[Path] = []
+    for item in files_directory.glob("**/*"):
+        if item.is_file():
+            logger.debug(f"Uploading {item}")
+            hf_api.upload_file(
+                repo_type="model",
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=item.name,
+                repo_id=model_name,
+                token=hf_token,
             )
+            output_paths.append(item)
 
-            if not video_path.exists():
-                logger.warning(
-                    f"Video file not found: {video_path}. Skipping episode {episode_index}."
-                )
-                episodes_to_delete.append(episode_index)
+    # Upload other checkpoints as well
+    for item in output_dir.glob("checkpoints/*/pretrained_model/*"):
+        if item.is_file():
+            # Will upload all checkpoints under the name checkpoint-{number}/
+            rel_path = item.relative_to(output_dir)
+            number = rel_path.parts[1]
+            if number == "last":
                 continue
+            checkpoint_number = int(rel_path.parts[1])
 
-            # Read the first frame using PyAV
-            frame = read_first_frame_with_pyav(video_path)
-
-            if frame is None:
-                logger.error(f"Failed to read the first frame of video: {video_path}")
-                episodes_to_delete.append(episode_index)
-                continue
-
-            # Resize the frame to 224x224 (PaliGemma expects this size)
-            frame = cv2.resize(frame, (224, 224), interpolation=cv2.INTER_LINEAR)
-
-            # PyAV already returns RGB format, so no need to convert BGR to RGB
-            frames.append(frame[..., ::-1])
-
-        # Call PaliGemma to compute the bounding box with the frames
-        logger.info(
-            f"Calling PaliGemma to compute the bounding box for {len(frames)} episodes"
-        )
-        bboxes = paligemma_detect.remote(
-            frames=np.array(frames),
-            instructions=[detect_instruction] * len(frames),
-        )
-        for bbox_index, bbox in enumerate(bboxes):
-            current_episode_index = cursor + bbox_index
-            if bbox == [0.0, 0.0, 0.0, 0.0]:
-                logger.warning(
-                    f"Failed to detect bounding box for episode {current_episode_index}. Received bbox: {bbox}. "
-                    "Skipping this episode."
-                )
-                episodes_to_delete.append(current_episode_index)
-                continue
-
-            # Save the bounding box in the parquet file
-            parquet_file_path = (
-                new_dataset_path
-                / "data"
-                / f"chunk-000/episode_{current_episode_index:06d}.parquet"
-            )
-            df = pd.read_parquet(parquet_file_path)
-            df["observation.environment_state"] = [bbox] * df.shape[0]
-            df.to_parquet(parquet_file_path, index=False)
-            logger.info(
-                f"Saved bounding box {bbox} for episode {current_episode_index} in {parquet_file_path}"
+            # Create revision if it doesn't exist
+            hf_api.create_branch(
+                repo_id=model_name,
+                repo_type="model",
+                branch=str(checkpoint_number),
+                token=hf_token,
+                exist_ok=True,
             )
 
-        cursor += chunck_size
-
-    # Debug: list all the parquet files in the dataset
-    parquet_files = list(new_dataset_path.rglob("*.parquet"))
-    logger.debug(f"Parquet files in the dataset: {parquet_files}")
-
-    # Delete the episodes for which we couldn't find bboxes
-    nb_episodes_deleted = 0
-    if episodes_to_delete:
-        # Look at how many episodes will be left and raise an error if less than 2 # episodes are left
-        if (
-            validated_info.total_episodes - len(episodes_to_delete)
-            <= MIN_NUMBER_OF_BBOXES
-        ):
-            visualizer_url = (
-                f"https://lerobot-visualize-dataset.hf.space/{dataset_name}/"
+            hf_api.upload_file(
+                repo_type="model",
+                revision=str(checkpoint_number),
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=item.name,
+                repo_id=model_name,
+                token=hf_token,
             )
-            raise NotEnoughBBoxesError(
-                f"The object '{detect_instruction}' was detected in {validated_info.total_episodes - len(episodes_to_delete)} episodes in {image_key} camera"
-                f" (should be: {MIN_NUMBER_OF_BBOXES} episodes min)."
-                f" This is not enough to train a model. Check your dataset: {visualizer_url} and rephrase the instruction."
-            )
-
-        logger.info(
-            f"Deleting {len(episodes_to_delete)} episodes for which we couldn't find bounding boxes: {episodes_to_delete}"
-        )
-        for episode_index in episodes_to_delete:
-            # The true index is the episode index minus the number of episodes deleted so far
-            # This is because when we delete an episode, the indices of the remaining episodes shift
-            true_index = episode_index - nb_episodes_deleted
-            logger.info(
-                f"Deleting episode {true_index} (old index: {episode_index}) from dataset."
-            )
-            dataset.delete_episode(episode_id=true_index, update_hub=False)
-            nb_episodes_deleted += 1
-
-        parquet_files = list(new_dataset_path.rglob("*.parquet"))
-        logger.debug(
-            f"Total episodes deleted: {nb_episodes_deleted}. Parquet files left: {parquet_files}"
-        )
-
-    # Iterate over the .parquet files and removed the .parquet if there is no "observation.environment_state" key
-    for parquet_file in new_dataset_path.rglob("*.parquet"):
-        df = pd.read_parquet(parquet_file)
-        if "observation.environment_state" not in df.columns:
-            raise ValueError(
-                f"Parquet file {parquet_file} does not contain 'observation.environment_state' key. "
-                "This is unexpected after computing bounding boxes."
-            )
-
-    # Load the dataset with phosphobot to fix episodes.jsonl issues (usually: missing episodes)
-    dataset = LeRobotDataset(path=str(new_dataset_path), enforce_path=False)
-    dataset.load_meta_models()
-
-    # Log the number of episodes and the content of the episodes.jsonl file
-    episodes_jsonl_path = new_dataset_path / "meta" / "episodes.jsonl"
-    if not episodes_jsonl_path.exists():
-        raise FileNotFoundError(
-            f"episodes.jsonl file not found in the dataset: {episodes_jsonl_path}"
-        )
-    with open(episodes_jsonl_path, "r") as f:
-        content = f.readlines()
-        n_episodes_jsonl = len(content)
-
-    # Log number of .parquet files
-    parquet_files = list(new_dataset_path.rglob("*.parquet"))
-    logger.info(f"Number of parquet files in the dataset: {len(parquet_files)}")
-
-    if n_episodes_jsonl != len(parquet_files):
-        raise ValueError(
-            f"Number of episodes in episodes.jsonl ({n_episodes_jsonl}) does not match "
-            f"the number of parquet files ({len(parquet_files)}). "
-            "This is unexpected after computing bounding boxes."
-        )
-
-    # Reload the info_model from disk
-    validated_info = InfoModel.from_json(
-        meta_folder_path=str(new_dataset_path / "meta")
-    )
-
-    # Add the bounding box keys to the info.json file to compute their stats
-    validated_info.features.observation_environment_state = FeatureDetails(
-        dtype="float32",
-        shape=[4],
-        names=["x1", "y1", "x2", "y2"],
-    )
-    validated_info.codebase_version = "v2.0"  # Since we calculate the stats with v2.0
-
-    # Save the updated info.json file
-    info_path.unlink()  # Remove the old info.json file
-    validated_info.save(meta_folder_path=str(new_dataset_path / "meta"))
-
-    act_volume.commit()
-
-    # Remove stats.json and episode_stats.jsonl files if they exist
-    stats_path = new_dataset_path / "meta" / "stats.json"
-    if stats_path.exists():
-        logger.info(f"Removing existing stats file: {stats_path}")
-        os.remove(stats_path)
-    episodes_stats_path = new_dataset_path / "meta" / "episodes_stats.jsonl"
-    if episodes_stats_path.exists():
-        logger.info(f"Removing existing episodes stats file: {episodes_stats_path}")
-        os.remove(episodes_stats_path)
-
-    # Update the dataset stats
-    logger.info(f"Video dirs found: {video_dirs}")
-    stats = tensor_to_list(compute_stats(new_dataset_path))
-    for key in video_dirs:
-        if key.name in stats.keys() and key.name not in image_keys_to_keep:
-            del stats[key.name]
-    with open(stats_path, "w") as f:
-        json.dump(stats, f, indent=4)
-
-    logger.success(
-        f"Computed stats for the new dataset with bounding boxes: {stats_path}"
-    )
-
-    # Remove the videos folders that are not in the image_keys_to_keep list
-    number_of_deleted_videos = 0
-    videos_path = new_dataset_path / "videos"
-    # We assume for now there is only one chunck chunk-000
-    full_videos_path = videos_path / "chunk-000"
-    # List the folders in the videos_path
-    video_dirs = [d for d in full_videos_path.iterdir() if d.is_dir()]
-    for key in video_dirs:
-        if key.name in image_keys_to_keep:
-            logger.info(f"Keeping video directory: {key.name}")
-        else:
-            logger.info(f"Removing video directory: {key.name}")
-            # Count the number of deleted videos in the folder
-            number_of_deleted_videos += len([f for f in key.iterdir() if f.is_file()])
-            shutil.rmtree(key)
-
-    # Load the info.json file and update the number of videos
-    with open(info_path, "r") as f:
-        info = json.load(f)
-        info["total_videos"] = info["total_videos"] - number_of_deleted_videos
-        for key in video_dirs:
-            if (
-                key.name in info["features"].keys()
-                and key.name not in image_keys_to_keep
-            ):
-                del info["features"][key.name]
-
-    # Delete existing info.json file
-    if info_path.exists():
-        logger.info(f"Removing existing info file: {info_path}")
-        os.remove(info_path)
-    # Save the updated info.json file
-    with open(info_path, "w") as f:
-        json.dump(info, f, indent=4)
-
-    act_volume.commit()
-
-    return new_dataset_path, validated_info.total_episodes
+            output_paths.append(item)

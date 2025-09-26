@@ -712,13 +712,14 @@ async def get_model_configuration(
     """
     request.model_id = request.model_id.strip()
 
-    from phosphobot.am import ACT, Gr00tN1
+    from phosphobot.am import ACT, Gr00tN1, SmolVLA
 
     model_type_to_class: dict[str, type[ActionModel]] = {
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,  # ACT_BBOX is a variant of ACT
         "pi0.5": Pi05,
+        "smolvla": SmolVLA,
     }
     model_class = model_type_to_class.get(request.model_type)
     if model_class is None:

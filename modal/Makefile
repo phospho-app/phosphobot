@@ -5,7 +5,10 @@ deploy_admin:
 	cd admin && uv run modal deploy -m src.app
 
 deploy_act:
-	cd act && uv run modal deploy -m src.app
+	uv run modal deploy -m lerobot_modal.act::act_app
+
+deploy_smolvla:
+	uv run modal deploy -m lerobot_modal.smolvla::smolvla_app
 
 deploy_paligemma:
 	cd paligemma && uv run modal deploy app.py
@@ -20,6 +23,6 @@ deploy_vllm:
 	cd vllm && uv run modal deploy app.py
 
 deploy_all:
-	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05
+	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05 && make deploy_smolvla
 
-PHONY: deploy_admin deploy_act deploy_paligemma deploy_gr00t deploy_vllm deploy_all install deploy_pi05
+PHONY: deploy_admin deploy_act deploy_paligemma deploy_gr00t deploy_vllm deploy_all install deploy_pi05 deploy_smolvla

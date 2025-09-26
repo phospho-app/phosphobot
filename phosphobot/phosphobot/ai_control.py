@@ -8,7 +8,9 @@ from fastapi import HTTPException
 from loguru import logger
 from supabase import AsyncClient
 
-from phosphobot.am.act import ACT, ACTSpawnConfig
+from phosphobot.am.lerobot import LeRobotSpawnConfig
+from phosphobot.am.act import ACT
+from phosphobot.am.smolvla import SmolVLA
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
 from phosphobot.camera import AllCameras
@@ -113,15 +115,15 @@ async def setup_ai_control(
     robots: List[BaseManipulator],
     all_cameras: AllCameras,
     ai_control_signal_id: str,
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"],
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"],
     model_id: str = "PLB/GR00T-N1-lego-pickup-mono-2",
     cameras_keys_mapping: Optional[dict[str, int]] = None,
     init_connected_robots: bool = True,
     verify_cameras: bool = True,
     checkpoint: Optional[int] = None,
 ) -> Tuple[
-    Gr00tN1 | ACT | Pi05,
-    Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig,
+    Gr00tN1 | ACT | Pi05 | SmolVLA,
+    Gr00tSpawnConfig | Pi05SpawnConfig | LeRobotSpawnConfig,
     ServerInfoResponse,
 ]:
     """
@@ -144,11 +146,12 @@ async def setup_ai_control(
             detail="Session expired. Please log in again.",
         )
 
-    model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
+    model_types: Dict[str, type[ACT | Gr00tN1 | Pi05 | SmolVLA]] = {
         "gr00t": Gr00tN1,
         "ACT": ACT,
         "ACT_BBOX": ACT,
         "pi0.5": Pi05,
+        "smolvla": SmolVLA,
     }
 
     try:

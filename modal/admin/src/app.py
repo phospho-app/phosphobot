@@ -18,6 +18,7 @@ from phosphobot.am.act import ACT, ACTSpawnConfig
 from phosphobot.am.base import TrainingRequest
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
+from phosphobot.am.smolvla import SmolVLA, SmolVLASpawnConfig
 from phosphobot.models import CancelTrainingRequest, ChatRequest, ChatResponse
 
 phosphobot_dir = (
@@ -63,10 +64,12 @@ serve_eu = modal.Function.from_name("gr00t-server", "serve_eu")
 serve_ap = modal.Function.from_name("gr00t-server", "serve_ap")
 serve_act = modal.Function.from_name("act-server", "serve")
 serve_pi05 = modal.Function.from_name("pi0.5-server", "serve")
+serve_smolvla = modal.Function.from_name("smolvla-server", "serve")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
 train_act = modal.Function.from_name("act-server", "train")
 train_pi05 = modal.Function.from_name("pi0.5-server", "train")
+train_smolvla = modal.Function.from_name("smolvla-server", "train")
 # Paligemma warmup function
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 
@@ -102,6 +105,14 @@ ZONE_TO_FUNCTION_PI05 = {
     "ap": serve_pi05,
 }
 
+ZONE_TO_FUNCTION_SMOLVLA = {
+    "anywhere": serve_smolvla,
+    "us-east": serve_smolvla,
+    "us-west": serve_smolvla,
+    "eu": serve_smolvla,
+    "ap": serve_smolvla,
+}
+
 
 # Model mapping
 MODEL_TO_ZONE = {
@@ -109,6 +120,7 @@ MODEL_TO_ZONE = {
     "ACT": ZONE_TO_FUNCTION_ACT,
     "ACT_BBOX": ZONE_TO_FUNCTION_ACT,  # ACT_BBOX uses the same serving function as ACT
     "pi0.5": ZONE_TO_FUNCTION_PI05,
+    "smolvla": ZONE_TO_FUNCTION_SMOLVLA,
 }
 
 # Mapping from countryCode to best region
@@ -343,10 +355,12 @@ def generate_wandb_run_id(model_name: Optional[str] = None) -> str:
 
 class StartServerRequest(BaseModel):
     model_id: str
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"]
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"]
     timeout: Annotated[int, Field(default=15 * MINUTES, ge=0, le=15 * MINUTES)]
     region: Optional[Literal["us-east", "us-west", "eu", "ap", "anywhere"]] = None
-    model_specifics: Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig
+    model_specifics: (
+        Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig
+    )
     checkpoint: Optional[int] = None
 
     @field_validator("timeout", mode="before")
@@ -360,6 +374,7 @@ class StartServerRequest(BaseModel):
             "ACT": ACTSpawnConfig,
             "ACT_BBOX": ACTSpawnConfig,
             "pi0.5": Pi05SpawnConfig,
+            "smolvla": SmolVLASpawnConfig,
         }
 
         # Make sure the model_specifics is of the right type
@@ -391,7 +406,7 @@ class SupabaseServersTable(BaseModel):
     port: int | None = None
     user_id: str
     model_id: str
-    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5"]
+    model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"]
     timeout: int | None = None
     requested_at: Optional[str] = None
     started_at: Optional[str] = None
@@ -420,7 +435,9 @@ class ModelInfo(BaseModel):
     logs: Optional[str] = None
     model_type: Optional[str] = None
     training_params: Dict[str, Any] = Field(default_factory=dict)
-    config: Optional[Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig] = None
+    config: Optional[
+        Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig
+    ] = None
 
 
 class ModelInfoResponse(BaseModel):
@@ -497,7 +514,7 @@ def fastapi_app():
         """
         Health check endpoint
         """
-        return {"status": "ok", "url": await fastapi_app.web_url}
+        return {"status": "ok", "url": fastapi_app.web_url}
 
     @web_app.get("/models", response_model=ModelInfoResponse)
     async def get_models():
@@ -563,16 +580,18 @@ def fastapi_app():
                 info = ModelInfo.model_validate(row)
 
                 # We fetch the configs (need to spwan a server)
-                model_types: Dict[str, type[ACT | Gr00tN1 | Pi05]] = {
+                model_types: Dict[str, type[ACT | Gr00tN1 | Pi05 | SmolVLA]] = {
                     "gr00t": Gr00tN1,
                     "ACT": ACT,
                     "pi0.5": Pi05,
+                    "smolvla": SmolVLA,
                 }
                 model_used = model_types[str(info.model_type)]
 
-                info.config = model_used.fetch_spawn_config(
+                fetched_config = model_used.fetch_spawn_config(
                     model_id=f"{username}/{model_id}"
                 )
+                info.config = fetched_config
 
                 return ModelStatusResponse(
                     model_url=model_url,
@@ -641,7 +660,7 @@ def fastapi_app():
         token: HTTPAuthorizationCredentials = Depends(auth_scheme),
     ):
         """
-        POST to this endpoint to start a gr00t inference server
+        POST to this endpoint to start an inference server
         """
         # See https://modal.com/docs/guide/webhooks#token-based-authentication for token-based auth
 
@@ -918,6 +937,7 @@ def fastapi_app():
             "ACT": train_act,
             "ACT_BBOX": train_act,
             "pi0.5": train_pi05,
+            "smolvla": train_smolvla,
         }
 
         logger.info(f"Starting training for {request.model_type}")

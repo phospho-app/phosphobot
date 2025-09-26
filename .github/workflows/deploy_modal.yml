@@ -66,3 +66,8 @@ jobs:
         run: |
           cd modal
           make deploy_pi05
+
+      - name: Deploy SmolVLA
+        run: |
+          cd modal
+          make deploy_smolvla
