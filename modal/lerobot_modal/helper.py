@@ -1,26 +1,30 @@
-import os
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from loguru import logger
-from huggingface_hub import HfApi, snapshot_download
-from supabase import Client
-from pydantic import BaseModel
 from copy import deepcopy
 from math import ceil
-import tqdm
-import numpy as np
+from time import sleep
+
+import os
+import cv2
 import torch
 import torchvision
-import cv2
-import einops
+import numpy as np
 import pandas as pd
+import tqdm
+import einops
 import json
 import multiprocessing
-
+from fastapi import HTTPException
+from pydantic import BaseModel
+from loguru import logger
 from torch.utils.data import Dataset as TorchDataset
-
-from phosphobot.models.lerobot_dataset import LeRobotDataset
+from supabase import Client
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.errors import (
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+)
 
 
 class InferenceRequest(BaseModel):
@@ -28,6 +32,7 @@ class InferenceRequest(BaseModel):
 
 
 def _find_model_path(model_id: str, checkpoint: int | None = None) -> str | None:
+    """Find model path in Modal volume."""
     model_path = Path(f"/data/{model_id}")
     if checkpoint is not None:
         # format the checkpoint to be 6 digits long
@@ -40,35 +45,56 @@ def _find_model_path(model_id: str, checkpoint: int | None = None) -> str | None
     return str(model_path.resolve())
 
 
-def _find_or_download_model(model_id: str, checkpoint: int | None = None) -> str:
+def _find_or_download_model(
+    model_id: str,
+    supabase_client: Client,
+    server_id: int,
+    checkpoint: int | None = None,
+) -> str:
+    """Find or download model from HuggingFace."""
     model_path = _find_model_path(model_id=model_id, checkpoint=checkpoint)
 
     if model_path is None:
         logger.warning(
             f"🤗 Model {model_id} not found in Modal volume. Will be downloaded from HuggingFace."
         )
+        revision = str(checkpoint) if checkpoint else "main"
+        checkpoint_str = str(checkpoint) if checkpoint else "last"
+        ignore_patterns = [] if checkpoint else ["checkpoint-*"]
+
         try:
-            if checkpoint:
-                model_path = snapshot_download(
-                    repo_id=model_id,
-                    repo_type="model",
-                    revision=str(checkpoint),
-                    local_dir=f"/data/{model_id}/checkpoints/{checkpoint}/pretrained_model",
-                    token=os.getenv("HF_TOKEN"),
-                )
-            else:
-                model_path = snapshot_download(
-                    repo_id=model_id,
-                    repo_type="model",
-                    revision="main",
-                    local_dir=f"/data/{model_id}/checkpoints/last/pretrained_model",
-                    ignore_patterns=["checkpoint-*"],
-                )
-        except Exception as e:
-            logger.error(
-                f"Failed to download model {model_id} with checkpoint {checkpoint}: {e}"
+            model_path = snapshot_download(
+                repo_id=model_id,
+                repo_type="model",
+                revision=revision,
+                cache_dir=f"/data/hf_cache",
+                token=os.getenv("HF_TOKEN"),
+                ignore_patterns=ignore_patterns,
             )
-            raise e
+            logger.info(f"Downloaded model to {model_path}")
+        except RepositoryNotFoundError as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} not found. Make sure the model is public. Error: {e}",
+            )
+        except RevisionNotFoundError as e:
+            logger.error(
+                f"Failed to download model {model_id} at revision {checkpoint}: {e}"
+            )
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} at revision {checkpoint} not found. Error: {e}",
+            )
+        except Exception as e:
+            logger.error(f"Failed to download model {model_id}: {e}")
+            _update_server_status(supabase_client, server_id, "failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download model {model_id}. Error: {e}",
+            )
     else:
         logger.info(
             f"🤗 Model {model_id} found in Modal volume. Will be used for inference."
@@ -104,6 +130,7 @@ def _update_server_status(
     server_id: int,
     status: str,
 ):
+    """Update server status in database."""
     logger.info(f"Updating server status to {status} for server_id {server_id}")
     if status == "failed":
         server_payload = {
@@ -138,39 +165,28 @@ def _update_server_status(
             "server_id", server_id
         ).execute()
     else:
-        raise NotImplementedError(
-            f"Status '{status}' not implemented for server update"
-        )
+        server_payload = {
+            "status": status,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase_client.table("servers").update(server_payload).eq(
+            "id", server_id
+        ).execute()
 
 
-def process_image(
-    policy: Any,
-    model_specifics: Any,
+def validate_inputs(
     current_qpos: list[float],
     images: list[np.ndarray],
-    image_names: list[str],
+    model_specifics: Any,
     target_size: tuple[int, int],
-    prompt: str,
-    prompt_key: str = "task",
-) -> np.ndarray:
-    """
-    Process images and perform inference using the policy.
+) -> None:
+    """Validate inputs for LeRobot policy models
 
     Args:
-        policy: lerobot.policies.smolvla.modeling_smolvla.SmolVLAPolicy object
-        model_specifics: SmolVLASpawnConfig object
-        current_qpos: Current robot state
-        images: List of images
-        image_names: List of image names corresponding to the images
-        target_size: Target size for resizing images (height, width)
-        prompt: Text instruction for the model
-        prompt_key: prompt key used for policy inference
-        prompt_mask_key: prompt mask key used for policy inference
-    Returns:
-        np.ndarray: predicted action chunk
-    Raises:
-        AssertionError: If input validations fail.
-        ValueError: If prompt is None.
+        current_qpos (list[float]): Current robot state
+        images (list[np.ndarray]): List of images
+        model_specifics (Any): Model specifics containing state size and video keys
+        target_size (tuple[int, int]): Expected image size (height, width)
     """
     assert len(current_qpos) == model_specifics.state_size[0], (
         f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
@@ -186,42 +202,49 @@ def process_image(
             f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
         )
 
-    with torch.no_grad(), torch.autocast(device_type="cuda"):
-        current_qpos = current_qpos.copy()
-        state_tensor = (
-            torch.from_numpy(current_qpos)
-            .view(1, len(current_qpos))
-            .float()
-            .to("cuda")
-        )
 
-        batch: dict[str, Any] = {
-            model_specifics.state_key: state_tensor,
-            prompt_key: prompt
-        }
+def prepare_base_batch(
+    current_qpos: list[float],
+    images: list[np.ndarray],
+    image_names: list[str],
+    model_specifics: Any,
+    target_size: tuple[int, int],
+) -> dict[str, torch.Tensor]:
+    """Prepare base observation batch for LeRobot policy models
 
-        processed_images = []
-        for i, image in enumerate(images):
-            # Double check if image.shape[:2] is (H, W) or (W, H)
-            if image.shape[:2] != target_size:
-                logger.info(
-                    f"Resizing image {image_names[i]} from {image.shape[:2]} to {target_size}"
-                )
-                image = cv2.resize(src=image, dsize=target_size)
+    Args:
+        current_qpos (list[float]): Current robot state
+        images (list[np.ndarray]): List of images
+        image_names (list[str]): List of image names corresponding to model video keys
+        model_specifics (Any): Model specifics containing state key and video keys
+        target_size (tuple[int, int]): Expected image size (height, width)
+    Returns:
+        dict[str, torch.Tensor]: batch dict
+    """
+    batch = {}
 
-            tensor_image = (
-                torch.from_numpy(image)
-                .permute(2, 0, 1)
-                .unsqueeze(0)
-                .float()
-                .to("cuda")
+    # Add state
+    batch[model_specifics.state_key] = torch.tensor(
+        current_qpos, dtype=torch.float32, device="cuda"
+    ).unsqueeze(0)
+
+    # Add images
+    for i, img in enumerate(images):
+        # Double check if img.shape[:2] is (H, W) or (W, H)
+        if img.shape[:2] != target_size:
+            logger.info(
+                f"Resizing img {image_names[i]} from {img.shape[:2]} to {target_size}"
             )
-            tensor_image = tensor_image / 255.0
-            processed_images.append(tensor_image)
-            batch[image_names[i]] = tensor_image
+            img = cv2.resize(src=img, dsize=target_size)
 
-        actions = policy.predict_action_chunk(batch)
-        return actions.cpu().numpy()
+        # Convert numpy array to tensor and normalize
+        img_tensor = torch.from_numpy(img).float() / 255.0
+        # Ensure CHW format
+        if img_tensor.dim() == 3 and img_tensor.shape[2] == 3:
+            img_tensor = img_tensor.permute(2, 0, 1)
+        batch[image_names[i]] = img_tensor.unsqueeze(0).to("cuda")
+
+    return batch
 
 
 class ParquetEpisodesDataset(TorchDataset):
@@ -755,3 +778,124 @@ def decode_video_frames_torchvision(
 
     assert len(timestamp) == len(closest_frames)
     return closest_frames
+
+
+def _download_dataset_from_hf(
+    dataset_name: str,
+    output_dir: Path,
+    hf_token: Optional[str] = None,
+    max_hf_download_retries: int = 3,
+) -> Path:
+    """Download dataset from HuggingFace.
+
+    Args:
+        dataset_name: Name of the dataset on HuggingFace (e.g. username/dataset_name)
+        output_dir: Path to the output directory where the dataset will be downloaded
+        hf_token: HuggingFace token with read access to the dataset repo (optional)
+    """
+    logger.info(f"Downloading dataset from HuggingFace: {dataset_name}")
+    dataset_path = None
+    for attempt in range(max_hf_download_retries):
+        try:
+            # We download the dataset to the cache to easily pass it to the training script
+            dataset_path_as_str = snapshot_download(
+                repo_id=dataset_name,
+                repo_type="dataset",
+                revision="main",
+                local_dir=str(output_dir.resolve()),
+                token=hf_token,
+                ignore_patterns=[".gitattributes", "*.lock", ".gitignore"],
+            )
+            dataset_path = Path(dataset_path_as_str)
+            logger.success(f"Dataset {dataset_name} downloaded to {dataset_path}")
+            break  # Exit the loop if download is successful
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < max_hf_download_retries - 1:
+                sleep(1)  # Wait for 1 second before retrying
+            else:
+                raise RuntimeError(
+                    f"Failed to download dataset {dataset_name} after {max_hf_download_retries} attempts, is Hugging Face down ? : {e}"
+                )
+
+    # Double check that the dataset path exists
+    if dataset_path is None or not dataset_path.exists():
+        raise RuntimeError(f"Dataset path {dataset_path} does not exist after download")
+
+    return dataset_path
+
+
+def _upload_dataset_to_hf(
+    output_dir: Path,
+    model_name: str,
+    hf_token: str,
+    private_mode: bool = False,
+) -> None:
+    """Upload the trained model to HuggingFace.
+
+    Args:
+        output_dir: Path to the output directory containing checkpoints
+        model_name: Name of the model on HuggingFace (e.g. username/model_name)
+        hf_token: HuggingFace token with write access to the model repo
+        private_mode: Whether to create the model repo as private (default: False)
+    """
+    logger.info(f"Uploading trained model to HuggingFace: {model_name}")
+    hf_api = HfApi(token=hf_token)
+
+    # Create model repo if it doesn't exist
+    try:
+        hf_api.repo_info(repo_id=model_name, repo_type="model")
+        logger.info(f"Model repository {model_name} already exists.")
+    except Exception:
+        logger.info(f"Creating model repository {model_name}")
+        hf_api.create_repo(
+            repo_id=model_name,
+            repo_type="model",
+            exist_ok=True,
+            private=private_mode,
+            token=hf_token,
+        )
+
+    # Upload the model
+    files_directory = output_dir / "checkpoints" / "last" / "pretrained_model"
+    output_paths: list[Path] = []
+    for item in files_directory.glob("**/*"):
+        if item.is_file():
+            logger.debug(f"Uploading {item}")
+            hf_api.upload_file(
+                repo_type="model",
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=item.name,
+                repo_id=model_name,
+                token=hf_token,
+            )
+            output_paths.append(item)
+
+    # Upload other checkpoints as well
+    for item in output_dir.glob("checkpoints/*/pretrained_model/*"):
+        if item.is_file():
+            # Will upload all checkpoints under the name checkpoint-{number}/
+            rel_path = item.relative_to(output_dir)
+            number = rel_path.parts[1]
+            if number == "last":
+                continue
+            checkpoint_number = int(rel_path.parts[1])
+
+            # Create revision if it doesn't exist
+            hf_api.create_branch(
+                repo_id=model_name,
+                repo_type="model",
+                branch=str(checkpoint_number),
+                token=hf_token,
+                exist_ok=True,
+            )
+
+            hf_api.upload_file(
+                repo_type="model",
+                revision=str(checkpoint_number),
+                path_or_fileobj=str(item.resolve()),
+                path_in_repo=item.name,
+                repo_id=model_name,
+                token=hf_token,
+            )
+            output_paths.append(item)

@@ -238,7 +238,7 @@ class ACT(ActionModel):
         except RetryError as e:
             raise RetryError(e)
         except Exception as e:
-            logger.error(f"Error in sampling actions: {e}")
+            logger.error(f"Error in sampling actions: {e}", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Error in sampling actions: {e}",

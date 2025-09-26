@@ -62,14 +62,14 @@ serve_us_east = modal.Function.from_name("gr00t-server", "serve_us_east")
 serve_us_west = modal.Function.from_name("gr00t-server", "serve_us_west")
 serve_eu = modal.Function.from_name("gr00t-server", "serve_eu")
 serve_ap = modal.Function.from_name("gr00t-server", "serve_ap")
-serve_act = modal.Function.from_name("act-server", "serve")
+serve_act = modal.Function.from_name("act-server", "serve_act")
 serve_pi05 = modal.Function.from_name("pi0.5-server", "serve")
-serve_smolvla = modal.Function.from_name("smolvla-server", "serve")
+serve_smolvla = modal.Function.from_name("smolvla-server", "serve_smolvla")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
-train_act = modal.Function.from_name("act-server", "train")
+train_act = modal.Function.from_name("act-server", "train_act")
 train_pi05 = modal.Function.from_name("pi0.5-server", "train")
-train_smolvla = modal.Function.from_name("smolvla-server", "train")
+train_smolvla = modal.Function.from_name("smolvla-server", "train_smolvla")
 # Paligemma warmup function
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 
