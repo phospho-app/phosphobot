@@ -409,7 +409,9 @@ class PiperHardware(BaseManipulator):
             target_positions=target_positions,
         )
         if enable_gripper and len(q_target_rad) >= self.GRIPPER_SERVO_ID:
-            gripper_open = self._rad_to_open_command(self.GRIPPER_SERVO_ID)
+            gripper_open = self._rad_to_open_command(
+                q_target_rad[self.GRIPPER_SERVO_ID - 1]
+            )
             self.move_gripper_in_sim(open=gripper_open)
         self.sim.step()
 
@@ -417,10 +419,9 @@ class PiperHardware(BaseManipulator):
             validated_q_target = self.sim.get_joints_states(
                 robot_id=self.p_robot_id, joint_indices=joint_indices
             )  # size 6
-            logger.debug(f"Validated target positions from sim: {validated_q_target}")
             validated_q_target_array = np.array(validated_q_target)
             q_target = self._radians_vec_to_motor_units(validated_q_target_array)
-            if enable_gripper and len(q_target_rad) >= self.GRIPPER_SERVO_ID:
+            if enable_gripper and len(q_target_rad) < self.GRIPPER_SERVO_ID:
                 q_target = np.append(
                     q_target,
                     q_target_rad[-1]
