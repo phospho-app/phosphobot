@@ -32,7 +32,7 @@ class GeminiAgentResponse(BaseModel):
 class GeminiAgent:
     def __init__(
         self,
-        model_id: str = "gemini-2.5-flash",
+        model_id: str = "models/gemini-robotics-er-1.5-preview",  # "gemini-2.5-flash",
         thinking_budget: int = 0,
     ):
         """
