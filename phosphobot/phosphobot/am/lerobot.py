@@ -167,7 +167,7 @@ class LeRobotSpawnConfig(BaseModel):
     env_size: Optional[List[int]] = None
     video_keys: List[str]
     video_size: List[int]
-    # Note: hf_model_config should be defined in concrete subclasses with specific type
+    hf_model_config: HuggingFaceAugmentedValidator  # type: ignore[assignment]
 
 
 class RetryError(Exception):
@@ -207,19 +207,19 @@ class LeRobot(ActionModel, ABC):
 
     @classmethod
     @abstractmethod
-    def _get_model_validator_class(cls) -> type:
+    def _get_model_validator_class(cls) -> type[HuggingFaceModelValidator]:
         """Return the specific model validator class for this model type"""
         pass
 
     @classmethod
     @abstractmethod
-    def _get_augmented_validator_class(cls) -> type:
+    def _get_augmented_validator_class(cls) -> type[HuggingFaceAugmentedValidator]:
         """Return the specific augmented validator class for this model type"""
         pass
 
     @classmethod
     @abstractmethod
-    def _get_spawn_config_class(cls) -> type:
+    def _get_spawn_config_class(cls) -> type[LeRobotSpawnConfig]:
         """Return the specific spawn config class for this model type"""
         pass
 
@@ -270,7 +270,7 @@ class LeRobot(ActionModel, ABC):
         return actions
 
     @classmethod
-    def fetch_config(cls, model_id: str):
+    def fetch_config(cls, model_id: str) -> HuggingFaceAugmentedValidator:
         """
         Fetch the model configuration from HuggingFace.
         """
@@ -294,7 +294,7 @@ class LeRobot(ActionModel, ABC):
 
             # Use the specific validator class from the subclass
             model_validator_class = cls._get_model_validator_class()
-            hf_model_config = model_validator_class.model_validate_json(config_content)
+            hf_model_config = model_validator_class.model_validate_json(config_content)  # type: ignore[attr-defined]
 
             # Use the specific augmented validator class from the subclass
             augmented_validator_class = cls._get_augmented_validator_class()
@@ -319,7 +319,7 @@ class LeRobot(ActionModel, ABC):
         return configuration
 
     @classmethod
-    def fetch_spawn_config(cls, model_id: str):
+    def fetch_spawn_config(cls, model_id: str) -> LeRobotSpawnConfig:
         hf_model_config = cls.fetch_config(model_id=model_id)
 
         state_key: str = hf_model_config.input_features.state_key
@@ -357,7 +357,7 @@ class LeRobot(ActionModel, ABC):
         robots: List["BaseManipulator"],
         cameras_keys_mapping: Optional[Dict[str, int]] = None,
         verify_cameras: bool = True,
-    ):
+    ) -> LeRobotSpawnConfig:
         """
         Verify if the HuggingFace model is compatible with the current setup.
         """
@@ -451,7 +451,7 @@ class LeRobot(ActionModel, ABC):
 
     def _prepare_image_inputs(
         self,
-        config,
+        config: HuggingFaceAugmentedValidator,
         all_cameras: AllCameras,
         cameras_keys_mapping: Optional[Dict[str, int]]
     ) -> Dict[str, np.ndarray]:
@@ -487,7 +487,7 @@ class LeRobot(ActionModel, ABC):
     @abstractmethod
     def _prepare_model_inputs(
         self,
-        config,
+        config: HuggingFaceAugmentedValidator,
         state: np.ndarray,
         image_inputs: Dict[str, np.ndarray],
         prompt: Optional[str] = None,
@@ -534,7 +534,7 @@ class LeRobot(ActionModel, ABC):
         self,
         control_signal: AIControlSignal,
         robots: List["BaseManipulator"],
-        model_spawn_config,  # Type will be specific to subclass
+        model_spawn_config: LeRobotSpawnConfig,
         all_cameras: AllCameras,
         fps: int = 30,
         speed: float = 1.0,

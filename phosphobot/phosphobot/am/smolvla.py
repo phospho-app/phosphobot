@@ -1,7 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Literal, Optional
-
-if TYPE_CHECKING:
-    from phosphobot.hardware.base import BaseManipulator
+from typing import Dict, Literal, Optional
 
 import numpy as np
 from phosphobot.am.lerobot import (
@@ -28,7 +25,7 @@ class SmolVLAHuggingFaceAugmentedValidator(HuggingFaceAugmentedValidator):
 
 class SmolVLASpawnConfig(LeRobotSpawnConfig):
     """SmolVLA-specific spawn configuration"""
-    hf_model_config: SmolVLAHuggingFaceAugmentedValidator
+    hf_model_config: SmolVLAHuggingFaceAugmentedValidator  # type: ignore[assignment]
 
 
 class SmolVLA(LeRobot):
@@ -51,7 +48,7 @@ class SmolVLA(LeRobot):
 
     def _prepare_model_inputs(
         self,
-        config,
+        config: HuggingFaceAugmentedValidator,
         state: np.ndarray,
         image_inputs: Dict[str, np.ndarray],
         prompt: Optional[str] = None,

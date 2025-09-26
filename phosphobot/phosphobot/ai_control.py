@@ -8,10 +8,11 @@ from fastapi import HTTPException
 from loguru import logger
 from supabase import AsyncClient
 
-from phosphobot.am.act import ACT, ACTSpawnConfig
+from phosphobot.am.lerobot import LeRobotSpawnConfig
+from phosphobot.am.act import ACT
+from phosphobot.am.smolvla import SmolVLA
 from phosphobot.am.gr00t import Gr00tN1, Gr00tSpawnConfig
 from phosphobot.am.pi05 import Pi05, Pi05SpawnConfig
-from phosphobot.am.smolvla import SmolVLA, SmolVLASpawnConfig
 from phosphobot.camera import AllCameras
 from phosphobot.control_signal import AIControlSignal
 from phosphobot.hardware.base import BaseManipulator
@@ -122,7 +123,7 @@ async def setup_ai_control(
     checkpoint: Optional[int] = None,
 ) -> Tuple[
     Gr00tN1 | ACT | Pi05 | SmolVLA,
-    Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig,
+    Gr00tSpawnConfig | Pi05SpawnConfig | LeRobotSpawnConfig,
     ServerInfoResponse,
 ]:
     """
