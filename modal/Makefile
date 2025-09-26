@@ -5,10 +5,10 @@ deploy_admin:
 	cd admin && uv run modal deploy -m src.app
 
 deploy_act:
-	uv run modal deploy -m lerobot_modal.app::act_app
+	uv run modal deploy -m lerobot_modal.act::act_app
 
 deploy_smolvla:
-	uv run modal deploy -m lerobot_modal.app::smolvla_app
+	uv run modal deploy -m lerobot_modal.smolvla::smolvla_app
 
 deploy_paligemma:
 	cd paligemma && uv run modal deploy app.py

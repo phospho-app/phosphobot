@@ -32,8 +32,7 @@ from .helper import (
     _download_dataset_from_hf,
     _upload_dataset_to_hf,
 )
-from .act import process_act_inference, NotEnoughBBoxesError, InvalidInputError
-from .smolvla import process_smolvla_inference
+
 
 _SUPPORTED_MODEL_TYPES = ["act", "smolvla"]
 
@@ -44,7 +43,6 @@ if os.getenv("MODAL_ENVIRONMENT") == "production":
         environment="production",
     )
 
-# ======== Modal image setup ========
 phosphobot_dir = (
     Path(__file__).parent.parent.parent.parent / "phosphobot" / "phosphobot"
 )
@@ -61,23 +59,6 @@ base_image = (
     )
 )
 
-# ACT image
-act_image = (
-    base_image.uv_pip_install(
-        "lerobot[act]==0.3.3",  # before introduction of LeRobotDataset v3.0
-    )
-    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
-    .add_local_python_source("phosphobot")
-)
-
-# SmolVLA image
-smolvla_image = (
-    base_image.uv_pip_install(
-        "lerobot[smolvla]==0.3.3",  # before introduction of LeRobotDataset v3.0
-    )
-    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
-    .add_local_python_source("phosphobot")
-)
 
 # ======== Constants ========
 MINUTES = 60  # seconds
@@ -88,13 +69,6 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig] = ["A10G"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig] = ["T4"]
 FUNCTION_CPU_TRAINING = 20.0
 MIN_NUMBER_OF_EPISODES = 10
-
-# ======== Modal Apps & Volumes ========
-act_app = modal.App("act-server")
-act_volume = modal.Volume.from_name("act", create_if_missing=True)
-
-smolvla_app = modal.App("smolvla-server")
-smolvla_volume = modal.Volume.from_name("smolvla", create_if_missing=True)
 
 
 # ======== Common ========
@@ -121,6 +95,8 @@ async def serve_policy(
     import json_numpy
     import torch.nn as nn
     from supabase import Client, create_client
+    from .act import process_act_inference
+    from .smolvla import process_smolvla_inference
 
     # Start timer
     start_time = time.time()
@@ -468,6 +444,7 @@ def train_policy(
     """
     from datetime import datetime, timezone
     from supabase import Client, create_client
+    from .act import NotEnoughBBoxesError, InvalidInputError
 
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -735,157 +712,3 @@ def train_policy(
             os.remove("/root/.huggingface")
         if os.path.exists("/root/.netrc"):
             os.remove("/root/.netrc")
-
-
-# ======== ACT ========
-@act_app.function(
-    image=act_image,
-    gpu=FUNCTION_GPU_INFERENCE,
-    timeout=FUNCTION_TIMEOUT_INFERENCE,
-    secrets=[
-        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        modal.Secret.from_name("supabase"),
-    ],
-    volumes={"/data": act_volume},
-)
-async def serve_act(
-    model_id: str,
-    server_id: int,
-    model_specifics: ACTSpawnConfig,
-    checkpoint: int | None = None,
-    timeout: int = FUNCTION_TIMEOUT_INFERENCE,
-    q=None,
-):
-    """ACT model serving function."""
-    await serve_policy(
-        model_id=model_id,
-        server_id=server_id,
-        model_specifics=model_specifics,
-        checkpoint=checkpoint,
-        timeout=timeout,
-        q=q,
-    )
-
-
-@act_app.function(
-    image=act_image,
-    gpu=FUNCTION_GPU_TRAINING,
-    timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
-    secrets=[
-        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        modal.Secret.from_name("supabase"),
-        modal.Secret.from_name("huggingface"),
-    ],
-    volumes={"/data": act_volume},
-    cpu=FUNCTION_CPU_TRAINING,
-)
-def train_act(
-    training_id: int,
-    dataset_name: str,
-    wandb_api_key: str | None,
-    model_name: str,
-    training_params: TrainingParamsAct | TrainingParamsActWithBbox,
-    user_hf_token: str | None = None,
-    private_mode: bool = False,
-    max_hf_download_retries: int = 3,
-    timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
-    wandb_run_id: str = "wandb_run_id_not_set",
-    **kwargs,
-):
-    """ACT training function."""
-    # remove model_type from kwargs if present
-    # to avoid passing model_type twice in the `train_policy()` function call
-    if "model_type" in kwargs:
-        del kwargs["model_type"]
-
-    train_policy(
-        model_type="act",
-        training_id=training_id,
-        dataset_name=dataset_name,
-        wandb_api_key=wandb_api_key,
-        model_name=model_name,
-        training_params=training_params,
-        user_hf_token=user_hf_token,
-        private_mode=private_mode,
-        max_hf_download_retries=max_hf_download_retries,
-        timeout_seconds=timeout_seconds,
-        wandb_run_id=wandb_run_id,
-        **kwargs,
-    )
-
-
-# ======== SmolVLA ========
-@smolvla_app.function(
-    image=smolvla_image,
-    gpu=FUNCTION_GPU_INFERENCE,
-    timeout=FUNCTION_TIMEOUT_INFERENCE,
-    secrets=[
-        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        modal.Secret.from_name("supabase"),
-    ],
-    volumes={"/data": smolvla_volume},
-)
-async def serve_smolvla(
-    model_id: str,
-    server_id: int,
-    model_specifics: SmolVLASpawnConfig,
-    checkpoint: int | None = None,
-    timeout: int = FUNCTION_TIMEOUT_INFERENCE,
-    q=None,
-):
-    """SmolVLA model serving function."""
-    await serve_policy(
-        model_id=model_id,
-        server_id=server_id,
-        model_specifics=model_specifics,
-        checkpoint=checkpoint,
-        timeout=timeout,
-        q=q,
-    )
-
-
-@smolvla_app.function(
-    image=smolvla_image,
-    gpu=FUNCTION_GPU_TRAINING,
-    timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
-    secrets=[
-        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
-        modal.Secret.from_name("supabase"),
-        modal.Secret.from_name("huggingface"),
-    ],
-    volumes={"/data": smolvla_volume},
-    cpu=FUNCTION_CPU_TRAINING,
-)
-def train_smolvla(
-    training_id: int,
-    dataset_name: str,
-    wandb_api_key: str | None,
-    model_name: str,
-    training_params: TrainingParamsSmolVLA,
-    user_hf_token: str | None = None,
-    private_mode: bool = False,
-    max_hf_download_retries: int = 3,
-    timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
-    wandb_run_id: str = "wandb_run_id_not_set",
-    **kwargs,
-):
-    """SmolVLA training function."""
-    # remove model_type from kwargs if present
-    # to avoid passing model_type twice in the `train_policy()` function call
-    if "model_type" in kwargs:
-        del kwargs["model_type"]
-
-    train_policy(
-        model_type="smolvla",
-        training_id=training_id,
-        dataset_name=dataset_name,
-        wandb_api_key=wandb_api_key,
-        model_name=model_name,
-        training_params=training_params,
-        user_hf_token=user_hf_token,
-        private_mode=private_mode,
-        max_hf_download_retries=max_hf_download_retries,
-        timeout_seconds=timeout_seconds,
-        wandb_run_id=wandb_run_id,
-        **kwargs,
-    )

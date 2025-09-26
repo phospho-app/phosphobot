@@ -62,14 +62,14 @@ serve_us_east = modal.Function.from_name("gr00t-server", "serve_us_east")
 serve_us_west = modal.Function.from_name("gr00t-server", "serve_us_west")
 serve_eu = modal.Function.from_name("gr00t-server", "serve_eu")
 serve_ap = modal.Function.from_name("gr00t-server", "serve_ap")
-serve_act = modal.Function.from_name("act-server", "serve_act")
+serve_act = modal.Function.from_name("act-server", "serve")
 serve_pi05 = modal.Function.from_name("pi0.5-server", "serve")
-serve_smolvla = modal.Function.from_name("smolvla-server", "serve_smolvla")
+serve_smolvla = modal.Function.from_name("smolvla-server", "serve")
 # Get the training functions by name
 train_gr00t = modal.Function.from_name("gr00t-server", "train")
-train_act = modal.Function.from_name("act-server", "train_act")
+train_act = modal.Function.from_name("act-server", "train")
 train_pi05 = modal.Function.from_name("pi0.5-server", "train")
-train_smolvla = modal.Function.from_name("smolvla-server", "train_smolvla")
+train_smolvla = modal.Function.from_name("smolvla-server", "train")
 # Paligemma warmup function
 paligemma_warmup = modal.Function.from_name("paligemma-detector", "warmup_model")
 
@@ -358,7 +358,9 @@ class StartServerRequest(BaseModel):
     model_type: Literal["gr00t", "ACT", "ACT_BBOX", "pi0.5", "smolvla"]
     timeout: Annotated[int, Field(default=15 * MINUTES, ge=0, le=15 * MINUTES)]
     region: Optional[Literal["us-east", "us-west", "eu", "ap", "anywhere"]] = None
-    model_specifics: Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig
+    model_specifics: (
+        Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig
+    )
     checkpoint: Optional[int] = None
 
     @field_validator("timeout", mode="before")
@@ -433,7 +435,9 @@ class ModelInfo(BaseModel):
     logs: Optional[str] = None
     model_type: Optional[str] = None
     training_params: Dict[str, Any] = Field(default_factory=dict)
-    config: Optional[Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig] = None
+    config: Optional[
+        Gr00tSpawnConfig | ACTSpawnConfig | Pi05SpawnConfig | SmolVLASpawnConfig
+    ] = None
 
 
 class ModelInfoResponse(BaseModel):
@@ -510,7 +514,7 @@ def fastapi_app():
         """
         Health check endpoint
         """
-        return {"status": "ok", "url": await fastapi_app.web_url}
+        return {"status": "ok", "url": fastapi_app.web_url}
 
     @web_app.get("/models", response_model=ModelInfoResponse)
     async def get_models():
@@ -584,9 +588,10 @@ def fastapi_app():
                 }
                 model_used = model_types[str(info.model_type)]
 
-                info.config = model_used.fetch_spawn_config(
+                fetched_config = model_used.fetch_spawn_config(
                     model_id=f"{username}/{model_id}"
                 )
+                info.config = fetched_config
 
                 return ModelStatusResponse(
                     model_url=model_url,

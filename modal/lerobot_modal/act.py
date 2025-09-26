@@ -13,11 +13,24 @@ import modal
 from huggingface_hub import HfApi
 from loguru import logger
 
+from phosphobot.am.base import TrainingParamsAct, TrainingParamsActWithBbox
 from phosphobot.models import InfoModel
 from phosphobot.models.lerobot_dataset import FeatureDetails
 from phosphobot.models.lerobot_dataset import LeRobotDataset
 from phosphobot.am.act import ACTSpawnConfig
 from .helper import validate_inputs, prepare_base_batch, tensor_to_list, compute_stats
+from .app import (
+    MINUTES,
+    base_image,
+    FUNCTION_GPU_INFERENCE,
+    FUNCTION_TIMEOUT_INFERENCE,
+    FUNCTION_GPU_TRAINING,
+    FUNCTION_TIMEOUT_TRAINING,
+    FUNCTION_CPU_TRAINING,
+    phosphobot_dir,
+    serve_policy,
+    train_policy,
+)
 
 
 # Get PaliGemma detector
@@ -624,3 +637,93 @@ def prepare_bounding_box_dataset(
         )
 
     return dataset_path, number_of_valid_episodes
+
+
+# ======== ACT ========
+act_app = modal.App("act-server")
+act_volume = modal.Volume.from_name("act", create_if_missing=True)
+
+# ACT image
+act_image = (
+    base_image.uv_pip_install(
+        "lerobot[act]==0.3.3",  # before introduction of LeRobotDataset v3.0
+    )
+    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
+    .add_local_python_source("phosphobot")
+)
+
+
+@act_app.function(
+    image=act_image,
+    gpu=FUNCTION_GPU_INFERENCE,
+    timeout=FUNCTION_TIMEOUT_INFERENCE,
+    secrets=[
+        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
+        modal.Secret.from_name("supabase"),
+    ],
+    volumes={"/data": act_volume},
+)
+async def serve(
+    model_id: str,
+    server_id: int,
+    model_specifics: ACTSpawnConfig,
+    checkpoint: int | None = None,
+    timeout: int = FUNCTION_TIMEOUT_INFERENCE,
+    q=None,
+):
+    """ACT model serving function."""
+    await serve_policy(
+        model_id=model_id,
+        server_id=server_id,
+        model_specifics=model_specifics,
+        checkpoint=checkpoint,
+        timeout=timeout,
+        q=q,
+    )
+
+
+@act_app.function(
+    image=act_image,
+    gpu=FUNCTION_GPU_TRAINING,
+    timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
+    secrets=[
+        modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
+        modal.Secret.from_name("supabase"),
+        modal.Secret.from_name("huggingface"),
+    ],
+    volumes={"/data": act_volume},
+    cpu=FUNCTION_CPU_TRAINING,
+)
+def train(
+    training_id: int,
+    dataset_name: str,
+    wandb_api_key: str | None,
+    model_name: str,
+    training_params: TrainingParamsAct | TrainingParamsActWithBbox,
+    user_hf_token: str | None = None,
+    private_mode: bool = False,
+    max_hf_download_retries: int = 3,
+    timeout_seconds: int = FUNCTION_TIMEOUT_TRAINING,
+    wandb_run_id: str = "wandb_run_id_not_set",
+    **kwargs,
+):
+    """ACT training function."""
+    # remove model_type from kwargs if present
+    # to avoid passing model_type twice in the `train_policy()` function call
+    if "model_type" in kwargs:
+        del kwargs["model_type"]
+
+    train_policy(
+        model_type="act",
+        training_id=training_id,
+        dataset_name=dataset_name,
+        wandb_api_key=wandb_api_key,
+        model_name=model_name,
+        training_params=training_params,
+        user_hf_token=user_hf_token,
+        private_mode=private_mode,
+        max_hf_download_retries=max_hf_download_retries,
+        timeout_seconds=timeout_seconds,
+        wandb_run_id=wandb_run_id,
+        **kwargs,
+    )
