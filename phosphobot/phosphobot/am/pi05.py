@@ -444,7 +444,7 @@ class Pi05(ActionModel):
         model_spawn_config: Pi05SpawnConfig,
         all_cameras: AllCameras,
         prompt: str,
-        fps: int = 10, # Pi0 model family operates at 10 fps
+        fps: int = 10,  # Pi0 model family operates at 10 fps
         speed: float = 1.0,
         cameras_keys_mapping: Dict[str, int] | None = None,
         angle_format: Literal["degrees", "radians", "other"] = "radians",
@@ -495,19 +495,22 @@ class Pi05(ActionModel):
 
             # Concatenate all robot states
             robot_idx_joints_mapping = {}
-            state = robots[0].read_joints_position(unit="rad")
+            state = robots[0].read_joints_position(unit="rad", source="robot")
             robot_idx_joints_mapping[0] = state.shape[0]
             for robot in robots[1:]:
-                state = np.concatenate(
-                    (state, robot.read_joints_position(unit="rad")), axis=0
-                )
+                joints_position = robot.read_joints_position(unit="rad", source="robot")
+                state = np.concatenate((state, joints_position), axis=0)
                 robot_idx_joints_mapping[len(robot_idx_joints_mapping)] = (
-                    robot.read_joints_position(unit="rad").shape[0]
+                    joints_position.shape[0]
                 )
+
+            logger.debug(f"Using state: {state}")
 
             # Verify number of joints
             number_of_joints_in_config = model_spawn_config.action_dim
-            number_of_connected_joints = sum(robot_idx_joints_mapping.values()) # num_actuated_joints is not reliable here, some robots like the piper have a separate gripper
+            number_of_connected_joints = sum(
+                robot_idx_joints_mapping.values()
+            )  # num_actuated_joints is not reliable here, some robots like the piper have a separate gripper
             if number_of_connected_joints != number_of_joints_in_config:
                 logger.warning(
                     f"Model has {number_of_joints_in_config} joints but {number_of_connected_joints} joints are connected with {len(robots)} robots."
@@ -525,6 +528,7 @@ class Pi05(ActionModel):
             }
 
             try:
+                # We predict batches of 50 actions and recalculate them when needed
                 if len(actions_queue) == 0:
                     actions_dict = self.client.infer(obs=inputs)
                     if isinstance(actions_dict, dict) and "actions" in actions_dict:
@@ -561,9 +565,9 @@ class Pi05(ActionModel):
             for robot_index in range(len(robots)):
                 rolling_count = 0
                 angles = actions_list[
-                        rolling_count : rolling_count
-                        + robot_idx_joints_mapping[robot_index]
-                    ]
+                    rolling_count : rolling_count
+                    + robot_idx_joints_mapping[robot_index]
+                ]
                 logger.debug(
                     f"Sending actions to robot {robot_index}: {angles} in {unit}"
                 )
