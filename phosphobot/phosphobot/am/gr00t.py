@@ -354,12 +354,13 @@ class ComponentStatistics(BaseModel):
         return list(self.active_components.keys())
 
     @property
-    def number_of_arms(self) -> int:
+    def action_space(self) -> dict[str, int]:
         """
-        We assume each arm has 6 joints.
+        We return the action space as a dictionary mapping joint names to their action dimensions.
         """
-        total_joints = sum(len(stats.max) for stats in self.active_components.values())
-        return total_joints // 6
+        return {
+            f"{name}": len(stats.max) for name, stats in self.active_components.items()
+        }
 
     def get_max_value(self) -> float:
         """
@@ -686,7 +687,11 @@ class Gr00tN1(ActionModel):
             ).intersection(hf_model_config.embodiment.modalities.video.keys())
             nb_connected_cams = len(keys_in_common)
 
-        number_of_robots = hf_model_config.embodiment.statistics.state.number_of_arms
+        action_space = hf_model_config.embodiment.statistics.action.action_space
+        number_of_joints = sum(action_space.values())
+        number_of_connected_joints = sum(
+            robot.read_joints_position().shape[0] for robot in robots
+        )
 
         # Check if the number of cameras in the model config matches the number of cameras connected
         if nb_connected_cams < number_of_cameras and verify_cameras:
@@ -699,10 +704,10 @@ class Gr00tN1(ActionModel):
             )
 
         # Check if the number of robots in the model config matches the number of robots connected
-        if number_of_robots != len(robots):
+        if number_of_joints != number_of_connected_joints:
             raise HTTPException(
                 status_code=400,
-                detail=f"Model has {number_of_robots} robots but {len(robots)} robots are connected.",
+                detail=f"Model has {number_of_joints} joints but {number_of_connected_joints} joints are connected through {len(robots)} robots.",
             )
 
         return Gr00tSpawnConfig(
@@ -798,11 +803,13 @@ class Gr00tN1(ActionModel):
                 )
 
             # Number of robots
-            number_of_robots = len(robots)
-            number_of_robots_in_config = (
-                config.embodiment.statistics.state.number_of_arms
+            number_of_connected_joints = sum(
+                robot.read_joints_position().shape[0] for robot in robots
             )
-            if number_of_robots != number_of_robots_in_config:
+            number_of_joints_in_config = len(
+                config.embodiment.statistics.action.action_space.values()
+            )
+            if number_of_connected_joints != number_of_joints_in_config:
                 logger.warning("No robot connected. Exiting AI control loop.")
                 control_signal.stop()
                 raise Exception("No robot connected. Exiting AI control loop.")
@@ -858,9 +865,8 @@ class Gr00tN1(ActionModel):
                     break
                 # Send the new joint position to the robot
                 action_list = action.tolist()
+                rolling_count = 0
                 for robot_index in range(len(robots)):
-                    target_position = action_list[robot_index * 6 : robot_index * 6 + 6]
-
                     # If the distance between the current and target position is too high, skip the action
                     current_position = robots[robot_index].read_joints_position(
                         unit=unit,
@@ -868,6 +874,10 @@ class Gr00tN1(ActionModel):
                         min_value=min_angle,
                         source="sim",
                     )
+                    target_position = action_list[
+                        rolling_count : rolling_count + len(current_position)
+                    ]
+                    rolling_count += len(current_position)
                     max_transition_angles: np.ndarray
                     if unit == "degrees":
                         # The last joint is the gripper, which can open/close
@@ -1048,22 +1058,12 @@ def generate_modality_json(data_dir: Path) -> Tuple[int, int]:
                 image_keys.append(key)
 
     number_of_cameras = len(image_keys)
-    number_of_robots: int = metadata["features"]["action"]["shape"][0] // 6
+    action_space: int = metadata["features"]["action"]["shape"][0]
     print(f"Number of cameras: {number_of_cameras}")
-    print(f"Number of robots: {number_of_robots}")
-
-    # Create the action/state keys based on the number of robots
-    # Each robot has 5 arm keys and 1 gripper key
-    robot_keys = []
-    for i in range(number_of_robots):
-        robot_keys.append(f"arm_{i}")
+    print(f"Action space: {action_space}")
 
     # Create the action/state keys
-    robot_structure = {}
-    index = 0
-    for key in robot_keys:
-        robot_structure[key] = {"start": index, "end": index + 6}
-        index += 6
+    robot_structure = {"action_space": {"start": 0, "end": action_space}}
 
     # Populate the video section with the image keys
     video_structure: dict = {}
@@ -1085,7 +1085,7 @@ def generate_modality_json(data_dir: Path) -> Tuple[int, int]:
     with open(data_dir / "meta" / "modality.json", "w") as f:
         json.dump(modality_json, f, indent=4)
 
-    return number_of_robots, number_of_cameras
+    return action_space, number_of_cameras
 
 
 class Gr00tTrainer(BaseTrainer):
@@ -1175,7 +1175,7 @@ class Gr00tTrainer(BaseTrainer):
 
         # Create the modality json file in meta folder
         logger.info("Generating modality.json file")
-        number_of_robots, number_of_cameras = generate_modality_json(data_dir)
+        action_space, number_of_cameras = generate_modality_json(data_dir)
 
         val_data_dir: Optional[Path] = None
         if self.config.training_params.validation_dataset_name is not None:
@@ -1232,9 +1232,10 @@ class Gr00tTrainer(BaseTrainer):
                 data_dir=data_dir,
                 output_dir=output_dir,
                 validation_data_dir=val_data_dir,
-                number_of_robots=number_of_robots,
+                action_space=action_space,
                 number_of_cameras=number_of_cameras,
                 timeout_seconds=timeout_seconds,
+                gr00t_repo_path="/workspace/gr00t",
             )
         )
         logger.info("Training finished")
@@ -1343,7 +1344,7 @@ class Gr00tTrainer(BaseTrainer):
         data_dir: Path,
         output_dir: Path,
         validation_data_dir: Optional[Path],
-        number_of_robots: int,
+        action_space: int,
         number_of_cameras: int,
         timeout_seconds: Optional[int] = None,
         gr00t_repo_path: str = ".",
@@ -1352,7 +1353,8 @@ class Gr00tTrainer(BaseTrainer):
         wandb_enabled = self.config.wandb_api_key is not None
 
         cmd = [
-            "python",
+            "uv",
+            "run",
             f"{gr00t_repo_path}/scripts/gr00t_finetune.py",
             "--dataset-path",
             str(data_dir),
@@ -1373,8 +1375,8 @@ class Gr00tTrainer(BaseTrainer):
                 "1",
                 "--output-dir",
                 str(output_dir),
-                "--num-arms",
-                str(number_of_robots),
+                "--action_space",
+                str(action_space),
                 "--num-cams",
                 str(number_of_cameras),
                 "--report_to",
