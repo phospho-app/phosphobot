@@ -284,7 +284,10 @@ class PyBulletSimulation:
         else:
             flags = p.URDF_MAINTAIN_LINK_ORDER
 
-        p.loadURDF("plane.urdf")
+        from phosphobot.utils import get_resources_path
+
+        plane_path = get_resources_path() / "urdf" / "plane.urdf"
+        p.loadURDF(plane_path)
         robot_id = p.loadURDF(
             urdf_path,
             basePosition=axis,
