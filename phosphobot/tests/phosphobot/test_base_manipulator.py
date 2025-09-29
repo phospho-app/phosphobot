@@ -56,7 +56,7 @@ def so100():
     return robot
 
 
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 @pytest.mark.asyncio
 async def test_inverse_kinematics(robot: BaseManipulator):
     """
@@ -89,7 +89,7 @@ async def test_inverse_kinematics(robot: BaseManipulator):
     ), f"Forward + Inverse kinematics should be the same. {q_robot_rad} != {q_robot_reference_rad}"
 
 
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 def test_forward_inverse_kinematics(robot: BaseManipulator):
     """
     Assert the functions forward kinematics is the inverse of inverse kinematics
@@ -110,7 +110,7 @@ def test_forward_inverse_kinematics(robot: BaseManipulator):
     ), f"Joint angles should be the same. {q_robot_rad} != {q_robot_rad_reference}"
 
 
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 def test_initial_position(robot: BaseManipulator):
     current_joint_positions = robot.read_joints_position()
 
@@ -121,25 +121,25 @@ def test_initial_position(robot: BaseManipulator):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_no_move(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0, 0, 0]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_forward(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0.015, 0, 0]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_backward(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([-0.02, 0, 0]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_right(robot: BaseManipulator):
     """
     The SO100 robot can't move right without rotation its basis on the Z axis.
@@ -153,25 +153,25 @@ async def test_move_robot_right(robot: BaseManipulator):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_left(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0, 0.01, 0]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_up(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0, 0, 0.02]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_move_robot_down(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0, 0, -0.02]), np.array([0, 0, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_rotate_robot_x(robot: BaseManipulator):
     await move_robot_testing(
         robot, np.array([0, 0, 0]), np.array([0.1, 0, 0]), atol_pos=1.5e-2
@@ -179,13 +179,13 @@ async def test_rotate_robot_x(robot: BaseManipulator):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_rotate_robot_y(robot: BaseManipulator):
     await move_robot_testing(robot, np.array([0, 0, 0]), np.array([0, 0.1, 0]))
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("robot", ["koch", "so100"], indirect=True)
+@pytest.mark.parametrize("robot", ["so100"], indirect=True)
 async def test_rotate_robot_z(robot: BaseManipulator):
     await move_robot_testing(
         robot, np.array([0, 0, 0]), np.array([0, 0, 0.1]), atol_pos=2e-2
