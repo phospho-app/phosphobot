@@ -79,11 +79,6 @@ default-groups = ["dev"]
 # If so, follow the guide in the README.md file and uncomment the line below.
 # pybullet = { path = "../bullet3", editable = true }
 
-
-# We are cloning from our fork instead of the original repo (https://github.com/Physical-Intelligence/openpi) 
-# because we had the error unknow host: github.com
-openpi-client = { git = "https://github.com/phospho-app/openpi.git", subdirectory = "packages/openpi-client", rev = "main" }
-
 # For Unitree Go2, you may install the Go2 WebRTC Connect package from source.
 # go2-webrtc-connect = { path = "../../go2_webrtc_connect", editable = true }
 
