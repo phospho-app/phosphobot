@@ -243,7 +243,11 @@ jobs:
       #       --wait --verbose
       # # END NOTARIZATION STEPS.
       - name: Run the built application
-        run: ./phosphobot/${{ env.OUTPUT_FILENAME }} run --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 --only-simulation --no-telemetry &
+        run: |
+          ./phosphobot/${{ env.OUTPUT_FILENAME }} run \
+            --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 \
+            --only-simulation --no-telemetry > server.log 2>&1 &
+          echo $! > server.pid
 
       - name: Wait for server
         run: |
@@ -271,6 +275,31 @@ jobs:
       - name: Run integration tests
         run: cd phosphobot && uv run pytest tests/api/
         continue-on-error: false
+
+      - name: Print server.log (always run) and upload as artifact
+        if: ${{ always() }}
+        run: |
+          echo "=== BEGIN server.log ==="
+          if [ -f server.log ]; then
+            # Print the whole file (or tail if very large)
+            # tail -n 2000 server.log || true     # alternative: only last 2000 lines
+            cat server.log || true
+          else
+            echo "No server.log file found at $(pwd)/server.log"
+            echo "Listing files for debugging:"
+            ls -la
+          fi
+          echo "=== END server.log ==="
+        # don't fail this step even if printing had errors
+        continue-on-error: true
+
+      - name: Upload server.log artifact (always)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-${{ matrix.os }}-${{ matrix.architecture }}
+          path: server.log
+          retention-days: 7
 
       # Calculate SHA256 for all files
       - name: Calculate SHA256
@@ -439,7 +468,13 @@ jobs:
           file phosphobot/${{ env.OUTPUT_FILENAME }}
 
       - name: Run the built application
-        run: ./phosphobot/${{ env.OUTPUT_FILENAME }} run --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 --only-simulation --no-telemetry &
+        run: |
+          # start the server in background and capture BOTH stdout & stderr to server.log
+          ./phosphobot/${{ env.OUTPUT_FILENAME }} run \
+            --simulation=headless --simulate-cameras --port=8080 --host=127.0.0.1 \
+            --only-simulation --no-telemetry > server.log 2>&1 &
+          # optional: show the pid so you can kill it later if needed
+          echo $! > server.pid
 
       - name: Wait for server
         run: |
@@ -472,6 +507,31 @@ jobs:
       - name: Run integration tests
         run: cd phosphobot && uv run pytest tests/api/
         continue-on-error: false
+
+      - name: Print server.log (always run) and upload as artifact
+        if: ${{ always() }}
+        run: |
+          echo "=== BEGIN server.log ==="
+          if [ -f server.log ]; then
+            # Print the whole file (or tail if very large)
+            # tail -n 2000 server.log || true     # alternative: only last 2000 lines
+            cat server.log || true
+          else
+            echo "No server.log file found at $(pwd)/server.log"
+            echo "Listing files for debugging:"
+            ls -la
+          fi
+          echo "=== END server.log ==="
+        # don't fail this step even if printing had errors
+        continue-on-error: true
+
+      - name: Upload server.log artifact (always)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-${{ matrix.os }}-${{ matrix.architecture }}
+          path: server.log
+          retention-days: 7
 
       - name: Create Debian package structure
         run: |
