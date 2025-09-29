@@ -2687,6 +2687,13 @@ class StatsModel(BaseModel):
             if "observation.images.main" not in self.observation_images.keys():
                 # Initialize
                 self.observation_images["observation.images.main"] = Stats()
+            if isinstance(self.observation_images["observation.images.main"], dict):
+                # If it is a dict, we need to convert it to a Stats object
+                self.observation_images["observation.images.main"] = (
+                    Stats.model_validate(
+                        self.observation_images["observation.images.main"]
+                    )
+                )
             self.observation_images["observation.images.main"].update_image(main_image)
 
         for image_index, image in enumerate(step.observation.secondary_images):
