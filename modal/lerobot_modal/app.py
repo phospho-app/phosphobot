@@ -6,7 +6,7 @@ from typing import Literal
 
 import modal
 import sentry_sdk
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from huggingface_hub import HfApi
 from huggingface_hub.errors import HFValidationError
 from loguru import logger
@@ -95,7 +95,7 @@ async def serve_policy(
     import json_numpy
     import torch.nn as nn
     from supabase import Client, create_client
-    from .act import process_act_inference
+    from .act import process_act_inference, RetryError
     from .smolvla import process_smolvla_inference
 
     # Start timer
@@ -239,7 +239,11 @@ async def serve_policy(
                 # Encode response using json_numpy
                 response = json_numpy.dumps(actions)
                 return response
-
+            except RetryError as e:
+                return Response(
+                    status_code=202,
+                    content=str(e),
+                )
             except Exception as e:
                 logger.error(f"Error during policy inference: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
