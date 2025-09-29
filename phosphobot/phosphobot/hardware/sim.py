@@ -286,7 +286,7 @@ class PyBulletSimulation:
 
         from phosphobot.utils import get_resources_path
 
-        plane_path_str = str(get_resources_path() / "urdf" / "plane.urdf")
+        plane_path_str = str(get_resources_path() / "urdf" / "plane" / "plane.urdf")
         p.loadURDF(plane_path_str)
         robot_id = p.loadURDF(
             urdf_path,
