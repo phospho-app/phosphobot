@@ -254,6 +254,7 @@ def serve(
                 modality_transform=modality_transform,
                 embodiment_tag=args.embodiment_tag,
                 denoising_steps=args.denoising_steps,
+                device="cuda",
             )
             time_to_load = time.time() - start_time
 

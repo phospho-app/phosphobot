@@ -794,25 +794,24 @@ class Gr00tN1(ActionModel):
 
             # Number of cameras
             if len(image_inputs) != len(config.embodiment.modalities.video.keys()):
-                logger.warning(
-                    f"Model has {len(config.embodiment.modalities.video.keys())} cameras but {len(image_inputs)} cameras are plugged."
-                )
+                error_message = f"Model has {len(config.embodiment.modalities.video.keys())} cameras but {len(image_inputs)} cameras are plugged."
+                logger.warning(error_message)
                 control_signal.stop()
-                raise Exception(
-                    f"Model has {len(config.embodiment.modalities.video.keys())} cameras but {len(image_inputs)} cameras are plugged."
-                )
+                raise Exception(error_message)
 
-            # Number of robots
-            number_of_connected_joints = sum(
-                robot.read_joints_position().shape[0] for robot in robots
-            )
-            number_of_joints_in_config = len(
-                config.embodiment.statistics.action.action_space.values()
-            )
-            if number_of_connected_joints != number_of_joints_in_config:
-                logger.warning("No robot connected. Exiting AI control loop.")
-                control_signal.stop()
-                raise Exception("No robot connected. Exiting AI control loop.")
+            # TODO: Number of joints check
+            # The current check is not correct. Bit tricky because action space can be subtle.
+            # number_of_connected_joints = sum(
+            #     robot.read_joints_position().shape[0] for robot in robots
+            # )
+            # number_of_joints_in_config = len(
+            #     config.embodiment.statistics.action.action_space.values()
+            # )
+            # if number_of_connected_joints != number_of_joints_in_config:
+            #     error_message = f"Model has {number_of_joints_in_config} joints but {number_of_connected_joints} joints are connected through {len(robots)} robots."
+            #     logger.warning(error_message)
+            #     control_signal.stop()
+            #     raise Exception(error_message)
 
             # Concatenate all robot states
             state = robots[0].read_joints_position(
