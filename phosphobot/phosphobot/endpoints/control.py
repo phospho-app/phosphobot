@@ -639,7 +639,7 @@ async def read_torque(
 
     # Replace NaN values with None and convert to list
     current_torque = [
-        float(torque) if not np.isnan(torque) else None for torque in current_torque
+        float(torque) if not np.isnan(torque) else 0 for torque in current_torque
     ]
 
     return TorqueReadResponse(current_torque=current_torque)
@@ -1011,9 +1011,9 @@ async def spawn_inference_server(
             )
             robots_to_control.remove(robot)
 
-    assert all(isinstance(robot, BaseManipulator) for robot in robots_to_control), (
-        "All robots must be manipulators for AI control"
-    )
+    assert all(
+        isinstance(robot, BaseManipulator) for robot in robots_to_control
+    ), "All robots must be manipulators for AI control"
 
     # Get the modal host and port here
     _, _, server_info = await setup_ai_control(
@@ -1103,9 +1103,9 @@ async def start_ai_control(
             )
             robots_to_control.remove(robot)
 
-    assert all(isinstance(robot, BaseManipulator) for robot in robots_to_control), (
-        "All robots must be manipulators for AI control"
-    )
+    assert all(
+        isinstance(robot, BaseManipulator) for robot in robots_to_control
+    ), "All robots must be manipulators for AI control"
 
     # Get the modal host and port here
     model, model_spawn_config, server_info = await setup_ai_control(
