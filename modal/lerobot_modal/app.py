@@ -502,6 +502,13 @@ def train_policy(
         max_hf_download_retries=max_hf_download_retries,
     )
 
+    # Check if the dataset is version 2.1 (this pipeline doesn't support v3.0)
+    info_model = InfoModel.from_json(meta_folder_path=str(dataset_path / "meta"))
+    if info_model.codebase_version != "v2.1":
+        raise ValueError(
+            f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v2.1."
+        )
+
     try:
         # Handle bboxes if needed
         if model_type == "act" and isinstance(
