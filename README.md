@@ -12,10 +12,13 @@
 
 ## Overview of phospho
 
-- 🕹️ Control your robots to record datasets in minutes with a keyboard, a gamepad, a leader arm, and more
-- ⚡ Train Action models such as ACT, π0 or gr00t-n1.5 in one click
+- 🧑‍💻 Features a simple and clean UI to get you started in no time
+- 🕹️ Control your robots to record datasets in minutes with a headset, a keyboard, a gamepad, a leader arm, and more
+- 💿 Fully accessible simulation environment for your robot
+- 🔢 Easy and quick calibration to get your started in no time
+- ⚡ Train Action models such as ACT, smolVLA, π0.5 or gr00t-n1.5 in one click
 - 🦾 Compatible with the SO-100, SO-101, Unitree Go2, Agilex Piper...
-- 🚪 Dev-friendly API
+- 🚪 Dev-friendly API that let's you interact through code
 - 🤗 Fully compatible with LeRobot and HuggingFace
 - 🖥️ Runs on macOS, Linux and Windows
 - 🥽 Meta Quest app for teleoperation
