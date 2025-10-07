@@ -286,8 +286,11 @@ class PyBulletSimulation:
 
         from phosphobot.utils import get_resources_path
 
-        plane_path_str = str(get_resources_path() / "urdf" / "plane" / "plane.urdf")
-        p.loadURDF(plane_path_str)
+        # Only load the plane when not on windows, Pybullet loads the urdf with "/" instead of "\" on windows
+        # I wasn't able to find the root cause, maybe it's when we compile pybullet ?
+        if os.name != "nt":
+            plane_path_str = str(get_resources_path() / "urdf" / "plane" / "plane.urdf")
+            p.loadURDF(plane_path_str)
         robot_id = p.loadURDF(
             urdf_path,
             basePosition=axis,
