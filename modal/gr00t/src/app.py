@@ -519,8 +519,8 @@ def _upload_partial_checkpoint_gr00t(
 @app.function(
     image=FUNCTION_IMAGE,
     gpu="A100-80GB",
-    # 20 extra minutes to make sure the rest of the pipeline is done
-    timeout=TRAINING_TIMEOUT + 20 * MINUTES,
+    # 30 extra minutes to make sure the rest of the pipeline is done and all models are uploaded
+    timeout=TRAINING_TIMEOUT + 30 * MINUTES,
     # Added for debugging
     secrets=[
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),

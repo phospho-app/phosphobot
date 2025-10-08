@@ -214,7 +214,7 @@ class TrainingParamsGr00T(BaseModel):
         serialization_alias="num-epochs",
     )
     save_steps: int = Field(
-        default=1_000,
+        default=3_000,
         description="Number of steps between saving the model.",
         gt=0,
         le=100_000,
@@ -267,11 +267,12 @@ class TrainingParamsSmolVLA(BaseModel):
     )
 
 
-
 class BaseTrainerConfig(BaseModel):
-    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "smolvla", "custom"] = Field(
-        ...,
-        description="Type of model to train, supports 'ACT', 'gr00t', 'pi0.5', and 'smolvla'",
+    model_type: Literal["ACT", "ACT_BBOX", "gr00t", "pi0.5", "smolvla", "custom"] = (
+        Field(
+            ...,
+            description="Type of model to train, supports 'ACT', 'gr00t', 'pi0.5', and 'smolvla'",
+        )
     )
     dataset_name: str = Field(
         ...,
