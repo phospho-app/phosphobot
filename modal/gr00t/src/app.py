@@ -191,6 +191,9 @@ def serve(
                 revision=str(checkpoint) if checkpoint is not None else None,
                 cache_dir="/data/hf_cache",
             )
+            logger.info(
+                f"Snapshot downloaded to {local_model_path} after {time.time() - start_time} seconds"
+            )
         except RepositoryNotFoundError as e:
             logger.error(f"Failed to download model {model_id}: {e}")
             _update_server_status(supabase_client, server_id, "failed")
