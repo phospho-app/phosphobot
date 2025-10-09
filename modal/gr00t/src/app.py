@@ -39,7 +39,7 @@ gr00t_image = (
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
     .run_commands(
-        "git clone https://github.com/phospho-app/Isaac-GR00T.git /workspace/gr00t && cd /workspace/gr00t && git checkout 554462bf5e5b9a3749205896b50b023c2482a913",
+        "git clone https://github.com/phospho-app/Isaac-GR00T.git /workspace/gr00t && cd /workspace/gr00t && git checkout 2beed498ae6c76f84a5ac0c342dbffa8dbab1e74",
     )
     .run_commands("uv pip install -e /workspace/gr00t --system")
     .uv_pip_install(
@@ -179,6 +179,8 @@ def serve(
         )
         from gr00t.model.policy import Gr00tPolicy  # type: ignore
         from phosphobot.am.gr00t import RobotInferenceServer
+
+        # Handle the code logic here so we don't have to juggle betwwen Gr00t files and phosphobot files
 
         # Check if this path exists in the container
         start_time = time.time()
