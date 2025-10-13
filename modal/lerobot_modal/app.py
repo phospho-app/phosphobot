@@ -502,9 +502,9 @@ def train_policy(
         max_hf_download_retries=max_hf_download_retries,
     )
 
-    # Check if the dataset is version 2.1 (this pipeline doesn't support v3.0)
+    # Check if the dataset is version 2.1 or 2.0 (this pipeline doesn't support v3.0)
     info_model = InfoModel.from_json(meta_folder_path=str(dataset_path / "meta"))
-    if info_model.codebase_version != "v2.1":
+    if info_model.codebase_version != "v2.1" and info_model.codebase_version != "v2.0":
         raise ValueError(
             f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v2.1."
         )
@@ -514,9 +514,9 @@ def train_policy(
         if model_type == "act" and isinstance(
             training_params, TrainingParamsActWithBbox
         ):
-            assert isinstance(
-                training_params, TrainingParamsActWithBbox
-            ), "Expected TrainingParamsActWithBbox for ACT with bbox"
+            assert isinstance(training_params, TrainingParamsActWithBbox), (
+                "Expected TrainingParamsActWithBbox for ACT with bbox"
+            )
 
             from .act import prepare_bounding_box_dataset
 
