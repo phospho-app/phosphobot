@@ -198,6 +198,18 @@ export function AccountTopBar() {
             </a>
           </DropdownMenuItem>
         )}
+        {proUser && (
+          <DropdownMenuItem asChild>
+            <a
+              href="https://billing.phospho.ai/p/login/bIYdRr5xq8BhdagbII"
+              className="flex items-center"
+              target="_blank"
+            >
+              <TestTubeDiagonal className="mr-1 size-4 text-green-500" />
+              Manage your subscription
+            </a>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <a
             href="mailto:contact@phospho.ai"
