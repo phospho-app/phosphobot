@@ -520,7 +520,7 @@ def train_policy(
 
             from .act import prepare_bounding_box_dataset
 
-            dataset_path, number_of_valid_episodes = prepare_bounding_box_dataset(
+            dataset_path, dataset_name = prepare_bounding_box_dataset(
                 dataset_path=dataset_path,
                 dataset_name=dataset_name,
                 detect_instruction=training_params.target_detection_instruction,

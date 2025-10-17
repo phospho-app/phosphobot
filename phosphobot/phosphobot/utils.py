@@ -472,7 +472,7 @@ def create_video_file(
 
     def open_container(
         path: str, size: Tuple[int, int]
-    ) -> Tuple[av.container.output.OutputContainer, av.VideoStream]:  # type: ignore
+    ) -> Tuple[av.container.output.OutputContainer, Any]:  # type: ignore
         os.makedirs(os.path.dirname(path), exist_ok=True)
         container = av.open(path, mode="w")
 
@@ -499,7 +499,7 @@ def create_video_file(
             encoder_opts = {"qscale": "2"}
         # else: leave encoder_opts empty for codecs that don’t support these flags
 
-        stream: av.VideoStream = container.add_stream(  # type: ignore
+        stream: Any = container.add_stream(  # type: ignore
             codec_av,
             rate=fps,
             options=encoder_opts or None,  # type: ignore
@@ -515,7 +515,7 @@ def create_video_file(
 
     def process_and_encode(
         frame: np.ndarray,
-        stream: av.VideoStream,  # type: ignore
+        stream: Any,  # type: ignore
         container: av.container.output.OutputContainer,
         size: Tuple[int, int],
     ) -> None:

@@ -9,10 +9,10 @@ if TYPE_CHECKING:
     # This prevents loading pybullet in modal
     from phosphobot.hardware.base import BaseManipulator
 
+import cv2
 import httpx
 import json_numpy  # type: ignore
 import numpy as np
-import cv2
 from fastapi import HTTPException
 from huggingface_hub import HfApi
 from loguru import logger

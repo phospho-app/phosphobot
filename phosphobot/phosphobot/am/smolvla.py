@@ -1,11 +1,12 @@
 from typing import Dict, Literal, Optional
 
 import numpy as np
+
 from phosphobot.am.lerobot import (
-    HuggingFaceModelValidator,
     HuggingFaceAugmentedValidator,
-    LeRobotSpawnConfig,
+    HuggingFaceModelValidator,
     LeRobot,
+    LeRobotSpawnConfig,
 )
 from phosphobot.camera import AllCameras
 

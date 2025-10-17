@@ -508,7 +508,7 @@ def upload_bbox_dataset_to_hf(
     dataset_path: Path,
     hf_token: str,
     private_mode: bool = False,
-) -> None:
+) -> str:
     """
     Upload the bounding box dataset to Hugging Face.
 
@@ -571,6 +571,7 @@ def upload_bbox_dataset_to_hf(
     logger.success(
         f"Dataset with bounding boxes - {dataset_name} - uploaded to Hugging Face successfully!"
     )
+    return dataset_name
 
 
 def prepare_bounding_box_dataset(
@@ -582,7 +583,7 @@ def prepare_bounding_box_dataset(
     image_keys_to_keep: list[str] = [],
     private_mode: bool = False,
     hf_token: str | None = None,
-) -> tuple[Path, int]:
+) -> tuple[Path, str]:
     """
     Prepare a dataset with bounding boxes for ACT training.
     If a HuggingFace token is provided, the new dataset will also be uploaded to HuggingFace.
@@ -618,11 +619,11 @@ def prepare_bounding_box_dataset(
     logger.success(f"Bounding boxes computed and saved to {dataset_path}")
 
     if hf_token is None:
-        logger.warning(
-            "No Hugging Face token provided, skipping upload of bounding box dataset to Hugging Face."
+        raise RuntimeError(
+            "No Hugging Face token provided, could not upload residual dataset with bounding boxes to Hugging Face."
         )
     else:
-        upload_bbox_dataset_to_hf(
+        dataset_name = upload_bbox_dataset_to_hf(
             dataset_path=dataset_path,
             hf_token=hf_token,
             private_mode=private_mode,
@@ -636,7 +637,7 @@ def prepare_bounding_box_dataset(
             f" This is not enough to train a model. Check your dataset: {visualizer_url} and rephrase the instruction."
         )
 
-    return dataset_path, number_of_valid_episodes
+    return dataset_path, dataset_name
 
 
 # ======== ACT ========
