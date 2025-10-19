@@ -1170,9 +1170,12 @@ class Gr00tTrainer(BaseTrainer):
 
         # Check if the dataset is version 2.1 (this pipeline doesn't support v3.0)
         info_model = InfoModel.from_json(meta_folder_path=str(DATASET_PATH / "meta"))
-        if info_model.codebase_version != "v2.1":
+        if (
+            info_model.codebase_version != "v2.1"
+            and info_model.codebase_version != "v2.0"
+        ):
             raise ValueError(
-                f"Dataset {self.config.dataset_name} is version {info_model.codebase_version}, but expected v2.1."
+                f"Dataset {self.config.dataset_name} is version {info_model.codebase_version}, but expected v2.0 or v2.1."
             )
 
         # Check the dataset for null/nan values in action/observation columns
