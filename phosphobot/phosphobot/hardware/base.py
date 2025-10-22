@@ -868,6 +868,17 @@ class BaseManipulator(BaseRobot):
                 2 * np.pi
             ) - np.pi
 
+        # Check if np_angles_rad contains NaN values or are larger than pi or smaller than -pi
+        if (
+            np.isnan(np_angles_rad).any()
+            or (np_angles_rad > np.pi).any()
+            or (np_angles_rad < -np.pi).any()
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Angles contain NaN or infinite values, or are out of bounds, stopping to prevent damage: {np_angles_rad}",
+            )
+
         if joints_ids is None:
             if len(np_angles_rad) == len(self.SERVO_IDS):
                 # If the number of angles is equal to the number of motors, we set the angles
