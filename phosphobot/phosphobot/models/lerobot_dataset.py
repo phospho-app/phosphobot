@@ -3642,6 +3642,7 @@ class InfoModel(BaseModel):
         format: Literal["lerobot_v2", "lerobot_v2.1"] = "lerobot_v2.1",
         add_metadata: Optional[Dict[str, list]] = None,
         save_cartesian: Optional[bool] = False,
+        recompute: bool = True,
     ) -> "InfoModel":
         """
         Read the info.json file in the meta folder path.
@@ -3736,20 +3737,21 @@ class InfoModel(BaseModel):
         infos = cls.model_validate(info_model_dict)
 
         # Read the number of .parquet files in the data folder. Get the parent directory
-        dataset_path = os.path.dirname(meta_folder_path)
-        data_folder_path = Path(dataset_path) / "data" / "chunk-000"
-        if not data_folder_path.exists():
-            return infos
+        if recompute:
+            dataset_path = os.path.dirname(meta_folder_path)
+            data_folder_path = Path(dataset_path) / "data" / "chunk-000"
+            if not data_folder_path.exists():
+                return infos
 
-        # Otherwise, count the number of .parquet files in the data folder
-        all_episodes_df = list(data_folder_path.rglob("episode_*.parquet"))
-        if len(all_episodes_df) != infos.total_episodes:
-            logger.warning(
-                f"Number of episodes in info.json ({infos.total_episodes}) does not match the number of episodes in the data folder ({len(all_episodes_df)}). Recomputing from parquets."
-            )
-            infos = cls.recompute_from_parquets(
-                infos=infos, dataset_path=Path(dataset_path)
-            )
+            # Otherwise, count the number of .parquet files in the data folder
+            all_episodes_df = list(data_folder_path.rglob("episode_*.parquet"))
+            if len(all_episodes_df) != infos.total_episodes:
+                logger.warning(
+                    f"Number of episodes in info.json ({infos.total_episodes}) does not match the number of episodes in the data folder ({len(all_episodes_df)}). Recomputing from parquets."
+                )
+                infos = cls.recompute_from_parquets(
+                    infos=infos, dataset_path=Path(dataset_path)
+                )
 
         return infos
 

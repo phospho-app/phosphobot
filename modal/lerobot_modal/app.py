@@ -465,58 +465,65 @@ def train_policy(
     data_dir = Path(f"/data/datasets/{dataset_name}")
     wandb_enabled = wandb_api_key is not None
     wandb_run_url = None
-
-    # Validate HF token
-    logger.debug("Validating HF token...")
     hf_token = user_hf_token or os.getenv("HF_TOKEN")
-    if hf_token is None:
-        raise ValueError(
-            "HF_TOKEN is not available (neither user token nor system token)"
-        )
-
-    if not HuggingFaceTokenValidator().has_write_access(
-        hf_token=hf_token, hf_model_name=model_name, private=private_mode
-    ):
-        raise ValueError(
-            f"The provided HF token does not have write access to {model_name}"
-        )
-
-    # Login to wandb if enabled
-    if wandb_enabled:
-        import wandb  # type: ignore
-
-        try:
-            wandb.login(key=wandb_api_key, verify=True)  # type: ignore
-        except Exception as e:
-            logger.info(
-                f"Failed to login to Weights & Biases: {e}. Disabling Weights & Biases."
-            )
-            wandb_enabled = False
-    logger.info(f"Weights and biases enabled: {wandb_enabled}")
-
-    # Download dataset from HuggingFace
-    dataset_path = _download_dataset_from_hf(
-        dataset_name=dataset_name,
-        output_dir=data_dir,
-        hf_token=hf_token,
-        max_hf_download_retries=max_hf_download_retries,
-    )
-
-    # Check if the dataset is version 2.1 or 2.0 (this pipeline doesn't support v3.0)
-    info_model = InfoModel.from_json(meta_folder_path=str(dataset_path / "meta"))
-    if info_model.codebase_version != "v2.1" and info_model.codebase_version != "v2.0":
-        raise ValueError(
-            f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v2.1."
-        )
 
     try:
+        # Validate HF token
+        logger.debug("Validating HF token...")
+        if hf_token is None:
+            raise ValueError(
+                "HF_TOKEN is not available (neither user token nor system token)"
+            )
+
+        if not HuggingFaceTokenValidator().has_write_access(
+            hf_token=hf_token, hf_model_name=model_name, private=private_mode
+        ):
+            raise ValueError(
+                f"The provided HF token does not have write access to {model_name}"
+            )
+
+        # Login to wandb if enabled
+        if wandb_enabled:
+            import wandb  # type: ignore
+
+            try:
+                wandb.login(key=wandb_api_key, verify=True)  # type: ignore
+            except Exception as e:
+                logger.info(
+                    f"Failed to login to Weights & Biases: {e}. Disabling Weights & Biases."
+                )
+                wandb_enabled = False
+        logger.info(f"Weights and biases enabled: {wandb_enabled}")
+
+        # Download dataset from HuggingFace
+        dataset_path = _download_dataset_from_hf(
+            dataset_name=dataset_name,
+            output_dir=data_dir,
+            hf_token=hf_token,
+            max_hf_download_retries=max_hf_download_retries,
+        )
+
+        # Check if the dataset is version 2.1 or 2.0 (this pipeline doesn't support v3.0)
+        info_model = InfoModel.from_json(
+            meta_folder_path=str(dataset_path / "meta"), recompute=False
+        )
+        logger.info(f"Found dataset codebase version: {info_model.codebase_version}")
+        if (
+            info_model.codebase_version != "v2.1"
+            and info_model.codebase_version != "v2.0"
+        ):
+            raise ValueError(
+                f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v2.1."
+            )
+        info_model = InfoModel.from_json(meta_folder_path=str(dataset_path / "meta"))
+
         # Handle bboxes if needed
         if model_type == "act" and isinstance(
             training_params, TrainingParamsActWithBbox
         ):
-            assert isinstance(training_params, TrainingParamsActWithBbox), (
-                "Expected TrainingParamsActWithBbox for ACT with bbox"
-            )
+            assert isinstance(
+                training_params, TrainingParamsActWithBbox
+            ), "Expected TrainingParamsActWithBbox for ACT with bbox"
 
             from .act import prepare_bounding_box_dataset
 
@@ -669,23 +676,24 @@ def train_policy(
             }
         ).eq("id", training_id).execute()
 
-        readme = generate_readme(
-            model_type="smolvla",
-            dataset_repo_id=dataset_name,
-            folder_path=output_dir,
-            wandb_run_url=wandb_run_url,
-            training_params=training_params,
-            error_traceback=str(e),
-            return_readme_as_bytes=True,
-        )
-        hf_api = HfApi(token=hf_token)
-        hf_api.upload_file(
-            repo_type="model",
-            path_or_fileobj=readme,
-            path_in_repo="README.md",
-            repo_id=model_name,
-            token=hf_token,
-        )
+        if hf_token is not None:
+            readme = generate_readme(
+                model_type="smolvla",
+                dataset_repo_id=dataset_name,
+                folder_path=output_dir,
+                wandb_run_url=wandb_run_url,
+                training_params=training_params,
+                error_traceback=str(e),
+                return_readme_as_bytes=True,
+            )
+            hf_api = HfApi(token=hf_token)
+            hf_api.upload_file(
+                repo_type="model",
+                path_or_fileobj=readme,
+                path_in_repo="README.md",
+                repo_id=model_name,
+                token=hf_token,
+            )
     except Exception as e:
         logger.error(
             f"🚨 {model_type} training {training_id} for {dataset_name} failed: {e}"
