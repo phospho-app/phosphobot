@@ -589,13 +589,6 @@ async def train(
     except Exception as e:
         logger.error(f"Pi0 training {training_id} failed: {e}")
 
-        _upload_checkpoint(
-            checkpoint_dir=Path("./checkpoints") / config_name / exp_name,
-            model_name=model_name,
-            hf_token=hf_token,
-            dataset_name=dataset_name,
-        )
-
         readme = generate_readme(
             model_type="pi0.5",
             dataset_repo_id=dataset_name,
@@ -624,5 +617,13 @@ async def train(
             ).eq("id", training_id).execute()
         except Exception as db_e:
             logger.error(f"Failed to update training status: {db_e}")
+
+        # Try to upload checkpoint (this can fail as well)
+        _upload_checkpoint(
+            checkpoint_dir=Path("./checkpoints") / config_name / exp_name,
+            model_name=model_name,
+            hf_token=hf_token,
+            dataset_name=dataset_name,
+        )
 
         raise e
