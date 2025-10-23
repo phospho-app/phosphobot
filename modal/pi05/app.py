@@ -353,25 +353,27 @@ def _upload_checkpoint(
     ]  # Get last 3 (or fewer if less than 3 exist)
     latest_checkpoint = last_3_checkpoints[-1]  # The very latest checkpoint
 
-    print(f"Found {len(sorted_checkpoints)} total checkpoints")
-    print(
+    logger.info(f"Found {len(sorted_checkpoints)} total checkpoints")
+    logger.info(
         f"Will upload last {len(last_3_checkpoints)} checkpoints: {[cp.name for cp in last_3_checkpoints]}"
     )
-    print(
+    logger.info(
         f"Latest checkpoint {latest_checkpoint.name} will also be uploaded to main branch"
     )
 
     # Create the repository if it doesn't exist
     try:
         api.create_repo(repo_id=model_name, exist_ok=True, repo_type="model")
-        print(f"Repository {model_name} created/verified")
+        logger.info(f"Repository {model_name} created/verified")
     except Exception as e:
-        print(f"Warning: Could not create repository: {e}")
+        logger.warning(f"Could not create repository: {e}")
 
     def upload_checkpoint_to_branch(checkpoint: Path, branch_name: str):
         """Helper function to upload a single checkpoint to a specific branch"""
         checkpoint_name = checkpoint.name
-        print(f"Uploading checkpoint {checkpoint_name} to branch '{branch_name}'...")
+        logger.info(
+            f"Uploading checkpoint {checkpoint_name} to branch '{branch_name}'..."
+        )
 
         # Upload config.json to this branch
         config_path = checkpoint_dir / "config.json"
@@ -383,9 +385,9 @@ def _upload_checkpoint(
                 repo_type="model",
                 revision=branch_name,
             )
-            print(f"Uploaded config.json to branch {branch_name}")
+            logger.info(f"Uploaded config.json to branch {branch_name}")
         else:
-            print(f"Warning: config.json not found at {config_path}")
+            logger.info(f"Warning: config.json not found at {config_path}")
 
         # Upload assets folder from this checkpoint
         norm_json = checkpoint / "assets" / dataset_name / "norm_stats.json"
@@ -405,11 +407,11 @@ def _upload_checkpoint(
                 repo_type="model",
                 revision=branch_name,
             )
-            print(
+            logger.info(
                 f"Uploaded assets from checkpoint {checkpoint_name} to branch {branch_name}"
             )
         else:
-            print(f"Warning: norm json not found at {norm_json}")
+            logger.info(f"Warning: norm json not found at {norm_json}")
 
         # Upload params folder from this checkpoint
         params_path = checkpoint / "params"
@@ -421,11 +423,11 @@ def _upload_checkpoint(
                 repo_type="model",
                 revision=branch_name,
             )
-            print(
+            logger.info(
                 f"Uploaded params from checkpoint {checkpoint_name} to branch {branch_name}"
             )
         else:
-            print(f"Warning: params folder not found at {params_path}")
+            logger.info(f"Warning: params folder not found at {params_path}")
 
     # Upload each of the last 3 checkpoints to their own branches
     for checkpoint in last_3_checkpoints:
@@ -436,21 +438,23 @@ def _upload_checkpoint(
             api.create_branch(
                 repo_id=model_name, branch=branch_name, repo_type="model", exist_ok=True
             )
-            print(f"Branch '{branch_name}' created/verified")
+            logger.info(f"Branch '{branch_name}' created/verified")
         except Exception as e:
-            print(f"Warning: Could not create branch {branch_name}: {e}")
+            logger.info(f"Warning: Could not create branch {branch_name}: {e}")
 
         # Upload checkpoint to its branch
         upload_checkpoint_to_branch(checkpoint, branch_name)
 
     # Also upload the latest checkpoint to the main branch
-    print(f"Uploading latest checkpoint {latest_checkpoint.name} to main branch...")
+    logger.info(
+        f"Uploading latest checkpoint {latest_checkpoint.name} to main branch..."
+    )
     upload_checkpoint_to_branch(latest_checkpoint, "main")
 
-    print(
+    logger.info(
         f"Successfully uploaded {len(last_3_checkpoints)} checkpoints to HuggingFace model: {model_name}"
     )
-    print(f"Branches created: {[cp.name for cp in last_3_checkpoints]} + main")
+    logger.info(f"Branches created: {[cp.name for cp in last_3_checkpoints]} + main")
     return f"https://huggingface.co/{model_name}"
 
 
@@ -499,6 +503,7 @@ async def train(
         raise ValueError(
             "HF_TOKEN is not available (neither user token nor system token)"
         )
+    hf_api = HfApi(token=hf_token)
 
     logger.info(
         f"🚀 Training pi0.5 on {dataset_name} with id {training_id} and uploading to: {model_name}  (private_mode={private_mode})"
@@ -521,6 +526,14 @@ async def train(
                 "requested_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", training_id).execute()
+
+        # Create the hf repository
+        hf_api.create_repo(
+            repo_id=model_name,
+            exist_ok=True,
+            repo_type="model",
+            private=private_mode,
+        )
 
         wandb_enabled = wandb_api_key is not None
 
@@ -569,8 +582,7 @@ async def train(
             return_readme_as_bytes=True,
             wandb_run_url=wandb_run_url,
         )
-        api = HfApi(token=hf_token)
-        api.upload_file(
+        hf_api.upload_file(
             repo_type="model",
             path_or_fileobj=readme,
             path_in_repo="README.md",
@@ -588,24 +600,6 @@ async def train(
 
     except Exception as e:
         logger.error(f"Pi0 training {training_id} failed: {e}")
-
-        readme = generate_readme(
-            model_type="pi0.5",
-            dataset_repo_id=dataset_name,
-            training_params=training_params,
-            return_readme_as_bytes=True,
-            error_traceback=str(e),
-            wandb_run_url=wandb_run_url,
-        )
-        api = HfApi(token=hf_token)
-        api.upload_file(
-            repo_type="model",
-            path_or_fileobj=readme,
-            path_in_repo="README.md",
-            repo_id=model_name,
-            token=hf_token,
-        )
-
         # Update training status to failed
         try:
             supabase_client.table("trainings").update(
@@ -617,6 +611,23 @@ async def train(
             ).eq("id", training_id).execute()
         except Exception as db_e:
             logger.error(f"Failed to update training status: {db_e}")
+
+        readme = generate_readme(
+            model_type="pi0.5",
+            dataset_repo_id=dataset_name,
+            training_params=training_params,
+            return_readme_as_bytes=True,
+            error_traceback=str(e),
+            wandb_run_url=wandb_run_url,
+        )
+        hf_api = HfApi(token=hf_token)
+        hf_api.upload_file(
+            repo_type="model",
+            path_or_fileobj=readme,
+            path_in_repo="README.md",
+            repo_id=model_name,
+            token=hf_token,
+        )
 
         # Try to upload checkpoint (this can fail as well)
         _upload_checkpoint(
