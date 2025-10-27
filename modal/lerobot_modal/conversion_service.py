@@ -81,7 +81,7 @@ async def convert_dataset_to_v3(
                     logger.info(
                         "Dataset already has a v3.0 version. No conversion needed."
                     )
-                return dataset_name, None
+                    return dataset_name, None
 
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
