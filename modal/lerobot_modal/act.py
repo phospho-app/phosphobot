@@ -35,7 +35,7 @@ from .app import (
 
 # Get PaliGemma detector
 paligemma_detect = modal.Function.from_name("paligemma-detector", "detect_object")
-act_volume = modal.Volume.from_name("act")
+hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 # Minimum number of bounding boxes to train an ACT model
 MIN_NUMBER_OF_BBOXES = 10
@@ -230,7 +230,7 @@ def compute_bboxes(
 
     logger.info(f"Copying dataset to {new_dataset_path}")
     shutil.copytree(dataset_root_path, new_dataset_path)
-    act_volume.commit()
+    hf_cache_volume.commit()
 
     # raise error if not exists
     if not os.path.exists(new_dataset_path):
@@ -439,7 +439,7 @@ Please specify one of the following video keys when launching a training: {", ".
     info_path.unlink()  # Remove the old info.json file
     validated_info.save(meta_folder_path=str(new_dataset_path / "meta"))
 
-    act_volume.commit()
+    hf_cache_volume.commit()
 
     # Remove stats.json and episode_stats.jsonl files if they exist
     stats_path = new_dataset_path / "meta" / "stats.json"
@@ -499,7 +499,7 @@ Please specify one of the following video keys when launching a training: {", ".
     with open(info_path, "w") as f:
         json.dump(info, f, indent=4)
 
-    act_volume.commit()
+    hf_cache_volume.commit()
 
     return new_dataset_path, validated_info.total_episodes
 
@@ -642,7 +642,7 @@ def prepare_bounding_box_dataset(
 
 # ======== ACT ========
 act_app = modal.App("act-server")
-act_volume = modal.Volume.from_name("act", create_if_missing=True)
+hf_cache_volume = modal.Volume.from_name("act", create_if_missing=True)
 
 # ACT image
 act_image = (
@@ -662,7 +662,7 @@ act_image = (
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": act_volume},
+    volumes={"/data": hf_cache_volume},
 )
 async def serve(
     model_id: str,
@@ -692,7 +692,7 @@ async def serve(
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": act_volume},
+    volumes={"/data": hf_cache_volume},
     cpu=FUNCTION_CPU_TRAINING,
 )
 def train(

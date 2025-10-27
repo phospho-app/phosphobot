@@ -74,7 +74,7 @@ FUNCTION_TIMEOUT = 8 * MINUTES
 TRAINING_TIMEOUT = 3 * HOURS
 
 app = modal.App("gr00t-server")
-gr00t_volume = modal.Volume.from_name("gr00t-n1")
+hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 
 def serve(
@@ -280,7 +280,7 @@ def serve(
                 local_model_path = snapshot_download(repo_id=model_id)
                 # Copy the model_folder to the volume
                 shutil.copytree(local_model_path, f"/data/models/{model_id}")
-                gr00t_volume.commit()
+                hf_cache_volume.commit()
                 logger.info(f"Model {model_id} pushed to Modal volume")
 
         except Exception as e:
@@ -309,7 +309,7 @@ def serve(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def serve_eu(
     model_id: str,
@@ -340,7 +340,7 @@ def serve_eu(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def serve_us_west(
     model_id: str,
@@ -371,7 +371,7 @@ def serve_us_west(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def serve_us_east(
     model_id: str,
@@ -402,7 +402,7 @@ def serve_us_east(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def serve_ap(
     model_id: str,
@@ -431,7 +431,7 @@ def serve_ap(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def serve_anywhere(
     model_id: str,
@@ -532,7 +532,7 @@ def _upload_partial_checkpoint_gr00t(
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": gr00t_volume},
+    volumes={"/data": hf_cache_volume},
 )
 def train(  # All these args should be verified in phosphobot
     training_id: int,

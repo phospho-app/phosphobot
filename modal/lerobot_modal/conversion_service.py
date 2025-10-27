@@ -23,6 +23,7 @@ conversion_image = (
 )
 
 conversion_service = modal.App("conversion-app")
+hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 
 @conversion_service.function(
@@ -33,6 +34,7 @@ conversion_service = modal.App("conversion-app")
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("huggingface"),
     ],
+    volumes={"/data": hf_cache_volume},
 )
 async def convert_dataset_to_v3(
     dataset_name: str,
@@ -68,7 +70,12 @@ async def convert_dataset_to_v3(
                 logger.info(
                     "Trying to download v3.0 version of the dataset from the hub..."
                 )
-                snapshot_download(dataset_name, repo_type="dataset", revision="v3.0")
+                snapshot_download(
+                    dataset_name,
+                    repo_type="dataset",
+                    revision="v3.0",
+                    cache_dir="/data/hf_cache",
+                )
                 return dataset_name, None
             except Exception:
                 logger.warning(

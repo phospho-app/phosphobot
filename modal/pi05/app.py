@@ -71,7 +71,7 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0.5-server")
-pi05_volume = modal.Volume.from_name("pi0.5", create_if_missing=True)
+hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 
 @app.function(
@@ -83,7 +83,7 @@ pi05_volume = modal.Volume.from_name("pi0.5", create_if_missing=True)
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": pi05_volume},
+    volumes={"/data": hf_cache_volume},
 )
 async def serve(
     model_id: str,
@@ -468,7 +468,7 @@ def _upload_checkpoint(
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": pi05_volume},
+    volumes={"/data": hf_cache_volume},
 )
 async def train(
     training_id: int,
@@ -565,7 +565,7 @@ async def train(
         logger.info("Training completed successfully")
 
         # Commit the volume to persist the training results
-        pi05_volume.commit()
+        hf_cache_volume.commit()
 
         # Upload the last available checkpoint to HuggingFace
         _upload_checkpoint(
