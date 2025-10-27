@@ -64,6 +64,16 @@ async def convert_dataset_to_v3(
             if dataset_name.startswith("phospho-app/"):
                 # Dataset is already on our account, no need to reupload
                 pass
+            try:
+                logger.info(
+                    "Trying to download v3.0 version of the dataset from the hub..."
+                )
+                snapshot_download(dataset_name, repo_type="dataset", revision="v3.0")
+                return dataset_name, None
+            except Exception:
+                logger.warning(
+                    "Dataset does not have an uploaded v3.0 version. Continuing with conversion."
+                )
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
                 repo_id=dataset_name, repo_type="dataset", revision="v2.1"
