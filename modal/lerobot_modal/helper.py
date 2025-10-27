@@ -157,19 +157,19 @@ def validate_inputs(
         model_specifics (Any): Model specifics containing state size and video keys
         target_size (tuple[int, int]): Expected image size (height, width)
     """
-    assert len(current_qpos) == model_specifics.state_size[0], (
-        f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
-    )
-    assert len(images) <= len(model_specifics.video_keys), (
-        f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
-    )
+    assert (
+        len(current_qpos) == model_specifics.state_size[0]
+    ), f"State size mismatch: {len(current_qpos)} != {model_specifics.state_size[0]}"
+    assert (
+        len(images) <= len(model_specifics.video_keys)
+    ), f"Number of images {len(images)} is more than the number of video keys {len(model_specifics.video_keys)}"
     if len(images) > 0:
-        assert len(images[0].shape) == 3, (
-            f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
-        )
-        assert len(images[0].shape) == 3 and images[0].shape[2] == 3, (
-            f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
-        )
+        assert (
+            len(images[0].shape) == 3
+        ), f"Image shape is not correct, {images[0].shape} expected (H, W, C)"
+        assert (
+            len(images[0].shape) == 3 and images[0].shape[2] == 3
+        ), f"Image shape is not correct {images[0].shape} expected (H, W, 3)"
 
 
 def prepare_base_batch(
@@ -774,6 +774,7 @@ def _download_dataset_from_hf(
                 local_dir=str(output_dir.resolve()),
                 token=hf_token,
                 ignore_patterns=[".gitattributes", "*.lock", ".gitignore"],
+                cache_dir="/data/hf_cache",
             )
             dataset_path = Path(dataset_path_as_str)
             logger.success(f"Dataset {dataset_name} downloaded to {dataset_path}")
