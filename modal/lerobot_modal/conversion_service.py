@@ -64,27 +64,27 @@ async def convert_dataset_to_v3(
             if dataset_name.startswith("phospho-app/"):
                 # Dataset is already on our account, no need to reupload
                 pass
-        # In this case, we need to reupload the dataset on our account to have write permissions
-        dataset_path_as_str = snapshot_download(
-            repo_id=dataset_name, repo_type="dataset", revision="v2.1"
-        )
-        new_repo = "phospho-app/" + dataset_name.split("/")[-1]
-        create_repo(
-            repo_id=new_repo,
-            repo_type="dataset",
-            exist_ok=True,
-        )
-        upload_folder(
-            repo_id=new_repo,
-            folder_path=dataset_path_as_str,
-            repo_type="dataset",
-        )
-        create_tag(
-            repo_id=new_repo,
-            tag="v2.1",
-            repo_type="dataset",
-        )
-        dataset_name = new_repo
+            # In this case, we need to reupload the dataset on our account to have write permissions
+            dataset_path_as_str = snapshot_download(
+                repo_id=dataset_name, repo_type="dataset", revision="v2.1"
+            )
+            new_repo = "phospho-app/" + dataset_name.split("/")[-1]
+            create_repo(
+                repo_id=new_repo,
+                repo_type="dataset",
+                exist_ok=True,
+            )
+            upload_folder(
+                repo_id=new_repo,
+                folder_path=dataset_path_as_str,
+                repo_type="dataset",
+            )
+            create_tag(
+                repo_id=new_repo,
+                tag="v2.1",
+                repo_type="dataset",
+            )
+            dataset_name = new_repo
 
         # Login to Hugging Face Hub
         convert_dataset(repo_id=dataset_name)  # Will also push to hub
