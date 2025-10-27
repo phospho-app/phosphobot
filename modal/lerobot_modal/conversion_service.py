@@ -50,6 +50,7 @@ async def convert_dataset_to_v3(
         upload_folder,
         create_repo,
         create_tag,
+        HfApi,
     )
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
@@ -64,16 +65,17 @@ async def convert_dataset_to_v3(
             if dataset_name.startswith("phospho-app/"):
                 # Dataset is already on our account, no need to reupload
                 pass
-            try:
-                logger.info(
-                    "Trying to download v3.0 version of the dataset from the hub..."
-                )
-                snapshot_download(dataset_name, repo_type="dataset", revision="v3.0")
+            logger.info("Looking for version 3.0 of the dataset on the hub...")
+            api = HfApi()
+            tags = api.list_repo_refs(dataset_name, repo_type="dataset")
+
+            for branch in tags.branches:
+                if branch.name == "v3.0":
+                    logger.info(
+                        "Dataset already has a v3.0 version. No conversion needed."
+                    )
                 return dataset_name, None
-            except Exception:
-                logger.warning(
-                    "Dataset does not have an uploaded v3.0 version. Continuing with conversion."
-                )
+
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
                 repo_id=dataset_name, repo_type="dataset", revision="v2.1"
