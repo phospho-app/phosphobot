@@ -23,7 +23,7 @@ conversion_image = (
 )
 
 conversion_service = modal.App("conversion-app")
-hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
+hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
 @conversion_service.function(
@@ -80,7 +80,10 @@ async def convert_dataset_to_v3(
 
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
-                repo_id=dataset_name, repo_type="dataset", revision="v2.1", cache_dir="/data/hf_cache"
+                repo_id=dataset_name,
+                repo_type="dataset",
+                revision="v2.1",
+                cache_dir="/data/hf_cache",
             )
             new_repo = "phospho-app/" + dataset_name.split("/")[-1]
             create_repo(

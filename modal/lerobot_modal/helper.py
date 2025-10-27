@@ -43,7 +43,7 @@ def _find_or_download_model(
             repo_id=model_id,
             repo_type="model",
             revision=str(checkpoint) if checkpoint is not None else None,
-            # cache_dir="/data/hf_cache",
+            cache_dir="/data/hf_cache",
         )
     except RepositoryNotFoundError as e:
         logger.error(f"Failed to download model {model_id}: {e}")

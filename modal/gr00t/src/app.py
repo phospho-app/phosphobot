@@ -74,7 +74,7 @@ FUNCTION_TIMEOUT = 8 * MINUTES
 TRAINING_TIMEOUT = 3 * HOURS
 
 app = modal.App("gr00t-server")
-hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
+hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
 def serve(
@@ -277,7 +277,9 @@ def serve(
             if not os.path.exists(f"/data/models/{model_id}"):
                 logger.info(f"Pushing model {model_id} to Modal volume")
                 # Get the path of the cache folder
-                local_model_path = snapshot_download(repo_id=model_id)
+                local_model_path = snapshot_download(
+                    repo_id=model_id, cache_dir="/data/hf_cache"
+                )
                 # Copy the model_folder to the volume
                 shutil.copytree(local_model_path, f"/data/models/{model_id}")
                 hf_cache_volume.commit()

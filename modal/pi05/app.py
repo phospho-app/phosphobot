@@ -71,7 +71,7 @@ FUNCTION_GPU_TRAINING: list[str | modal.gpu._GPUConfig | None] = ["A100-80GB"]
 FUNCTION_GPU_INFERENCE: list[str | modal.gpu._GPUConfig | None] = ["A100-40GB", "L40S"]
 
 app = modal.App("pi0.5-server")
-hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
+hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
 @app.function(

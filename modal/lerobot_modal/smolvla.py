@@ -10,6 +10,7 @@ from .helper import validate_inputs, prepare_base_batch
 from .app import (
     MINUTES,
     base_image,
+    hf_cache_volume,
     FUNCTION_GPU_INFERENCE,
     FUNCTION_TIMEOUT_INFERENCE,
     FUNCTION_GPU_TRAINING,
@@ -30,7 +31,6 @@ smolvla_image = (
 )
 
 smolvla_app = modal.App("smolvla-server")
-hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 
 def process_smolvla_inference(

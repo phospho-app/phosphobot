@@ -140,6 +140,7 @@ def train_gr00t_on_modal(
             timeout_seconds=timeout_seconds,
             private_mode=private_mode,
             hf_token=hf_token,
+            cache_dir="/data/hf_cache",
         )
 
         # Upload model folder to Modal volume

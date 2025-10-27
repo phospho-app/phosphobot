@@ -22,6 +22,7 @@ from .helper import validate_inputs, prepare_base_batch, tensor_to_list, compute
 from .app import (
     MINUTES,
     base_image,
+    hf_cache_volume,
     FUNCTION_GPU_INFERENCE,
     FUNCTION_TIMEOUT_INFERENCE,
     FUNCTION_GPU_TRAINING,
@@ -35,7 +36,6 @@ from .app import (
 
 # Get PaliGemma detector
 paligemma_detect = modal.Function.from_name("paligemma-detector", "detect_object")
-hf_cache_volume = modal.Volume.from_name("datasets", create_if_missing=True)
 
 # Minimum number of bounding boxes to train an ACT model
 MIN_NUMBER_OF_BBOXES = 10
@@ -642,7 +642,6 @@ def prepare_bounding_box_dataset(
 
 # ======== ACT ========
 act_app = modal.App("act-server")
-hf_cache_volume = modal.Volume.from_name("act", create_if_missing=True)
 
 # ACT image
 act_image = (

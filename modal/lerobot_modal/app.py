@@ -58,6 +58,7 @@ base_image = (
         }
     )
 )
+hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
 # ======== Constants ========
