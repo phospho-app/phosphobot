@@ -55,6 +55,7 @@ base_image = (
         {
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
             "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_HOME": "/data/hf_cache",
         }
     )
 )

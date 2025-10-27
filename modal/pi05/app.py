@@ -29,6 +29,7 @@ pi0_image = (
             "HF_HUB_DISABLE_TELEMETRY": "1",
             "_OPENPI_DATA_HOME": "/data/openpi_cache",  # This is the openpi cache dir,
             "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.9",  # Tell JAX to use 90% of GPU memory
+            "HF_HOME": "/data/hf_cache",
         }
     )
     .uv_pip_install(
@@ -204,7 +205,6 @@ async def serve(
                 repo_id=model_id,
                 repo_type="model",
                 revision=str(checkpoint) if checkpoint is not None else None,
-                cache_dir="/data/hf_cache",
             )
         except RepositoryNotFoundError as e:
             logger.error(f"Failed to download model {model_id}: {e}")

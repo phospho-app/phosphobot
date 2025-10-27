@@ -43,7 +43,6 @@ def _find_or_download_model(
             repo_id=model_id,
             repo_type="model",
             revision=str(checkpoint) if checkpoint is not None else None,
-            cache_dir="/data/hf_cache",
         )
     except RepositoryNotFoundError as e:
         logger.error(f"Failed to download model {model_id}: {e}")
@@ -774,7 +773,6 @@ def _download_dataset_from_hf(
                 local_dir=str(output_dir.resolve()),
                 token=hf_token,
                 ignore_patterns=[".gitattributes", "*.lock", ".gitignore"],
-                cache_dir="/data/hf_cache",
             )
             dataset_path = Path(dataset_path_as_str)
             logger.success(f"Dataset {dataset_name} downloaded to {dataset_path}")

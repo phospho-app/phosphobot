@@ -34,7 +34,13 @@ gr00t_image = (
         "git",
         "ffmpeg",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
+    .env(
+        {
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_HOME": "/data/hf_cache",
+        }
+    )
     .pip_install_from_pyproject(
         pyproject_toml=str(phosphobot_dir / "pyproject.toml"),
     )
@@ -189,7 +195,6 @@ def serve(
                 repo_id=model_id,
                 repo_type="model",
                 revision=str(checkpoint) if checkpoint is not None else None,
-                cache_dir="/data/hf_cache",
             )
             logger.info(
                 f"Snapshot downloaded to {local_model_path} after {time.time() - start_time} seconds"
@@ -277,9 +282,7 @@ def serve(
             if not os.path.exists(f"/data/models/{model_id}"):
                 logger.info(f"Pushing model {model_id} to Modal volume")
                 # Get the path of the cache folder
-                local_model_path = snapshot_download(
-                    repo_id=model_id, cache_dir="/data/hf_cache"
-                )
+                local_model_path = snapshot_download(repo_id=model_id)
                 # Copy the model_folder to the volume
                 shutil.copytree(local_model_path, f"/data/models/{model_id}")
                 hf_cache_volume.commit()
