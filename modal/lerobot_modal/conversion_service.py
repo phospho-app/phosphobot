@@ -23,6 +23,7 @@ conversion_image = (
 )
 
 conversion_service = modal.App("conversion-app")
+hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
 @conversion_service.function(
@@ -33,6 +34,7 @@ conversion_service = modal.App("conversion-app")
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("huggingface"),
     ],
+    volumes={"/data": hf_cache_volume},
 )
 async def convert_dataset_to_v3(
     dataset_name: str,
@@ -55,8 +57,13 @@ async def convert_dataset_to_v3(
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
-        # Clear Hugging Face cache
-        os.system("huggingface-cli delete-cache -y")
+        # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
+        dataset_path = f"/data/hf_cache/datasets/{dataset_name}"
+        if os.path.exists(dataset_path):
+            logger.info(f"Removing existing dataset path: {dataset_path}")
+            os.system(f"rm -rf {dataset_path}")
+        else:
+            logger.debug(f"Dataset path does not exist: {dataset_path}")
 
         # We do this because LeRobot later uses HfApi internally which reads from env variables
         if huggingface_token is not None:
@@ -78,7 +85,10 @@ async def convert_dataset_to_v3(
 
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
-                repo_id=dataset_name, repo_type="dataset", revision="v2.1"
+                repo_id=dataset_name,
+                repo_type="dataset",
+                revision="v2.1",
+                cache_dir="/data/hf_cache",
             )
             new_repo = "phospho-app/" + dataset_name.split("/")[-1]
             create_repo(

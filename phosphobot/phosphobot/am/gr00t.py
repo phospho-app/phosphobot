@@ -1103,6 +1103,7 @@ class Gr00tTrainer(BaseTrainer):
         timeout_seconds: Optional[int] = None,
         private_mode: bool = False,
         hf_token: Optional[str] = None,
+        cache_dir: Optional[str] = None,
     ) -> None:
         """
         You can pass a timeout in seconds to the training process.
@@ -1148,6 +1149,7 @@ class Gr00tTrainer(BaseTrainer):
                     revision=selected_branch,
                     local_dir=str(data_dir),
                     token=hf_token,
+                    cache_dir=cache_dir,
                 )
                 DATASET_PATH = Path(dataset_path_as_str)
                 logger.info(
@@ -1211,6 +1213,7 @@ class Gr00tTrainer(BaseTrainer):
                         revision=selected_branch,
                         local_dir=(val_data_dir),
                         token=hf_token,
+                        cache_dir=cache_dir,
                     )
                     VAL_DATASET_PATH = Path(dataset_path_val_str)
                     logger.info(
