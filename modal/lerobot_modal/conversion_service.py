@@ -53,16 +53,17 @@ async def convert_dataset_to_v3(
     )
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
-    # Clear Hugging Face cache
-    os.system("huggingface-cli delete-cache -y")
+    try:
+        # Clear Hugging Face cache
+        os.system("huggingface-cli delete-cache -y")
 
-    # We do this because LeRobot later uses HfApi internally which reads from env variables
-    if huggingface_token is not None:
-        os.environ["HF_TOKEN"] = huggingface_token
-    else:
-        if dataset_name.startswith("phospho-app/"):
-            # Dataset is already on our account, no need to reupload
-            pass
+        # We do this because LeRobot later uses HfApi internally which reads from env variables
+        if huggingface_token is not None:
+            os.environ["HF_TOKEN"] = huggingface_token
+        else:
+            if dataset_name.startswith("phospho-app/"):
+                # Dataset is already on our account, no need to reupload
+                pass
         # In this case, we need to reupload the dataset on our account to have write permissions
         dataset_path_as_str = snapshot_download(
             repo_id=dataset_name, repo_type="dataset", revision="v2.1"
@@ -85,8 +86,7 @@ async def convert_dataset_to_v3(
         )
         dataset_name = new_repo
 
-    # Login to Hugging Face Hub
-    try:
+        # Login to Hugging Face Hub
         convert_dataset(repo_id=dataset_name)  # Will also push to hub
         return dataset_name, None
 
