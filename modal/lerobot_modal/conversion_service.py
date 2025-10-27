@@ -76,12 +76,15 @@ async def convert_dataset_to_v3(
             api = HfApi()
             tags = api.list_repo_refs(dataset_name, repo_type="dataset")
 
-            for branch in tags.branches:
-                if branch.name == "v3.0":
-                    logger.info(
-                        "Dataset already has a v3.0 version. No conversion needed."
-                    )
-                    return dataset_name, None
+            branches = [branch.name for branch in tags.branches]
+
+            if "v3.0" in branches:
+                logger.info("Dataset already has a v3.0 version. No conversion needed.")
+                return dataset_name, None
+            elif "v2.1" not in branches:
+                error_msg = f"Dataset {dataset_name} does not have a v2.1 version to convert from."
+                logger.error(error_msg)
+                return None, error_msg
 
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
