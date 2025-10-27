@@ -57,8 +57,13 @@ async def convert_dataset_to_v3(
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
-        # Clear Hugging Face cache
-        os.system("huggingface-cli delete-cache -y")
+        # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
+        dataset_path = f"/data/hf_cache/datasets/{dataset_name}"
+        if os.path.exists(dataset_path):
+            logger.info(f"Removing existing dataset path: {dataset_path}")
+            os.system(f"rm -rf {dataset_path}")
+        else:
+            logger.debug(f"Dataset path does not exist: {dataset_path}")
 
         # We do this because LeRobot later uses HfApi internally which reads from env variables
         if huggingface_token is not None:
