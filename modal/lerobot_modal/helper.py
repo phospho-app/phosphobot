@@ -43,7 +43,6 @@ def _find_or_download_model(
             repo_id=model_id,
             repo_type="model",
             revision=str(checkpoint) if checkpoint is not None else None,
-            cache_dir="/data/hf_cache",
         )
     except RepositoryNotFoundError as e:
         logger.error(f"Failed to download model {model_id}: {e}")
@@ -752,7 +751,7 @@ def decode_video_frames_torchvision(
 def _download_dataset_from_hf(
     dataset_name: str,
     output_dir: Path,
-    hf_token: Optional[str] = None,
+    hf_token: str,
     max_hf_download_retries: int = 3,
 ) -> Path:
     """Download dataset from HuggingFace.

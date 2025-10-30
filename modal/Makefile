@@ -10,6 +10,9 @@ deploy_act:
 deploy_smolvla:
 	uv run modal deploy -m lerobot_modal.smolvla::smolvla_app
 
+deploy_conversion:
+	uv run modal deploy -m lerobot_modal.conversion_service::conversion_service
+
 deploy_paligemma:
 	cd paligemma && uv run modal deploy app.py
 
@@ -23,6 +26,6 @@ deploy_vllm:
 	cd vllm && uv run modal deploy app.py
 
 deploy_all:
-	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05 && make deploy_smolvla
+	make deploy_admin && make deploy_act && make deploy_gr00t && make deploy_paligemma && make deploy_vllm && make deploy_pi05 && make deploy_smolvla && deploy_conversion
 
-PHONY: deploy_admin deploy_act deploy_paligemma deploy_gr00t deploy_vllm deploy_all install deploy_pi05 deploy_smolvla
+PHONY: deploy_all

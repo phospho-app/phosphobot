@@ -10,6 +10,7 @@ from .helper import validate_inputs, prepare_base_batch
 from .app import (
     MINUTES,
     base_image,
+    hf_cache_volume,
     FUNCTION_GPU_INFERENCE,
     FUNCTION_TIMEOUT_INFERENCE,
     FUNCTION_GPU_TRAINING,
@@ -30,7 +31,6 @@ smolvla_image = (
 )
 
 smolvla_app = modal.App("smolvla-server")
-smolvla_volume = modal.Volume.from_name("smolvla", create_if_missing=True)
 
 
 def process_smolvla_inference(
@@ -91,7 +91,7 @@ def process_smolvla_inference(
         modal.Secret.from_dict({"MODAL_LOGLEVEL": "DEBUG"}),
         modal.Secret.from_name("supabase"),
     ],
-    volumes={"/data": smolvla_volume},
+    volumes={"/data": hf_cache_volume},
 )
 async def serve(
     model_id: str,
@@ -121,7 +121,7 @@ async def serve(
         modal.Secret.from_name("supabase"),
         modal.Secret.from_name("huggingface"),
     ],
-    volumes={"/data": smolvla_volume},
+    volumes={"/data": hf_cache_volume},
     cpu=FUNCTION_CPU_TRAINING,
 )
 def train(
