@@ -57,7 +57,11 @@ base_image = (
             "HF_HUB_DISABLE_TELEMETRY": "1",
             "HF_HOME": "/data/hf_cache",
         }
+    ).uv_pip_install(
+        "lerobot[act]>=0.3.4",  # before introduction of LeRobotDataset v3.0
     )
+    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
+    .add_local_python_source("phosphobot")
 )
 hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
