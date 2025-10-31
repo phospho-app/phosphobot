@@ -53,6 +53,7 @@ async def convert_dataset_to_v3(
     from loguru import logger
     from huggingface_hub import (
         snapshot_download,
+        upload_folder,
         upload_large_folder,
         create_repo,
         create_tag,
@@ -112,7 +113,7 @@ async def convert_dataset_to_v3(
                 repo_type="dataset",
                 exist_ok=True,
             )
-            upload_large_folder(
+            upload_folder(
                 repo_id=new_repo,
                 folder_path=dataset_path_as_str,
                 repo_type="dataset",
@@ -140,7 +141,7 @@ async def convert_dataset_to_v3(
         # Push the converted dataset to the hub on branch v3.0
         logger.info(f"Pushing converted dataset {dataset_name} to the hub...")
         try:
-            upload_large_folder(
+            upload_folder(
                 repo_id=dataset_name,
                 folder_path=dataset_path,
                 repo_type="dataset",
@@ -158,7 +159,12 @@ async def convert_dataset_to_v3(
             dataset_name = "phospho-app/" + dataset_name.split("/")[-1]
             hf_token = env_hf_token
             os.environ["HF_TOKEN"] = hf_token
-            upload_large_folder(
+            create_repo(
+                repo_id=dataset_name,
+                repo_type="dataset",
+                exist_ok=True,
+            )
+            upload_folder(
                 repo_id=dataset_name,
                 folder_path=dataset_path,
                 repo_type="dataset",
