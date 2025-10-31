@@ -58,7 +58,8 @@ base_image = (
             "HF_HOME": "/data/hf_cache",
         }
     ).uv_pip_install(
-        "lerobot[act]>=0.3.4",  # before introduction of LeRobotDataset v3.0
+        # Last compatible version of lerobot with v2.1 is 0.3.3
+        "lerobot[act]>=0.3.4",  
     )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")
