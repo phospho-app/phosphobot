@@ -1,7 +1,6 @@
 import modal
 
-
-conversion_image = (
+conversion_image_v21 = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install(
         "ffmpeg",
@@ -22,12 +21,12 @@ conversion_image = (
     )
 )
 
-conversion_service = modal.App("conversion-app")
+conversion_service_from_v21 = modal.App("conversion_app_from_v21")
 hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
-@conversion_service.function(
-    image=conversion_image,
+@conversion_service_from_v21.function(
+    image=conversion_image_v21,
     cpu=1,  # Single core is enough from experience
     timeout=15 * 60,
     secrets=[
@@ -54,6 +53,8 @@ async def convert_dataset_to_v3(
         create_tag,
         HfApi,
     )
+    from requests import HTTPError
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
@@ -68,10 +69,7 @@ async def convert_dataset_to_v3(
         # We do this because LeRobot later uses HfApi internally which reads from env variables
         if huggingface_token is not None:
             os.environ["HF_TOKEN"] = huggingface_token
-        else:
-            if dataset_name.startswith("phospho-app/"):
-                # Dataset is already on our account, no need to reupload
-                pass
+        elif not dataset_name.startswith("phospho-app/"):
             logger.info("Looking for version 3.0 of the dataset on the hub...")
             api = HfApi()
             tags = api.list_repo_refs(dataset_name, repo_type="dataset")
@@ -112,7 +110,24 @@ async def convert_dataset_to_v3(
             dataset_name = new_repo
 
         # Login to Hugging Face Hub
-        convert_dataset(repo_id=dataset_name)  # Will also push to hub
+        convert_dataset(
+            repo_id=dataset_name, branch="v2.1", push_to_hub=False
+        )  # Will also push to hub
+        hub_api = HfApi()
+        try:
+            hub_api.delete_tag(dataset_name, tag="v3.0", repo_type="dataset")
+        except HTTPError as e:
+            print(f"tag='v3.0' probably doesn't exist. Skipping exception ({e})")
+            pass
+        hub_api.delete_files(
+            delete_patterns=["data/chunk*/episode_*", "meta/*.jsonl", "videos/chunk*"],
+            repo_id=dataset_name,
+            repo_type="dataset",
+        )
+        hub_api.create_tag(dataset_name, tag="v3.0", repo_type="dataset", exist_ok=True)
+
+        LeRobotDataset(dataset_name).push_to_hub()
+
         return dataset_name, None
 
     except Exception as e:

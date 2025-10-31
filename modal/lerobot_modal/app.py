@@ -62,6 +62,16 @@ base_image = (
 hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 
 
+# ======== Dataset conversion script ========
+
+dataset_conversion_from_v2 = modal.Function.from_name(
+    "conversion_app_from_v2", "convert_dataset_to_v21"
+)
+dataset_conversion_from_v21 = modal.Function.from_name(
+    "conversion_app_from_v21", "convert_dataset_to_v3"
+)
+
+
 # ======== Constants ========
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
@@ -497,6 +507,24 @@ def train_policy(
                 wandb_enabled = False
         logger.info(f"Weights and biases enabled: {wandb_enabled}")
 
+        dataset, error_str = dataset_conversion_from_v2.remote(
+            dataset_name=dataset_name,
+            huggingface_token=hf_token,
+        )
+        if error_str is None:
+            dataset, error_str = dataset_conversion_from_v21.remote(
+                dataset_name=dataset_name,
+                huggingface_token=hf_token,
+            )
+            if error_str is not None:
+                raise ValueError(
+                    f"Failed to convert dataset {dataset_name} to v3.0 with error: {error_str}"
+                )
+        else:
+            raise ValueError(
+                f"Failed to convert dataset {dataset_name} to v2.1 with error: {error_str}"
+            )
+
         # Download dataset from HuggingFace
         dataset_path = _download_dataset_from_hf(
             dataset_name=dataset_name,
@@ -505,27 +533,23 @@ def train_policy(
             max_hf_download_retries=max_hf_download_retries,
         )
 
-        # Check if the dataset is version 2.1 or 2.0 (this pipeline doesn't support v3.0)
+        # Check if the dataset is version 3.0
         info_model = InfoModel.from_json(
             meta_folder_path=str(dataset_path / "meta"), recompute=False
         )
         logger.info(f"Found dataset codebase version: {info_model.codebase_version}")
-        if (
-            info_model.codebase_version != "v2.1"
-            and info_model.codebase_version != "v2.0"
-        ):
+        if info_model.codebase_version != "v3.0":
             raise ValueError(
-                f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v2.1."
+                f"Dataset {dataset_name} is version {info_model.codebase_version}, but expected v3.0"
             )
-        info_model = InfoModel.from_json(meta_folder_path=str(dataset_path / "meta"))
 
         # Handle bboxes if needed
         if model_type == "act" and isinstance(
             training_params, TrainingParamsActWithBbox
         ):
-            assert isinstance(
-                training_params, TrainingParamsActWithBbox
-            ), "Expected TrainingParamsActWithBbox for ACT with bbox"
+            assert isinstance(training_params, TrainingParamsActWithBbox), (
+                "Expected TrainingParamsActWithBbox for ACT with bbox"
+            )
 
             from .act import prepare_bounding_box_dataset
 

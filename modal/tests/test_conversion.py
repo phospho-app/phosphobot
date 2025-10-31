@@ -1,10 +1,15 @@
 import modal
 from huggingface_hub import HfApi
 
-dataset_conversion = modal.Function.from_name("conversion-app", "convert_dataset_to_v3")
+dataset_conversion_from_v2 = modal.Function.from_name(
+    "conversion_app_from_v2", "convert_dataset_to_v21"
+)
+dataset_conversion_from_v21 = modal.Function.from_name(
+    "conversion_app_from_v21", "convert_dataset_to_v3"
+)
 
-dataset_name = "LegrandFrederic/pick_and_place"
-token = "to_fill"
+dataset_name = "phospho-app/tomato_bboxes"
+token = None
 
 api = HfApi(token=token)
 
@@ -22,10 +27,15 @@ except Exception:
 
 
 def test_dataset_conversion():
-    dataset, error_str = dataset_conversion.remote(
+    dataset, error_str = dataset_conversion_from_v2.remote(
         dataset_name=dataset_name,
-        huggingface_token=None,
+        huggingface_token=token,
     )
+    if error_str is None:
+        dataset, error_str = dataset_conversion_from_v21.remote(
+            dataset_name=dataset_name,
+            huggingface_token=token,
+        )
     print(f"Converted dataset: {dataset}, error: {error_str}")
 
 

@@ -24,7 +24,7 @@ from .app import (
 # SmolVLA image
 smolvla_image = (
     base_image.uv_pip_install(
-        "lerobot[smolvla]==0.3.3",  # before introduction of LeRobotDataset v3.0
+        "lerobot[smolvla]==0.4.0",  # LeRobotDataset v3.0
     )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")
