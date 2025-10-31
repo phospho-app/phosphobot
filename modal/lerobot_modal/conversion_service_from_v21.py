@@ -66,23 +66,28 @@ async def convert_dataset_to_v3(
         else:
             logger.debug(f"Dataset path does not exist: {dataset_path}")
 
+        api = HfApi(
+            token=huggingface_token if huggingface_token else os.environ["HF_TOKEN"]
+        )
+        tags = api.list_repo_refs(dataset_name, repo_type="dataset")
+
+        branches = [branch.name for branch in tags.branches]
+
+        if "v3.0" in branches:
+            logger.info("Dataset already has a v3.0 version. No conversion needed.")
+            return dataset_name, None
+        elif "v2.1" not in branches:
+            error_msg = (
+                f"Dataset {dataset_name} does not have a v2.1 version to convert from."
+            )
+            logger.error(error_msg)
+            return None, error_msg
+
         # We do this because LeRobot later uses HfApi internally which reads from env variables
         if huggingface_token is not None:
             os.environ["HF_TOKEN"] = huggingface_token
         elif not dataset_name.startswith("phospho-app/"):
             logger.info("Looking for version 3.0 of the dataset on the hub...")
-            api = HfApi()
-            tags = api.list_repo_refs(dataset_name, repo_type="dataset")
-
-            branches = [branch.name for branch in tags.branches]
-
-            if "v3.0" in branches:
-                logger.info("Dataset already has a v3.0 version. No conversion needed.")
-                return dataset_name, None
-            elif "v2.1" not in branches:
-                error_msg = f"Dataset {dataset_name} does not have a v2.1 version to convert from."
-                logger.error(error_msg)
-                return None, error_msg
 
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
