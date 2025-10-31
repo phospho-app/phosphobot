@@ -507,15 +507,17 @@ def train_policy(
                 wandb_enabled = False
         logger.info(f"Weights and biases enabled: {wandb_enabled}")
 
-        dataset_name, error_str = dataset_conversion_from_v2.remote(
+        dataset_name_v21, error_str = dataset_conversion_from_v2.remote(
             dataset_name=dataset_name,
             huggingface_token=hf_token,
         )
+        dataset_name = dataset_name_v21
         if error_str is None:
-            dataset_name, error_str = dataset_conversion_from_v21.remote(
+            dataset_name_v3, error_str = dataset_conversion_from_v21.remote(
                 dataset_name=dataset_name,
                 huggingface_token=hf_token,
             )
+            dataset_name = dataset_name_v3
             if error_str is not None:
                 raise ValueError(
                     f"Failed to convert dataset {dataset_name} to v3.0 with error: {error_str}"

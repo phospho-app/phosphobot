@@ -1,4 +1,5 @@
 import modal
+import random
 
 conversion_image_v21 = (
     modal.Image.debian_slim(python_version="3.10")
@@ -41,8 +42,8 @@ async def convert_dataset_to_v3(
 ) -> tuple[str | None, str | None]:
     """
     Convert a v2.1 dataset to LeRobot v3.0 format and upload to Hugging Face Hub.
-    If a token is passed, we assume it has the necessary permissions to push to the dataset.
-    If not, we reupload a version of the dataset on the phospho cloud.
+    If we have write permissions, we update the dataset in place.
+    If not, we copy it to the phospho-app org and update it there.
     """
     import os
     from loguru import logger
@@ -69,8 +70,54 @@ async def convert_dataset_to_v3(
         api = HfApi(
             token=huggingface_token if huggingface_token else os.environ["HF_TOKEN"]
         )
-        tags = api.list_repo_refs(dataset_name, repo_type="dataset")
 
+        # Check if we have write access on the dataset
+        has_write_permissions = False
+        try:
+            api.repo_info(dataset_name, repo_type="dataset")
+            user_info = api.whoami()
+            repo_owner = (
+                dataset_name.split("/")[0] if "/" in dataset_name else user_info["name"]
+            )
+
+            # Check if this is a fine-grained token
+            if (
+                user_info.get("auth", {}).get("accessToken", {}).get("role")
+                == "fineGrained"
+            ):
+                logger.info("Using fine-grained token, checking scoped permissions...")
+                fine_grained = user_info["auth"]["accessToken"]["fineGrained"]
+                scoped_permissions = fine_grained.get("scoped", [])
+
+                # Check if we have write permissions for this specific entity (user or org)
+                for scope in scoped_permissions:
+                    entity = scope.get("entity", {})
+                    if entity.get("name") == repo_owner:
+                        permissions = scope.get("permissions", [])
+                        if "repo.write" in permissions:
+                            has_write_permissions = True
+                            logger.info(f"Found write permissions for {repo_owner}")
+                            break
+                        else:
+                            logger.info(
+                                f"No write permissions for {repo_owner}, only: {permissions}"
+                            )
+            else:
+                # For classic tokens, check if repo owner is in user's orgs
+                user_orgs = [user_info["name"]] + [
+                    org["name"] for org in user_info.get("orgs", [])
+                ]
+                has_write_permissions = repo_owner in user_orgs
+
+            logger.info(
+                f"Write permissions for {dataset_name}: {has_write_permissions}"
+            )
+        except Exception as e:
+            logger.warning(f"Could not verify write permissions: {e}")
+            has_write_permissions = False
+
+        # Now check if conversion is needed
+        tags = api.list_repo_refs(dataset_name, repo_type="dataset")
         branches = [branch.name for branch in tags.branches]
 
         if "v3.0" in branches:
@@ -83,55 +130,80 @@ async def convert_dataset_to_v3(
             logger.error(error_msg)
             return None, error_msg
 
-        # We do this because LeRobot later uses HfApi internally which reads from env variables
-        if huggingface_token is not None:
-            os.environ["HF_TOKEN"] = huggingface_token
-        elif not dataset_name.startswith("phospho-app/"):
-            logger.info("Looking for version 3.0 of the dataset on the hub...")
+        # If no write permissions, copy to phospho-app org
+        if not has_write_permissions and not dataset_name.startswith("phospho-app/"):
+            logger.info(
+                f"No write permissions for {dataset_name}. Copying to phospho-app org..."
+            )
 
-            # In this case, we need to reupload the dataset on our account to have write permissions
+            # Download the v2.1 version
             dataset_path_as_str = snapshot_download(
                 repo_id=dataset_name,
                 repo_type="dataset",
                 revision="v2.1",
                 cache_dir="/data/hf_cache",
             )
-            new_repo = "phospho-app/" + dataset_name.split("/")[-1]
+
+            # Create new repo in phospho-app org
+            new_repo = (
+                "phospho-app/"
+                + dataset_name.split("/")[-1]
+                + "-"
+                + "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=4))
+            )
             create_repo(
                 repo_id=new_repo,
                 repo_type="dataset",
                 exist_ok=True,
             )
+
+            # Upload to new repo
             upload_folder(
                 repo_id=new_repo,
                 folder_path=dataset_path_as_str,
                 repo_type="dataset",
             )
+
+            # Create v2.1 tag
             create_tag(
                 repo_id=new_repo,
                 tag="v2.1",
                 repo_type="dataset",
             )
-            dataset_name = new_repo
 
-        # Login to Hugging Face Hub
-        convert_dataset(
-            repo_id=dataset_name, branch="v2.1", push_to_hub=False
-        )  # Will also push to hub
+            dataset_name = new_repo
+            logger.info(f"Dataset copied to {new_repo}")
+
+        # We do this because LeRobot later uses HfApi internally which reads from env variables
+        if huggingface_token is not None:
+            os.environ["HF_TOKEN"] = huggingface_token
+
+        # Log in info
+        logger.info(f"Logged in HF as: {api.whoami()}")
+
+        # Convert the dataset
+        convert_dataset(repo_id=dataset_name, branch="v2.1", push_to_hub=False)
+
+        # Clean up and create v3.0 tag
         hub_api = HfApi()
         try:
             hub_api.delete_tag(dataset_name, tag="v3.0", repo_type="dataset")
         except HTTPError as e:
-            print(f"tag='v3.0' probably doesn't exist. Skipping exception ({e})")
+            logger.debug(f"tag='v3.0' probably doesn't exist. Skipping exception ({e})")
             pass
+
         hub_api.delete_files(
             delete_patterns=["data/chunk*/episode_*", "meta/*.jsonl", "videos/chunk*"],
             repo_id=dataset_name,
             repo_type="dataset",
         )
+
         hub_api.create_tag(dataset_name, tag="v3.0", repo_type="dataset", exist_ok=True)
 
+        # Push the converted dataset to hub
         LeRobotDataset(dataset_name).push_to_hub()
+
+        logger.info(f"Dataset {dataset_name} successfully converted to v3.0")
 
         return dataset_name, None
 
