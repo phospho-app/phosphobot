@@ -22,6 +22,7 @@ dependencies = [
     "google-cloud-storage>=3.3.1",
     "stripe>=12.5.1",
     "google-genai>=1.35.0",
+    "lerobot>=0.4.0",
 ]
 
 

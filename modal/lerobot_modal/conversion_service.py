@@ -53,16 +53,18 @@ async def convert_dataset_to_v3(
     from loguru import logger
     from huggingface_hub import (
         snapshot_download,
-        upload_folder,
+        upload_large_folder,
         create_repo,
         create_tag,
         HfApi,
     )
     from huggingface_hub.errors import GatedRepoError
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
+    from lerobot.utils.constants import HF_LEROBOT_HOME
 
     try:
         env_hf_token = os.getenv("HF_TOKEN")
+        assert env_hf_token is not None, "HF_TOKEN environment variable is not set."
         if hf_token is not None:
             # We do this because LeRobot later uses HfApi internally which reads from env variables
             os.environ["HF_TOKEN"] = hf_token
@@ -80,13 +82,16 @@ async def convert_dataset_to_v3(
             return dataset_name, None
 
         if "v2.1" not in versions:
-            error_msg = f"Dataset {dataset_name} is not a v2.1 dataset and cannot be converted to v3.0. Available branches: {branches}"
+            error_msg = f"Dataset {dataset_name} is not a v2.1 dataset and cannot be converted to v3.0. Available branches: {versions}"
             logger.error(error_msg)
             return None, error_msg
 
         # Check if the hf_token is provided and has write permissions to the dataset
         try:
             hf_api.auth_check(repo_id=dataset_name, repo_type="dataset", token=hf_token)
+            logger.success(
+                f"Token has access to the dataset {dataset_name}. Proceeding with conversion."
+            )
         except GatedRepoError:
             logger.warning(
                 f"Provided token does not have access to the dataset {dataset_name}. Reuploading the dataset to phospho-app account."
@@ -107,7 +112,7 @@ async def convert_dataset_to_v3(
                 repo_type="dataset",
                 exist_ok=True,
             )
-            upload_folder(
+            upload_large_folder(
                 repo_id=new_repo,
                 folder_path=dataset_path_as_str,
                 repo_type="dataset",
@@ -131,8 +136,21 @@ async def convert_dataset_to_v3(
             logger.debug(f"Dataset path does not exist: {dataset_path}")
 
         # Convert the dataset to v3.0 format.
-        # This downloads the dataset from the hub and pushes it back to the hub.
-        convert_dataset(repo_id=dataset_name)
+        convert_dataset(repo_id=dataset_name, push_to_hub=False)
+        # Push the converted dataset to the hub on branch v3.0
+        logger.info(f"Pushing converted dataset {dataset_name} to the hub...")
+        dataset_path = HF_LEROBOT_HOME / dataset_name
+        upload_large_folder(
+            repo_id=dataset_name,
+            folder_path=dataset_path,
+            repo_type="dataset",
+            revision="v3.0",
+        )
+        create_tag(
+            repo_id=dataset_name,
+            tag="v3.0",
+            repo_type="dataset",
+        )
         return dataset_name, None
 
     except Exception as e:
