@@ -28,7 +28,6 @@ from .app import (
     FUNCTION_GPU_TRAINING,
     FUNCTION_TIMEOUT_TRAINING,
     FUNCTION_CPU_TRAINING,
-    phosphobot_dir,
     serve_policy,
     train_policy,
 )
@@ -643,18 +642,9 @@ def prepare_bounding_box_dataset(
 # ======== ACT ========
 act_app = modal.App("act-server")
 
-# ACT image
-act_image = (
-    base_image.uv_pip_install(
-        "lerobot[act]==0.3.3",  # before introduction of LeRobotDataset v3.0
-    )
-    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
-    .add_local_python_source("phosphobot")
-)
-
 
 @act_app.function(
-    image=act_image,
+    image=base_image,
     gpu=FUNCTION_GPU_INFERENCE,
     timeout=FUNCTION_TIMEOUT_INFERENCE,
     secrets=[
@@ -683,7 +673,7 @@ async def serve(
 
 
 @act_app.function(
-    image=act_image,
+    image=base_image,
     gpu=FUNCTION_GPU_TRAINING,
     timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
     secrets=[
