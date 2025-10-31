@@ -69,14 +69,14 @@ async def convert_dataset_to_v3(
         api = HfApi()
         tags = api.list_repo_refs(dataset_name, repo_type="dataset")
 
-        branches = [branch.name for branch in tags.branches]
+        versions = [branch.name for branch in tags.tags]
 
-        if "v3.0" in branches:
+        if "v3.0" in versions:
             logger.info("Dataset already has a v3.0 version. No conversion needed.")
             return dataset_name, None
 
-        if "v2.1" not in branches:
-            error_msg = f"Dataset {dataset_name} is not a v2.1 dataset and cannot be converted to v3.0."
+        if "v2.1" not in versions:
+            error_msg = f"Dataset {dataset_name} is not a v2.1 dataset and cannot be converted to v3.0. Available branches: {branches}"
             logger.error(error_msg)
             return None, error_msg
 
