@@ -38,7 +38,7 @@ hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 )
 async def convert_dataset_to_v3(
     dataset_name: str,
-    huggingface_token: str | None = None,
+    hf_token: str | None = None,
 ) -> tuple[str | None, str | None]:
     """
     Convert a v2.1 dataset to LeRobot v3.0 format and upload to Hugging Face Hub.
@@ -61,9 +61,9 @@ async def convert_dataset_to_v3(
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
-        if huggingface_token is not None:
+        if hf_token is not None:
             # We do this because LeRobot later uses HfApi internally which reads from env variables
-            os.environ["HF_TOKEN"] = huggingface_token
+            os.environ["HF_TOKEN"] = hf_token
 
         logger.info("Looking for version 3.0 of the dataset on the hub...")
         api = HfApi()
@@ -80,7 +80,7 @@ async def convert_dataset_to_v3(
             logger.error(error_msg)
             return None, error_msg
 
-        if huggingface_token is None and not dataset_name.startswith("phospho-app/"):
+        if hf_token is None and not dataset_name.startswith("phospho-app/"):
             # The dataset is a v2.1 dataset but not on our account.
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
