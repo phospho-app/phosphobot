@@ -128,7 +128,7 @@ async def convert_dataset_to_v3(
         # We're about to proceed with the conversion.
         # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
         # To avoid issues with the conversion process.
-        dataset_path = f"/data/hf_cache/datasets/{dataset_name}"
+        dataset_path = HF_LEROBOT_HOME / dataset_name
         if os.path.exists(dataset_path):
             logger.info(f"Removing existing dataset path: {dataset_path}")
             os.system(f"rm -rf {dataset_path}")
@@ -139,18 +139,36 @@ async def convert_dataset_to_v3(
         convert_dataset(repo_id=dataset_name, push_to_hub=False)
         # Push the converted dataset to the hub on branch v3.0
         logger.info(f"Pushing converted dataset {dataset_name} to the hub...")
-        dataset_path = HF_LEROBOT_HOME / dataset_name
-        upload_large_folder(
-            repo_id=dataset_name,
-            folder_path=dataset_path,
-            repo_type="dataset",
-            revision="v3.0",
-        )
-        create_tag(
-            repo_id=dataset_name,
-            tag="v3.0",
-            repo_type="dataset",
-        )
+        try:
+            upload_large_folder(
+                repo_id=dataset_name,
+                folder_path=dataset_path,
+                repo_type="dataset",
+            )
+            create_tag(
+                repo_id=dataset_name,
+                tag="v3.0",
+                repo_type="dataset",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to upload the dataset: {e}")
+            logger.info(
+                "Attempting to upload the dataset with the env HF_TOKEN to phospho-app account."
+            )
+            dataset_name = "phospho-app/" + dataset_name.split("/")[-1]
+            hf_token = env_hf_token
+            os.environ["HF_TOKEN"] = hf_token
+            upload_large_folder(
+                repo_id=dataset_name,
+                folder_path=dataset_path,
+                repo_type="dataset",
+            )
+            create_tag(
+                repo_id=dataset_name,
+                tag="v3.0",
+                repo_type="dataset",
+            )
+
         return dataset_name, None
 
     except Exception as e:
