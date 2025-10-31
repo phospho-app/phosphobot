@@ -44,6 +44,10 @@ async def convert_dataset_to_v3(
     Convert a v2.1 dataset to LeRobot v3.0 format and upload to Hugging Face Hub.
     If a token is passed, we assume it has the necessary permissions to push to the dataset.
     If not, we reupload a version of the dataset on the phospho cloud.
+
+    Returns:
+        - dataset_name: The name of the dataset on Hugging Face Hub after conversion.
+        - error_message: None if conversion was successful, otherwise an error message.
     """
     import os
     from loguru import logger
@@ -57,35 +61,27 @@ async def convert_dataset_to_v3(
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
-        # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
-        dataset_path = f"/data/hf_cache/datasets/{dataset_name}"
-        if os.path.exists(dataset_path):
-            logger.info(f"Removing existing dataset path: {dataset_path}")
-            os.system(f"rm -rf {dataset_path}")
-        else:
-            logger.debug(f"Dataset path does not exist: {dataset_path}")
-
-        # We do this because LeRobot later uses HfApi internally which reads from env variables
         if huggingface_token is not None:
+            # We do this because LeRobot later uses HfApi internally which reads from env variables
             os.environ["HF_TOKEN"] = huggingface_token
-        else:
-            if dataset_name.startswith("phospho-app/"):
-                # Dataset is already on our account, no need to reupload
-                pass
-            logger.info("Looking for version 3.0 of the dataset on the hub...")
-            api = HfApi()
-            tags = api.list_repo_refs(dataset_name, repo_type="dataset")
 
-            branches = [branch.name for branch in tags.branches]
+        logger.info("Looking for version 3.0 of the dataset on the hub...")
+        api = HfApi()
+        tags = api.list_repo_refs(dataset_name, repo_type="dataset")
 
-            if "v3.0" in branches:
-                logger.info("Dataset already has a v3.0 version. No conversion needed.")
-                return dataset_name, None
-            elif "v2.1" not in branches:
-                error_msg = f"Dataset {dataset_name} does not have a v2.1 version to convert from."
-                logger.error(error_msg)
-                return None, error_msg
+        branches = [branch.name for branch in tags.branches]
 
+        if "v3.0" in branches:
+            logger.info("Dataset already has a v3.0 version. No conversion needed.")
+            return dataset_name, None
+
+        if "v2.1" not in branches:
+            error_msg = f"Dataset {dataset_name} is not a v2.1 dataset and cannot be converted to v3.0."
+            logger.error(error_msg)
+            return None, error_msg
+
+        if huggingface_token is None and not dataset_name.startswith("phospho-app/"):
+            # The dataset is a v2.1 dataset but not on our account.
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
                 repo_id=dataset_name,
@@ -111,8 +107,19 @@ async def convert_dataset_to_v3(
             )
             dataset_name = new_repo
 
-        # Login to Hugging Face Hub
-        convert_dataset(repo_id=dataset_name)  # Will also push to hub
+        # We're about to proceed with the conversion.
+        # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
+        # To avoid issues with the conversion process.
+        dataset_path = f"/data/hf_cache/datasets/{dataset_name}"
+        if os.path.exists(dataset_path):
+            logger.info(f"Removing existing dataset path: {dataset_path}")
+            os.system(f"rm -rf {dataset_path}")
+        else:
+            logger.debug(f"Dataset path does not exist: {dataset_path}")
+
+        # Convert the dataset to v3.0 format.
+        # This downloads the dataset from the hub and pushes it back to the hub.
+        convert_dataset(repo_id=dataset_name)
         return dataset_name, None
 
     except Exception as e:
