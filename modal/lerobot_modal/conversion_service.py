@@ -58,16 +58,20 @@ async def convert_dataset_to_v3(
         create_tag,
         HfApi,
     )
+    from huggingface_hub.errors import GatedRepoError
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     try:
+        env_hf_token = os.getenv("HF_TOKEN")
         if hf_token is not None:
             # We do this because LeRobot later uses HfApi internally which reads from env variables
             os.environ["HF_TOKEN"] = hf_token
+        else:
+            hf_token = env_hf_token
 
         logger.info("Looking for version 3.0 of the dataset on the hub...")
-        api = HfApi()
-        tags = api.list_repo_refs(dataset_name, repo_type="dataset")
+        hf_api = HfApi()
+        tags = hf_api.list_repo_refs(dataset_name, repo_type="dataset")
 
         versions = [branch.name for branch in tags.tags]
 
@@ -80,7 +84,15 @@ async def convert_dataset_to_v3(
             logger.error(error_msg)
             return None, error_msg
 
-        if hf_token is None and not dataset_name.startswith("phospho-app/"):
+        # Check if the hf_token is provided and has write permissions to the dataset
+        try:
+            hf_api.auth_check(repo_id=dataset_name, repo_type="dataset", token=hf_token)
+        except GatedRepoError:
+            logger.warning(
+                f"Provided token does not have access to the dataset {dataset_name}. Reuploading the dataset to phospho-app account."
+            )
+            hf_token = env_hf_token  # Use the env token to reupload
+            os.environ["HF_TOKEN"] = hf_token
             # The dataset is a v2.1 dataset but not on our account.
             # In this case, we need to reupload the dataset on our account to have write permissions
             dataset_path_as_str = snapshot_download(
@@ -106,6 +118,7 @@ async def convert_dataset_to_v3(
                 repo_type="dataset",
             )
             dataset_name = new_repo
+            logger.debug(f"New dataset uploaded to {dataset_name}")
 
         # We're about to proceed with the conversion.
         # Remove the cached dataset in /data/hf_cache/datasets/{dataset_name} if it exists
