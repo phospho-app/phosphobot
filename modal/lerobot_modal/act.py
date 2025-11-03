@@ -646,7 +646,7 @@ act_app = modal.App("act-server")
 # ACT image
 act_image = (
     base_image.uv_pip_install(
-        "lerobot[act]==0.3.3",  # before introduction of LeRobotDataset v3.0
+        "lerobot[act]==0.4.0",  # Support for LeRobotDataset v3.0
     )
     .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
     .add_local_python_source("phosphobot")

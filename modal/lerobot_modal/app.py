@@ -336,7 +336,7 @@ def create_training_command(
     cmd = [
         "python",
         "-m",
-        "lerobot.scripts.train",
+        "lerobot.scripts.lerobot_train",
         f"--dataset.repo_id={dataset_name}",
         f"--dataset.root={dataset_path}",
         f"--policy.type={model_type}",

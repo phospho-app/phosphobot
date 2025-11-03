@@ -543,7 +543,7 @@ def resize_dataset(
         meta_path = dataset_root_path / "meta"
         video_information = {}
         validated_info_model = InfoModel.from_json(
-            meta_folder_path=str(meta_path.resolve())
+            meta_folder_path=str(meta_path.resolve()), recompute=False
         )
         for feature in validated_info_model.features.observation_images:
             shape = validated_info_model.features.observation_images[feature].shape
@@ -566,7 +566,8 @@ def resize_dataset(
 
         for video_folder in video_information:
             if video_information[video_folder]["need_to_resize"]:
-                video_path = dataset_root_path / "videos" / "chunk-000" / video_folder
+                video_path = dataset_root_path / "videos" / video_folder / "chunk-000"
+                logger.info(f"Resizing videos in: {video_path}")
                 for episode in video_path.iterdir():
                     if episode.suffix == ".mp4" and not episode.name.startswith(
                         "edited_"

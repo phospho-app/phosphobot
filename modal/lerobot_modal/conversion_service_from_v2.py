@@ -118,7 +118,10 @@ async def convert_dataset_to_v21(
         tags = api.list_repo_refs(dataset_name, repo_type="dataset")
         branches = [branch.name for branch in tags.branches]
 
-        if "v2.1" in branches:
+        if "v3.0" in branches:
+            logger.info("Dataset already has a v3.0 version. No conversion needed.")
+            return dataset_name, None
+        elif "v2.1" in branches:
             logger.info("Dataset already has a v2.1 version. No conversion needed.")
             return dataset_name, None
         elif "v2.0" not in branches:
