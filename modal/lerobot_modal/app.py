@@ -549,10 +549,6 @@ def train_policy(
         if model_type == "act" and isinstance(
             training_params, TrainingParamsActWithBbox
         ):
-            assert isinstance(training_params, TrainingParamsActWithBbox), (
-                "Expected TrainingParamsActWithBbox for ACT with bbox"
-            )
-
             from .act import prepare_bounding_box_dataset
 
             dataset_path, dataset_name = prepare_bounding_box_dataset(
