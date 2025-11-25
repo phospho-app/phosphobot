@@ -16,19 +16,11 @@ from .app import (
     FUNCTION_GPU_TRAINING,
     FUNCTION_TIMEOUT_TRAINING,
     FUNCTION_CPU_TRAINING,
-    phosphobot_dir,
     serve_policy,
     train_policy,
 )
 
-# SmolVLA image
-smolvla_image = (
-    base_image.uv_pip_install(
-        "lerobot[smolvla]==0.3.3",  # before introduction of LeRobotDataset v3.0
-    )
-    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
-    .add_local_python_source("phosphobot")
-)
+
 
 smolvla_app = modal.App("smolvla-server")
 
@@ -82,9 +74,8 @@ def process_smolvla_inference(
         return actions.cpu().numpy()
 
 
-# ======== SmolVLA ========
 @smolvla_app.function(
-    image=smolvla_image,
+    image=base_image,
     gpu=FUNCTION_GPU_INFERENCE,
     timeout=FUNCTION_TIMEOUT_INFERENCE,
     secrets=[
@@ -113,7 +104,7 @@ async def serve(
 
 
 @smolvla_app.function(
-    image=smolvla_image,
+    image=base_image,
     gpu=FUNCTION_GPU_TRAINING,
     timeout=FUNCTION_TIMEOUT_TRAINING + 20 * MINUTES,
     secrets=[
