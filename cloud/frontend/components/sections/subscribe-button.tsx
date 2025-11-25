@@ -15,7 +15,6 @@ export default function SubscribeButton({
   onClick,
   userEmail,
 }: SubscribeButtonProps) {
-  const router = useRouter();
 
   // If the user email is set, we add it to the form as a hidden input
   if (userEmail) {
