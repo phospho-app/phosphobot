@@ -1,7 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 interface SubscribeButtonProps {
   className?: string;
   children?: React.ReactNode;
