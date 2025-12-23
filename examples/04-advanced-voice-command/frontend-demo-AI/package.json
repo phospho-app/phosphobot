@@ -10,10 +10,9 @@
     "demo-Gr00t": "PYTHONPATH=.. python ../backend/ws_server_Gr00t.py",
     "demo-ACT": "PYTHONPATH=.. python ../backend/ws_server_ACT.py",
     "demo-replay": "PYTHONPATH=.. python ../backend/ws_server_replay.py"
-
   },
   "dependencies": {
-    "next": "15.4.7",
+    "next": "15.4.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.1.4"
