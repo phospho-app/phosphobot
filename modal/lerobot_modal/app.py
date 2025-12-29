@@ -58,6 +58,12 @@ base_image = (
             "HF_HOME": "/data/hf_cache",
         }
     )
+    .uv_pip_install(
+        # Last compatible version of lerobot with v2.1 is 0.3.3
+        "lerobot[act]>=0.4.0",
+    )
+    .pip_install_from_pyproject(pyproject_toml=str(phosphobot_dir / "pyproject.toml"))
+    .add_local_python_source("phosphobot")
 )
 hf_cache_volume = modal.Volume.from_name("hf_cache", create_if_missing=True)
 

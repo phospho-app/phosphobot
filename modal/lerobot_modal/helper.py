@@ -7,6 +7,7 @@ from time import sleep
 
 import os
 import cv2
+import modal
 import torch
 import torchvision
 import numpy as np
@@ -761,6 +762,17 @@ def _download_dataset_from_hf(
         output_dir: Path to the output directory where the dataset will be downloaded
         hf_token: HuggingFace token with read access to the dataset repo (optional)
     """
+    # Call the conversion service to check if dataset is v3 and convert it if needed
+    logger.info(f"Checking if dataset {dataset_name} is v3 and converting if needed")
+    conversion_function = modal.Function.from_name(
+        "conversion-app", "convert_dataset_to_v3"
+    )
+    dataset_name, error_message = conversion_function.remote(
+        dataset_name=dataset_name, hf_token=hf_token
+    )
+    if error_message:
+        raise RuntimeError(f"Dataset conversion to v3 failed: {error_message}")
+
     logger.info(f"Downloading dataset from HuggingFace: {dataset_name}")
     dataset_path = None
     for attempt in range(max_hf_download_retries):
