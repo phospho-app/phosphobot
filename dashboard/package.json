@@ -50,7 +50,7 @@
     "prettier": "^3.5.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.2.0",
+    "react-router-dom": "^7.12.0",
     "recharts": "^2.15.2",
     "sonner": "^2.0.1",
     "swr": "^2.3.2",
