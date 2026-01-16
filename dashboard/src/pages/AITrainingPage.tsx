@@ -469,12 +469,7 @@ export function AITrainingPage() {
               variant="secondary"
               className="flex flex-1"
               onClick={handleTrainModel}
-              disabled={
-                (selectedModelType !== "custom" && !selectedDataset) ||
-                trainingState === "loading" ||
-                isDatasetInfoLoading ||
-                datasetInfoResponse?.status === "error"
-              }
+              disabled={true}
             >
               {trainingState === "idle" && (
                 <>
