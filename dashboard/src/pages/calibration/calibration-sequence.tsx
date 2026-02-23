@@ -1,6 +1,7 @@
 import position1 from "@/assets/CalibrationPosition1.jpg";
 import position2 from "@/assets/CalibrationPosition2.jpg";
 import { LoadingPage } from "@/components/common/loading";
+import { BRAND_NAME, INSTALL_DOCS_URL, PRODUCT_NAME, ROBOTS_URL } from "@/lib/branding";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -95,11 +96,11 @@ export function CalibrationSequence() {
               If you have a <b>"Access is denied" error on Windows,</b> a common
               workaround is to{" "}
               <a
-                href="https://docs.phospho.ai/installation#windows-wsl"
+                href={INSTALL_DOCS_URL}
                 target="_blank"
                 className="underline"
               >
-                install phosphobot with WSL (Windows Subsystem for Linux).
+                install {PRODUCT_NAME} with WSL (Windows Subsystem for Linux).
               </a>
             </li>
           </ul>
@@ -239,13 +240,13 @@ export function CalibrationSequence() {
       <Alert variant={"default"} className="mb-6">
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>
-          Calibration is only required if you're not a phospho.ai customer.
+          Calibration is only required if you're not a {BRAND_NAME} customer.
         </AlertTitle>
         <AlertDescription>
           <p>
             Robots you got from{" "}
-            <a href="https://robots.phospho.ai" className="underline">
-              robots.phospho.ai
+            <a href={ROBOTS_URL} className="underline">
+              {BRAND_NAME}
             </a>{" "}
             are already calibrated.
           </p>

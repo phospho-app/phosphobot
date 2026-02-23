@@ -1,5 +1,6 @@
 import { LoadingPage } from "@/components/common/loading";
 import { Modal } from "@/components/common/modal";
+import { BRAND_NAME } from "@/lib/branding";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Breadcrumb,
@@ -563,13 +564,14 @@ export function BrowsePage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <BreadcrumbLink asChild>
-                      <Link to="/browse">phosphobot</Link>
+                      <Link to="/browse">{BRAND_NAME}</Link>
                     </BreadcrumbLink>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>
                       Explore your datasets in{" "}
-                      <code>~/phosphobot/recordings</code>
+                      <code>~/phosphobot/recordings</code>{" "}
+                      ({BRAND_NAME})
                     </p>
                   </TooltipContent>
                 </Tooltip>

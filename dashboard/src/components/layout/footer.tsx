@@ -6,6 +6,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DISCORD_URL,
+  GITHUB_RELEASES_URL,
+  GITHUB_URL,
+  PRODUCT_NAME,
+} from "@/lib/branding";
 import { cn, fetcher } from "@/lib/utils";
 import type { ServerStatus } from "@/types";
 import { Download, ExternalLink } from "lucide-react";
@@ -84,7 +90,7 @@ export function Footer() {
           variant="ghost"
           size="icon"
           onClick={() => {
-            window.open("https://discord.gg/cbkggY6NSK", "_blank");
+            window.open(DISCORD_URL, "_blank");
           }}
         >
           <DiscordIcon className="size-4" />
@@ -93,7 +99,7 @@ export function Footer() {
           variant="ghost"
           size="icon"
           onClick={() => {
-            window.open("https://github.com/phospho-app/phosphobot", "_blank");
+            window.open(GITHUB_URL, "_blank");
           }}
         >
           <GithubIcon className="size-4" />
@@ -152,7 +158,7 @@ export function Footer() {
             <PopoverContent className="min-w-[30rem] p-4 flex flex-col gap-2 text-muted-foreground">
               Run this command in a terminal to update the software:
               <CodeSnippet
-                title="Update phosphobot"
+                title={`Update ${PRODUCT_NAME}`}
                 code={`brew update && brew upgrade phosphobot
 # Check version
 phosphobot --version`}
@@ -161,7 +167,7 @@ phosphobot --version`}
               />
               If updating fails, try to reinstall the software.
               <CodeSnippet
-                title="Reinstall phosphobot"
+                title={`Reinstall ${PRODUCT_NAME}`}
                 code={`brew uninstall phosphobot && brew install phosphobot`}
                 language="bash"
                 showLineNumbers={false}
@@ -182,23 +188,23 @@ phosphobot --version`}
             </PopoverTrigger>
             <PopoverContent className="min-w-[30rem] p-4 flex flex-col gap-2 text-muted-foreground">
               <p>
-                Use this command in a PowerShell terminal to update phosphobot:
+                Use this command in a PowerShell terminal to update {PRODUCT_NAME}:
               </p>
               <CodeSnippet
-                title="Update phosphobot"
+                title={`Update ${PRODUCT_NAME}`}
                 code={`powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/phospho-app/phosphobot/main/install.ps1 | iex"`}
                 language="powershell"
                 showLineNumbers={false}
               />
               <p>
-                Alternatively, replace your phosphobot.exe file with the latest
+                Alternatively, replace your executable file with the latest
                 one
               </p>
               <div className="flex justify-center mt-2">
                 <Button
                   onClick={() =>
                     window.open(
-                      "https://github.com/phospho-app/homebrew-phosphobot/releases/latest",
+                      GITHUB_RELEASES_URL,
                       "_blank",
                     )
                   }

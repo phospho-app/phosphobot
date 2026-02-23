@@ -1,9 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BRAND_NAME, PRO_LABEL, PRO_SUBSCRIBE_URL } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { TestTubeDiagonal } from "lucide-react";
-
-const PHOSPHO_PRO_SUBSCRIBE_URL = "https://phospho.ai/pro";
 
 export function PhosphoProCallout({ className }: { className?: string }) {
   return (
@@ -15,8 +14,10 @@ export function PhosphoProCallout({ className }: { className?: string }) {
           </div>
           <div className="flex-1">
             <div className="font-semibold text-lg mb-1.5">
-              Boost your phospho experience with{" "}
-              <span className="text-green-500">phospho pro</span>
+              Boost your experience with{" "}
+              <span className="text-green-500">
+                {BRAND_NAME} {PRO_LABEL}
+              </span>
             </div>
             <div className="mb-3 text-muted-foreground">
               Control your robot in VR, unlock advanced AI training, access
@@ -26,7 +27,7 @@ export function PhosphoProCallout({ className }: { className?: string }) {
           <div className="flex-shrink-0">
             <Button asChild>
               <a
-                href={`${PHOSPHO_PRO_SUBSCRIBE_URL}?utm_source=phosphobot_app`}
+                href={`${PRO_SUBSCRIBE_URL}?utm_source=phosphobot_app`}
                 target="_blank"
                 rel="noopener noreferrer"
               >

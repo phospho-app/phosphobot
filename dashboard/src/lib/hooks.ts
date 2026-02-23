@@ -178,7 +178,7 @@ const useGlobalStore = create(
     }),
 
     {
-      name: "phosphobot-global-store",
+      name: "factory-intelligence-global-store",
       storage: createJSONStorage(() => sessionStorage),
     },
   ),

@@ -17,6 +17,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/context/AuthContext";
+import {
+  BILLING_URL,
+  BRAND_NAME,
+  CONTACT_EMAIL,
+  DOCS_URL,
+  PRO_SUBSCRIBE_URL,
+} from "@/lib/branding";
 import { fetcher } from "@/lib/utils";
 import { ServerStatus } from "@/types";
 import {
@@ -189,7 +196,7 @@ export function AccountTopBar() {
         {!proUser && (
           <DropdownMenuItem asChild>
             <a
-              href="https://phospho.ai/pro?utm_source=phosphobot_app"
+              href={`${PRO_SUBSCRIBE_URL}?utm_source=phosphobot_app`}
               className="flex items-center"
               target="_blank"
             >
@@ -201,7 +208,7 @@ export function AccountTopBar() {
         {proUser && (
           <DropdownMenuItem asChild>
             <a
-              href="https://billing.phospho.ai/p/login/bIYdRr5xq8BhdagbII"
+              href={BILLING_URL}
               className="flex items-center"
               target="_blank"
             >
@@ -212,7 +219,7 @@ export function AccountTopBar() {
         )}
         <DropdownMenuItem asChild>
           <a
-            href="mailto:contact@phospho.ai"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="flex items-center"
             target="_blank"
           >
@@ -244,14 +251,14 @@ export function TopBar() {
       {currentPath === "/" && (
         <div className="flex-1">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-green-500">
-            phosphobot
+            {BRAND_NAME}
           </h1>
         </div>
       )}
       {currentPath !== "/" && (
         <div className="flex-1">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-green-500">
-            {matchedRoute?.title ?? "phosphobot"}
+            {matchedRoute?.title ?? BRAND_NAME}
           </h1>
         </div>
       )}
@@ -265,7 +272,7 @@ export function TopBar() {
         <RobotStatusDropdown />
         <Button variant="outline" asChild>
           <a
-            href="https://docs.phospho.ai/welcome"
+            href={DOCS_URL}
             className="flex items-center gap-1 text-sm"
             target="_blank"
             rel="noopener noreferrer"

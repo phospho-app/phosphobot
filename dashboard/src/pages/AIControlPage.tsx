@@ -1,4 +1,5 @@
 import { AIControlDisclaimer } from "@/components/common/ai-control-disclaimer";
+import { PRODUCT_NAME } from "@/lib/branding";
 import { AutoComplete, type Option } from "@/components/common/autocomplete";
 import CameraKeyMapper from "@/components/common/camera-mapping-selector";
 import CameraSelector from "@/components/common/camera-selector";
@@ -396,11 +397,11 @@ export function AIControlPage() {
                       <TooltipContent>
                         <p>
                           <span className="font-semibold">
-                            phosphobot records data in radians.{" "}
+                            {PRODUCT_NAME} records data in radians.{" "}
                           </span>
                           <span>
-                            Use Radians if you recorded your dataset with
-                            phosphobot.
+                            Use Radians if you recorded your dataset with{" "}
+                            {PRODUCT_NAME}.
                           </span>
                         </p>
                         <p>

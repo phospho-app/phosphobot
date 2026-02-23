@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
+import { BRAND_NAME } from "@/lib/branding";
 import { Loader2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -19,10 +20,10 @@ export function AuthForm() {
   // Determine the title based on the current path
   const getTitle = () => {
     if (location.pathname.includes("sign-in")) {
-      return "Sign in to your phosphobot account";
+      return `Sign in to your ${BRAND_NAME} account`;
     }
     if (location.pathname.includes("sign-up")) {
-      return "Create a new phosphobot account";
+      return `Create a new ${BRAND_NAME} account`;
     }
   };
 
@@ -74,7 +75,7 @@ export function AuthForm() {
           </CardTitle>
           <p className="text-sm text-muted-foreground text-center">
             {location.pathname.includes("sign-up") &&
-              "Create an account to enable the AI features in phosphobot."}
+              `Create an account to enable the AI features in ${BRAND_NAME}.`}
           </p>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

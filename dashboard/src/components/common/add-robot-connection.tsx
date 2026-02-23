@@ -1,5 +1,6 @@
 "use client";
 
+import { PRODUCT_NAME } from "@/lib/branding";
 import placeholderSvg from "@/assets/placeholder.svg";
 import { AutoComplete } from "@/components/common/autocomplete";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ interface RobotType {
 const ROBOT_TYPES: RobotType[] = [
   {
     id: "phosphobot",
-    name: "Remote phosphobot server",
+    name: `Remote ${PRODUCT_NAME} server`,
     category: "manipulator",
     image: placeholderSvg,
     fields: [

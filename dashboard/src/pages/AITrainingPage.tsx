@@ -1,4 +1,5 @@
 import { PhosphoProCallout } from "@/components/callout/phospho-pro";
+import { PRO_SUBSCRIBE_URL } from "@/lib/branding";
 import { AutoComplete, type Option } from "@/components/common/autocomplete";
 import { CopyButton } from "@/components/common/copy-button";
 import { LogStream } from "@/components/custom/LogsStream";
@@ -516,7 +517,7 @@ export function AITrainingPage() {
                     </a>
                   ) : (
                     <a
-                      href="https://phospho.ai/pro"
+                      href={PRO_SUBSCRIBE_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

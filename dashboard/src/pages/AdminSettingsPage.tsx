@@ -1,5 +1,6 @@
 import { HuggingFaceKeyInput } from "@/components/common/huggingface-key";
 import { LoadingPage } from "@/components/common/loading";
+import { BRAND_NAME, PRO_LABEL, PRO_SUBSCRIBE_URL } from "@/lib/branding";
 import { WandBKeyInput } from "@/components/common/wandb-key";
 import { Button } from "@/components/ui/button";
 import {
@@ -176,19 +177,22 @@ export function AdminPage() {
                         <p>
                           If private mode is disabled, datasets are created as
                           public on your Hugging Face account, and trained
-                          models are public under the phospho-app organization.
+                          models are public under the {BRAND_NAME} organization.
                         </p>
                         <p>
-                          <b>Requires phospho pro</b> subscription to enable.
+                          <b>
+                            Requires {BRAND_NAME} {PRO_LABEL}
+                          </b>{" "}
+                          subscription to enable.
                         </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
                 {proUser !== true && (
-                  <a href="https://phospho.ai/pro" target="_blank">
+                  <a href={PRO_SUBSCRIBE_URL} target="_blank">
                     <Button size="sm" className="text-xs h-8">
-                      Get phospho pro
+                      Get {BRAND_NAME} {PRO_LABEL}
                     </Button>
                   </a>
                 )}

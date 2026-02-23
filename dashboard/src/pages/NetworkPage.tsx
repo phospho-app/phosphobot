@@ -1,3 +1,4 @@
+import { HOTSPOT_PASSWORD, HOTSPOT_SSID } from "@/lib/branding";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,7 +78,7 @@ export function NetworkPage() {
       const response = await fetch("/network/hotspot", { method: "POST" });
       if (response.ok) {
         showMessage(
-          'Hotspot activated. Find "phosphobot" in available networks.',
+          `Hotspot activated. Find "${HOTSPOT_SSID}" in available networks.`,
           "success",
         );
       } else if (response.status === 400) {
@@ -200,10 +201,10 @@ export function NetworkPage() {
             <CardContent>
               <div className="space-y-2 text-sm">
                 <p>
-                  <strong>SSID:</strong> phosphobot
+                  <strong>SSID:</strong> {HOTSPOT_SSID}
                 </p>
                 <p>
-                  <strong>Password:</strong> phosphobot123
+                  <strong>Password:</strong> {HOTSPOT_PASSWORD}
                 </p>
               </div>
             </CardContent>

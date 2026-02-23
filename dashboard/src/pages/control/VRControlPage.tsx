@@ -1,4 +1,5 @@
 import { PhosphoVRCallout } from "@/components/callout/phospho-vr";
+import { BRAND_NAME, DOCS_URL } from "@/lib/branding";
 import {
   Accordion,
   AccordionContent,
@@ -133,7 +134,7 @@ export function VRControl() {
                       width="100%"
                       height="100%"
                       src="https://www.youtube.com/embed/AQ-xgCTdj_w?si=tUw1JIWwm75gd5_9"
-                      title="Phospho VR Control Demo"
+                      title={`${BRAND_NAME} VR Control Demo`}
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       referrerPolicy="strict-origin-when-cross-origin"
@@ -144,7 +145,7 @@ export function VRControl() {
                   <div className="flex flex-wrap gap-3">
                     <Button asChild variant="outline">
                       <a
-                        href="https://docs.phospho.ai/examples/teleop"
+                        href={`${DOCS_URL.replace("/welcome", "")}/examples/teleop`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

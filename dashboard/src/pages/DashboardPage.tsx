@@ -244,7 +244,7 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Phospho Pro Callout */}
+      {/* Pro Callout */}
       {!proUser && <PhosphoProCallout />}
       {/* Control */}
       <Card className="flex justify-between md:min-h-[25vh]">

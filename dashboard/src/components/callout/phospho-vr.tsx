@@ -1,9 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  BRAND_NAME,
+  META_STORE_URL,
+  PRO_LABEL,
+  PRO_SUBSCRIBE_URL,
+} from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { RectangleGoggles, TestTubeDiagonal } from "lucide-react";
-
-const PHOSPHO_PRO_SUBSCRIBE_URL = "https://phospho.ai/pro";
 
 export function PhosphoVRCallout({ className }: { className?: string }) {
   return (
@@ -19,21 +23,21 @@ export function PhosphoVRCallout({ className }: { className?: string }) {
                 Pick how to unlock VR control
               </h3>
               <p className="text-muted-foreground">
-                You can unlock VR control in two ways: subscribe to Phospho Pro
-                for full access, or purchase the Meta Store app for basic VR
-                control. Choose the option that suits you best.
+                You can unlock VR control in two ways: subscribe to{" "}
+                {BRAND_NAME} {PRO_LABEL} for full access, or purchase the Meta
+                Store app for basic VR control. Choose the option that suits you
+                best.
               </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               {/* Primary option - Subscription */}
               <div className="relative p-4 border-2 border-green-500 rounded-lg bg-green-50/50 dark:bg-green-950/20">
-                {/* <div className="absolute -top-2 left-3 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-medium">
-                  RECOMMENDED
-                </div> */}
                 <div className="flex items-center gap-2 mb-2">
                   <TestTubeDiagonal className="size-5 text-green-600" />
-                  <span className="font-semibold">Unlock with Phospho Pro</span>
+                  <span className="font-semibold">
+                    Unlock with {BRAND_NAME} {PRO_LABEL}
+                  </span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">
                   Full access to VR control, advanced AI training, and all
@@ -41,11 +45,11 @@ export function PhosphoVRCallout({ className }: { className?: string }) {
                 </p>
                 <Button asChild className="w-full">
                   <a
-                    href={`${PHOSPHO_PRO_SUBSCRIBE_URL}?utm_source=phosphobot_app`}
+                    href={`${PRO_SUBSCRIBE_URL}?utm_source=phosphobot_app`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Subscribe to Pro
+                    Subscribe to {PRO_LABEL}
                   </a>
                 </Button>
               </div>
@@ -55,8 +59,7 @@ export function PhosphoVRCallout({ className }: { className?: string }) {
                 <div className="flex items-center gap-2 mb-2">
                   <RectangleGoggles className="size-5 text-muted-foreground" />
                   <span className="font-semibold">
-                    Alternative: Buy the phospho teleoperation app on the Meta
-                    Store
+                    Alternative: Buy the teleoperation app on the Meta Store
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">
@@ -68,7 +71,7 @@ export function PhosphoVRCallout({ className }: { className?: string }) {
                   className="w-full bg-transparent"
                 >
                   <a
-                    href="https://www.meta.com/en-gb/experiences/phospho-teleoperation/8873978782723478/"
+                    href={META_STORE_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -80,8 +83,8 @@ export function PhosphoVRCallout({ className }: { className?: string }) {
 
             <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800 w-full">
               <p className="text-sm">
-                <strong>Have a phospho starter pack?</strong> Contact us to get
-                access to the VR app.
+                <strong>Have a {BRAND_NAME} starter pack?</strong> Contact us to
+                get access to the VR app.
               </p>
             </div>
           </div>
