@@ -70,6 +70,7 @@ dev = [
     "textual-dev>=1.7.0",
 ]
 rerun = ["rerun-sdk>=0.23.0"]
+yam = ["portal-client>=0.1.0"]
 
 
 [tool.uv]

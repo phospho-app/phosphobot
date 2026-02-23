@@ -91,6 +91,22 @@ const ROBOT_TYPES: RobotType[] = [
     ],
   },
   {
+    id: "yam",
+    name: "YAM Arm",
+    category: "manipulator",
+    image: placeholderSvg,
+    fields: [
+      { name: "host", label: "Server Host", type: "ip", default: "localhost" },
+      { name: "port", label: "Server Port", type: "number", default: 1234 },
+      {
+        name: "arm_label",
+        label: "Arm Label (e.g. left, right)",
+        type: "text",
+        default: "right",
+      },
+    ],
+  },
+  {
     id: "urdf_loader",
     name: "URDF loader",
     category: "manipulator",

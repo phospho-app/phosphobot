@@ -20,6 +20,7 @@ from phosphobot.hardware import (
     UnitreeGo2,
     URDFLoader,
     WX250SHardware,
+    YamHardware,
     get_sim,
 )
 from phosphobot.models import RobotConfigStatus
@@ -36,6 +37,7 @@ robot_name_to_class = {
     PiperHardware.name: PiperHardware,
     RemotePhosphobot.name: RemotePhosphobot,
     URDFLoader.name: URDFLoader,
+    YamHardware.name: YamHardware,
 }
 
 

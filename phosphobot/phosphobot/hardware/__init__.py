@@ -10,3 +10,4 @@ from .piper import PiperHardware
 from .so100 import SO100Hardware
 from .urdfloader import URDFLoader
 from .wx250s import WX250SHardware
+from .yam import YamHardware
