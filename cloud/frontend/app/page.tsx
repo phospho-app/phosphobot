@@ -44,24 +44,18 @@ function HomeContent() {
     router.refresh();
   };
 
-  // if there is to_checkout=true in the URL, redirect to the checkout page
+  // if there is to_checkout=true in the URL and the user is signed in, redirect to the checkout page
   useEffect(() => {
-    if (searchParams.get("to_checkout") === "true" && userEmail) {
+    if (searchParams.get("to_checkout") === "true" && isAuthenticated) {
       // Create and submit a form to start checkout session
       const form = document.createElement("form");
       form.method = "POST";
       form.action = "/api/checkout_sessions";
 
-      const emailInput = document.createElement("input");
-      emailInput.type = "hidden";
-      emailInput.name = "user_email";
-      emailInput.value = userEmail;
-
-      form.appendChild(emailInput);
       document.body.appendChild(form);
       form.submit();
     }
-  }, [searchParams, userEmail]);
+  }, [searchParams, isAuthenticated]);
 
   return (
     <div className="bg-gray-background min-h-screen font-sans">

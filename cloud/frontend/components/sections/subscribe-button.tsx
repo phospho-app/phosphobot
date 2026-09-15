@@ -14,15 +14,11 @@ export default function SubscribeButton({
   userEmail,
 }: SubscribeButtonProps) {
 
-  // If the user email is set, we add it to the form as a hidden input
+  // If the user email is set, show the checkout form (the API reads the user from the session)
   if (userEmail) {
     return (
       <div className="flex justify-center">
         <form action="/api/checkout_sessions" method="POST">
-          {/* <input type="hidden" name="user_id" value={userData.user.id} /> */}
-          {userEmail && (
-            <input type="hidden" name="user_email" value={userEmail} />
-          )}
           <button
             onClick={onClick}
             className={`bg-gray-400 text-gray-600 font-semibold py-3 px-12 rounded-lg cursor-not-allowed ${className}`}
