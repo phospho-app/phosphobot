@@ -52,12 +52,6 @@ function HomeContent() {
       form.method = "POST";
       form.action = "/api/checkout_sessions";
 
-      const emailInput = document.createElement("input");
-      emailInput.type = "hidden";
-      emailInput.name = "user_email";
-      emailInput.value = userEmail;
-
-      form.appendChild(emailInput);
       document.body.appendChild(form);
       form.submit();
     }

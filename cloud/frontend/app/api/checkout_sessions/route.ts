@@ -2,60 +2,32 @@ import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 
 import { stripe } from '../../../lib/stripe'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '../../../lib/supabase/server'
 
 // We use se process.env.STRIPE_MODE to deteremine if we are in TEST or PROD
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const headersList = await headers()
     const origin = headersList.get('origin')
 
-    // Parse form data to get userId and userEmail
-    const formData = await request.formData()
-    const userEmail = formData.get('user_email') as string
-    // The frontend doesn't pass the userId anymore
-    // So using the user email to get the userId from Supabase
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    // Find user by email with pagination support
-    let userId = null;
-    let page = 1;
-    let hasMore = true;
-    
-    while (hasMore && !userId) {
-      const { data, error } = await supabase.auth.admin.listUsers({
-        page,
-        perPage: 50
-      })
-      
-      if (error) {
-        console.error(error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      
-      if (data?.users) {
-        const user = data.users.find(u => u.email === userEmail);
-        if (user) {
-          userId = user.id;
-        }
-        
-        // Check if there are more pages
-        hasMore = data.users.length === 50;
-        page++;
-      } else {
-        hasMore = false;
-      }
+    // The checkout is always for the signed-in user, read from the Supabase
+    // session cookie. Never trust a user id or email sent by the client.
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!userId) {
-      console.error('User not found');
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    // The Stripe webhook needs the email to link the subscription to the user
+    if (!user.email) {
+      return NextResponse.json({ error: 'Your account has no email address' }, { status: 400 })
     }
 
-    // Create Checkout Sessions from body params.
+    // Create a Checkout Session for the signed-in user.
     const session = await stripe.checkout.sessions.create({
       line_items: [
         {
@@ -68,28 +40,28 @@ export async function POST(request: Request) {
       cancel_url: `${origin}/?canceled=true`,
       automatic_tax: {enabled: true},
       // Prefill the user email
-      customer_email: userEmail,
+      customer_email: user.email,
       allow_promotion_codes: true,
       // Add metadata to the checkout session
       metadata: {
-        supabase_user_id: userId,
-        supabase_user_email: userEmail
+        supabase_user_id: user.id,
+        supabase_user_email: user.email
       },
       // Add metadata to the subscription
       subscription_data: {
         metadata: {
-          supabase_user_id: userId,
-          supabase_user_email: userEmail
+          supabase_user_id: user.id,
+          supabase_user_email: user.email
         }
       }
     });
-    
+
     if (!session.url) {
       throw new Error('Failed to create checkout session URL')
     }
 
-    console.log('Created a checkout session for user', userId, 'with email', userEmail)
-    
+    console.log('Created a checkout session for user', user.id)
+
     return NextResponse.redirect(session.url, 303)
   } catch (err) {
     const error = err as Error & { statusCode?: number }
