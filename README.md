@@ -45,6 +45,8 @@ See this [README](phosphobot/README.md) for more details on how to add support f
 
 Install phosphobot for your OS [using the one liners available here](https://docs.phospho.ai/installation).
 
+On macOS, the [desktop launcher](launchers/macos/README.md) can install, start, and update the server from a window.
+
 ### 3. Make your robot move for the first time!
 
 Go to the webapp at `YOUR_SERVER_ADDRESS:YOUR_SERVER_PORT` (default is `localhost:80`) and click control.
